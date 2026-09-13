@@ -4,7 +4,7 @@ Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject
 
 This repository is an **architecture specification**, not a token, not an L1, and not a Tahoe fork. Encoding stays stock Tahoe-LAFS (CHK, zfec, capability URIs, leases, GBS/HTTPS). Payment is XMR → issuer → Privacy Pass / ristretto ZKAPs. Liveness is client repair plus stopping payment to dead nodes.
 
-The letter **C** was a cell in the comparison table (A/B/C/D). The product is Leasegrid. It implements corner C: paid friendnet, private everything, no slash.
+The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the comparison table (A/B/C/D). The product is **Leasegrid**. It implements corner C: paid friendnet, private everything, no slash.
 
 > Leasegrid does not punish lying nodes with money. It stops feeding them and moves shares. Privacy is the reason slashing is absent. If you add a public proof and a public bond, you are no longer building this.
 
@@ -12,7 +12,7 @@ The letter **C** was a cell in the comparison table (A/B/C/D). The product is Le
 
 ## Status
 
-Design draft. No issuance code, no Tahoe plugin, no mainnet wallet. The in-app grid lab is the playable stand-in.
+Design draft. No issuance code, no Tahoe plugin, no mainnet wallet. The in-app grid lab is the playable stand-in: XMR faucet → vid → ZKAP → lease → silent eject → repair toward happy=7.
 
 ## Read in this order
 

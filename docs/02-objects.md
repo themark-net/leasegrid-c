@@ -1,6 +1,6 @@
 # 02 — Objects
 
-Nothing in this file is a coin. These are the records C moves around.
+Nothing in this file is a coin. These are the records Leasegrid moves around.
 
 ## 2.1 Voucher id (`vid`)
 
@@ -32,8 +32,8 @@ Privacy Pass / `challenge-bypass-ristretto`, same family as Least Authority ZKAP
 
 | Form | Typical size | Where |
 |---|---|---|
-| Compact on disk `t \|\| W` | ~64 B | client token wallet |
-| Wire redeem `(t, R, MAC_K(R))` | ~100 B + `\|R\|` | Tahoe allocate / add_lease / renew |
+| Compact on disk `t \\ W` | ~64 B | client token wallet |
+| Wire redeem `(t, R, MAC_K(R))` | ~100 B + `|R|` | Tahoe allocate / add_lease / renew |
 | Batch DLEQ on issue | hundreds of B to a few KB | issuer → client, once per voucher |
 
 - `t` — 32-byte preimage
@@ -54,7 +54,7 @@ R = domain || nodeid || storage_index || lease_seconds || share_bytes
     || token_epoch || issuer_pubkey_id
 ```
 
-- `domain` — constant `leasegrid-c-v0`
+- `domain` — constant `leasegrid-v0`
 - `storage_index` — Tahoe shareset identifier. Nodes already see this on put.
 - Do **not** bind to the read or write cap.
 - `nodeid` stops replay onto another server.
@@ -80,7 +80,7 @@ No XMR intake address on this document. Payout addresses are negotiated out of b
 
 ## 2.6 Lease
 
-Tahoe lease, unchanged semantics: renew or the node may GC. Token spend is how a client is allowed to create or extend that lease. After expiry the node may delete. That is the only automatic punishment in C.
+Tahoe lease, unchanged semantics: renew or the node may GC. Token spend is how a client is allowed to create or extend that lease. After expiry the node may delete. That is the only automatic punishment.
 
 ## 2.7 Spent-set
 

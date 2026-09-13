@@ -1,12 +1,12 @@
 # 00 — Decision
 
-Leasegrid C is a **paid friendnet**.
+Leasegrid is a **paid friendnet**. In the four-corners table that is corner **C**. The letter is not part of the name.
 
-Tahoe already gives confidentiality and integrity against a hostile disk. It does not pay anyone to keep shares. Filecoin pays by publishing deals, collateral, and proofs. Those publications are the opposite of the privacy budget C accepts.
+Tahoe already gives confidentiality and integrity against a hostile disk. It does not pay anyone to keep shares. Filecoin pays by publishing deals, collateral, and proofs. Those publications are the opposite of the privacy budget this project accepts.
 
 ## The sentence that is the architecture
 
-Leasegrid C does not punish lying nodes with money. It stops feeding them and moves shares. Privacy is the reason slashing is absent. If you add a public proof and a public bond, you are no longer building C.
+Leasegrid does not punish lying nodes with money. It stops feeding them and moves shares. Privacy is the reason slashing is absent. If you add a public proof and a public bond, you are no longer building this.
 
 ## Four corners (do not mix the labels)
 
@@ -14,10 +14,10 @@ Leasegrid C does not punish lying nodes with money. It stops feeding them and mo
 |---|---|---|
 | A | Private pay, trusted operator set | Private S4 |
 | B | Private pay, bonded *known* nodes | Federated market |
-| **C** | Private everything, no slash | **Paid friendnet** |
+| **C** | Private everything, no slash | **Paid friendnet (Leasegrid)** |
 | D | Public deals + proofs | Wrapped Filecoin |
 
-This repo is C. `docs/05-bonds.md` is an *optional* B-lite advertisement on the node certificate. Clients may ignore it.
+This repo is C. `docs/05-bonds.md` is an *optional* B-lite advertisement on the node certificate. Clients may ignore it. Option B stays on the roadmap; it is not required to store a byte.
 
 ## Why not the ideas we already rejected
 
@@ -27,7 +27,7 @@ This repo is C. `docs/05-bonds.md` is an *optional* B-lite advertisement on the 
 - **Monero `unlock_time` as escrow.** That field means "recipient cannot spend until height H." It does not mean "counterparty seizes after T." Custom unlock_time is being removed at consensus with FCMP++; relay already rejects it. Official Monero note: no specified swap or channel scheme uses it. Do not build on it.
 - **ZKAPs in a Monero memo.** Encrypted payment ID is 8 bytes. That is a booking id (`vid`), not a pass.
 
-## What C does buy
+## What Leasegrid does buy
 
 - Client-side encryption and FEC (Tahoe, unchanged).
 - Unlinkable prepaid credit (XMR → issuer → ZKAPs).

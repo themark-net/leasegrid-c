@@ -12,14 +12,18 @@ The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the compa
 
 ## Status
 
-Design draft. No issuance code, no Tahoe plugin, no mainnet wallet. The in-app grid lab is the playable stand-in: XMR faucet → vid → ZKAP → lease → silent eject → repair toward happy=7.
+Design draft. No issuance code, no Tahoe plugin, no mainnet wallet. The paid rails lab (XMR → vid → ZKAP → lease → silent eject) is still the Phase 0 gate — see [`docs/03-roadmap.md`](docs/03-roadmap.md) and [`docs/08-lab.md`](docs/08-lab.md).
+
+**Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 
 ## Read in this order
 
 1. [`docs/00-decision.md`](docs/00-decision.md) — what this is and is not
-2. [`docs/01-architecture.md`](docs/01-architecture.md) — roles and rails
-3. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
-4. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
+2. [`docs/03-roadmap.md`](docs/03-roadmap.md) — what we build for users and in what order
+3. [`docs/01-architecture.md`](docs/01-architecture.md) — roles and rails
+4. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
+5. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
+6. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
 
 ## Two rails
 
@@ -37,6 +41,7 @@ Clients who ignore `bond_ref` are still on Leasegrid. Nodes who never post a bon
 - Caps, storage indexes, or spent tokens on any chain
 - Charging for reads in v0
 - Replacing Tahoe repair with an economic miracle
+- Shipping Tahoe WUI as the product UI
 
 ## Terms (short)
 

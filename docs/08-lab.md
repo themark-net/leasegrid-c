@@ -23,7 +23,7 @@ Match the stock friendnet bootstrap when present (`deploy/friendnet/`):
 | Role | Example host |
 |---|---|
 | Introducer | `leasegrid-1` |
-| Storage | `borg`, `maximum`, `plant` (need ≥ happy) |
+| Storage | `borg`, `maximum`, `plant` (need ≥ happy) — **0a used** `leasegrid-2`, `leasegrid-3`, `maximum` |
 | Client | `nimo` |
 | Issuer | Separate process/box from storage as soon as two machines exist (one-box OK for gate 0b only) |
 
@@ -98,11 +98,11 @@ Secrets (furls, keys, wallet files) stay **off git**.
 
 | Required | Status |
 |---|---|
-| Gate 0a PASS | ☐ |
+| Gate 0a PASS | ✅ 2026-09-17 |
 | Gate 0b PASS | ☐ |
 | Gate 0c PASS | ☐ |
 | Gate 0d PASS | ☐ |
-| Results dated below (or linked private operator notes — no secrets) | ☐ |
+| Results dated below (or linked private operator notes — no secrets) | ✅ partial (0a) |
 
 **Phase 0 PASS** only when all four gates are PASS. Then capital may move to Phase 1 (Magic Folder buyer surface) **and** demand falsification — not before.
 
@@ -112,7 +112,7 @@ Append rows; never paste furls, caps, seed phrases, or view keys.
 
 | Date (PT) | Gate | Operator | Result | Notes (hosts, versions) |
 |---|---|---|---|---|
-| | | | | |
+| 2026-09-17 ~7:44pm PT | 0a | Leasegrid Stress Test (via nimo) | **PASS** | Tahoe 1.20.0. Introducer `leasegrid-1` (10.42.0.70). Storage `leasegrid-2` (10.42.0.40), `leasegrid-3` (10.42.0.161), `maximum` (10.42.0.238). Client `nimo`. shares needed/happy/total = 1/3/3. `smoke-put-get` PASS. Nodes kept alive with tmux/screen (`tahoe run`). Lab notes: pin cryptography 41.0.7 + pyOpenSSL 23.3.0 + service-identity 23.1.0 (VMs lack PyPI DNS); nimo needs `legacy-cgi` on Python 3.14. `deploy/friendnet/` still local-only. No furls/caps in git. |
 
 ## First implementation slice (after this doc)
 

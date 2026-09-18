@@ -112,3 +112,13 @@ Unchanged from the architecture decision:
 | Magic Folder / normal-person client | **Goal; not started as Leasegrid product** |
 | Operator package | Not started (local stock-Tahoe bootstrap only) |
 | Abuse / settlement / issuer-compromise designs | **Flagged; not designed** |
+
+## Research / distribution layer (MictlanX)
+
+**Added 2026-09-18.** Steal the *distribution* parts of MictlanX (MIT, `muyal-research-group/mictlanx-client`), not the whole system.
+
+- Keep Tahoe’s encryption, capability model, CHK/zfec, and repair logic.
+- Evaluate MictlanX’s router-based placement, chunked concurrent transfers, and dynamic replication as a faster or smarter placement/transport layer on top of Tahoe shares.
+- Silent-eject and ZKAP payment stay ours; MictlanX assumes mostly-trusted peers and has no mandatory crypto or capability model.
+- Prototype only after Phase 0 rails lab passes. No dependency on their research poster or 16-node numbers.
+- Name candidate: **Mictlan** (Aztec underworld — data vanishes into shares, reassembles only for the right person). Domains still messy; treat as lore/name exploration, not a blocker.

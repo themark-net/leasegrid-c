@@ -63,4 +63,16 @@ None for 0b. Known limits (not FAIL):
 
 ## PR
 
-See git / `gh` output in the same session. If push failed: branch `lab/gate-0b-zkap` is local; next mechanical step is `git push -u origin lab/gate-0b-zkap` then `gh pr create` after `gh auth login`.
+Push succeeded: `origin/lab/gate-0b-zkap`.
+
+- Branch: https://github.com/themark-net/leasegrid-c/tree/lab/gate-0b-zkap
+- Open PR (browser): https://github.com/themark-net/leasegrid-c/pull/new/lab/gate-0b-zkap
+
+`gh pr create` failed: **not logged in** (`GH_TOKEN` unset). Next mechanical step:
+
+```bash
+gh auth login
+gh pr create --repo themark-net/leasegrid-c --base main --head lab/gate-0b-zkap \
+  --title "Gate 0b: lab ZKAP issuer and Tahoe 1.20 lease gate" \
+  --body-file GATE0B_REPORT.md
+```

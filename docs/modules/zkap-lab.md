@@ -8,7 +8,9 @@
 
 ### What it does
 
-Lab ZKAP issuer (ristretto faucet, no Monero) and a storage lease gate. Storage refuses allocate / add_lease / renew without a valid token bound to request `R`. Settlement to the issuer sends spent `t` only.
+Lab ZKAP issuer (ristretto faucet **and** paid `vid` redeem) and a storage lease gate. Storage refuses allocate / add_lease / renew without a valid token bound to request `R`. Settlement to the issuer sends spent `t` only.
+
+Gate 0c default intake is **SIMULATED** (no chain): issuer allocates an 8-byte `vid`, returns a stagenet-format integrated address that embeds it, matches an injected payment by payment ID, then issues a ZKAP batch. nimo mainnet `:18081`/`:18083` is refused before any socket. See [ADR-0002](../adr/0002-simulated-xmr-intake.md).
 
 ### How to run
 
@@ -20,6 +22,7 @@ python3 -m venv .venv
 LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 .venv/bin/leasegrid-zkap keygen --key-file "$LEASEGRID_ISSUER_KEY"
 .venv/bin/leasegrid-zkap check-0b
+.venv/bin/leasegrid-zkap check-0c   # SIMULATED XMR intake; never :18081
 ```
 
 ### Failure modes
@@ -28,6 +31,8 @@ LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 |---------|--------------|----------|
 | `GATE 0b: FAIL 0b.1` | Issuer not listening / wrong URL | Start `leasegrid-zkap issuer`; check `/v0/info` |
 | `GATE 0b: FAIL 0b.2` | Plugin not wrapping Tahoe, or unpaid still allowed | Confirm `plugins = leasegrid-zkap-v0` and restart `tahoe run` |
+| `GATE 0c: FAIL 0c.4` | Paid issue accepted underpay / wrong vid | Do not use faucet `/v0/issue` without `vid` for 0c scoring |
+| `FAIL refusing …:18081` | Attempted nimo mainnet monerod | Use `--intake simulated` or a stagenet/regtest RPC on another port |
 | `MAC_K(R) invalid` | Wallet from a different issuer key | Remint after copying the same signing key |
 | `replay of t against a different R` | Expected on a second SI | Spend a new token |
 | VMs cannot `pip install` | No PyPI DNS | Copy wheels from nimo (`scripts/vendor-wheels.sh`) |
@@ -42,6 +47,9 @@ LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 | `spent-set-path` | tahoe.cfg plugin section | JSON spent-set on the node |
 | `nodeid` | tahoe.cfg or `my_nodeid` | Bound into `R` |
 | denomination | `constants.py` | 1 token = 1 GiB-share × 30 days on one node |
+| `PICONERO_PER_TOKEN` | `constants.py` | Lab rate 0.001 XMR / token (not a market price) |
+| `--intake` | CLI `issuer` | `simulated` (default) or `rpc` |
+| `--xmr-rpc` | CLI `issuer` | wallet-rpc URL; ports 18081 and 18083 refused |
 
 ## Agent
 
@@ -49,16 +57,20 @@ LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 
 - `leasegrid_zkap.cli:main` — operator CLI
 - `leasegrid_zkap.check_0b:main` — 0b.1–0b.5 PASS/FAIL
+- `leasegrid_zkap.check_0c:main` — 0c.1–0c.5 PASS/FAIL (SIMULATED default)
 - `leasegrid_zkap.plugin.LeasegridZKAPPlugin` — Tahoe `IFoolscapStoragePlugin`
-- `leasegrid_zkap.issuer.start_issuer` — faucet + settlement HTTP
+- `leasegrid_zkap.issuer.start_issuer` — faucet + quote/redeem + settlement HTTP
+- `leasegrid_zkap.xmr_intake.SimulatedIntake` / `WalletRpcIntake`
 - `leasegrid_zkap.gate.LeaseGate.spend` / `require_allocate`
 
 ### Data shapes
 
 - Wallet JSON: `{issuer-pubkey-id, tokens: [{t, W}], denomination}`
+- Quote: `{vid, integrated-address, amount_piconero, tokens_owed, …}`
 - Wire spend: `{t, R, mac}` (base64); `R` is length-prefixed fields
 - Settlement: `{spent-preimages: [t, ...]}` — **no `R`**
 - Spent-set JSON on storage only (may contain `r_b64`)
+- Voucher (issuer-private): `vid`, amount, `tokens_owed`, paid/spent flags; **no tx secrets in git**
 
 ### Callers / callees
 
@@ -76,12 +88,15 @@ LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 
 ### Extension points
 
-- `/v0/issue` is the 0c mint hook (add `vid` + payment check later)
+- `/v0/issue` with `vid` is the paid 0c mint; without `vid` it is the 0b faucet
+- `--intake rpc --xmr-rpc` (non-banned port) replaces simulated inject with wallet-rpc
 - GBS `X-Tahoe-Authorization` extra header would replace out-of-band `/v0/spend`
 
 ### Do not
 
-- Commit issuer signing keys, wallets, furls, or caps
+- Commit issuer signing keys, wallets, furls, caps, view keys, or txids
 - Forward `R` or storage indexes to the issuer
+- Connect to nimo mainnet monerod `:18081`/`:18083`
+- Put ZKAPs in a Monero payment memo (`vid` is 8 bytes)
 - Claim PyPI ZKAPAuthorizer is loaded on Tahoe 1.20
-- Fill `docs/08-lab.md` results as PASS unless `check-0b --live` ran on the friendnet
+- Record 0c as a live-chain PASS unless a stagenet/regtest scan actually ran (SIMULATED must stay labeled)

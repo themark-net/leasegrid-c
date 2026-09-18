@@ -43,6 +43,70 @@ def http_json(url: str, method: str = "GET", body: dict | None = None, timeout: 
     return json.loads(payload.decode("utf-8"))
 
 
+def quote_tokens(issuer_url: str, tokens: int = 2) -> dict:
+    return http_json(
+        issuer_url.rstrip("/") + "/v0/quote",
+        "POST",
+        {"tokens": int(tokens)},
+    )
+
+
+def simulate_pay(issuer_url: str, vid: str, amount_piconero: int, confirmations: int | None = None) -> dict:
+    body = {"vid": vid, "amount_piconero": int(amount_piconero)}
+    if confirmations is not None:
+        body["confirmations"] = int(confirmations)
+    return http_json(issuer_url.rstrip("/") + "/v0/intake/simulate", "POST", body)
+
+
+def scan_intake(issuer_url: str) -> dict:
+    return http_json(issuer_url.rstrip("/") + "/v0/intake/scan", "POST", {})
+
+
+def voucher_status(issuer_url: str, vid: str) -> dict:
+    return http_json(
+        issuer_url.rstrip("/") + "/v0/voucher/status",
+        "POST",
+        {"vid": vid},
+    )
+
+
+def redeem_vid(issuer_url: str, vid: str, count: int | None = None) -> dict:
+    """Paid mint: blinded issue for a paid voucher. Fails if unpaid/underpay."""
+    if count is None:
+        st = voucher_status(issuer_url, vid)
+        count = int(st.get("tokens_owed") or 0)
+        if count < 1:
+            raise ClientError("voucher tokens_owed < 1")
+    tokens, blinded = client_tokens(count)
+    blinded_b64 = []
+    for b in blinded:
+        v = b.encode_base64()
+        blinded_b64.append(v.decode("ascii") if isinstance(v, bytes) else str(v))
+    issued = http_json(
+        issuer_url.rstrip("/") + "/v0/issue",
+        "POST",
+        {"vid": vid, "blinded-tokens": blinded_b64},
+    )
+    unblinded = unblind_batch(
+        tokens,
+        blinded,
+        issued["signed-tokens"],
+        issued["proof"],
+        issued["public-key"],
+    )
+    recs = [wallet_record(u) for u in unblinded]
+    return {
+        "issuer-pubkey-id": issued["issuer-pubkey-id"],
+        "public-key": issued["public-key"],
+        "token-epoch": issued.get("token-epoch", TOKEN_EPOCH_V0),
+        "denomination": issued.get("denomination", DENOMINATION),
+        "tokens": recs,
+        "vid": issued.get("vid", vid),
+        "intake-mode": issued.get("intake-mode"),
+        "faucet": False,
+    }
+
+
 def faucet_mint(issuer_url: str, count: int = 8) -> dict:
     tokens, blinded = client_tokens(count)
     blinded_b64 = []

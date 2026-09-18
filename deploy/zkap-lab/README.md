@@ -1,4 +1,4 @@
-# Gate 0b — ZKAP lease lab (no XMR)
+# Gate 0b / 0c — ZKAP lease lab (+ SIMULATED XMR `vid` intake)
 
 Thin Leasegrid authorizer for Tahoe **1.20.0**. This is **not** PrivateStorage `ZKAPAuthorizer` (PyPI pin `tahoe-lafs<1.18.1`). Crypto is `python-challenge-bypass-ristretto` (same family). Binding `R` follows [`docs/02-objects.md`](../../docs/02-objects.md). Decision: [`docs/adr/0001-thin-lab-zkap-authorizer.md`](../../docs/adr/0001-thin-lab-zkap-authorizer.md).
 
@@ -48,6 +48,38 @@ python3 -m venv .venv
 Honest output is `PASS` / `FAIL` per `0b.1`–`0b.5`, then `GATE 0b: PASS` or `GATE 0b: FAIL`.
 
 `0b.2` requires `allmydata.storage.server.StorageServer` (Tahoe 1.20). If that import fails, 0b.2 is **FAIL**, not a skip.
+
+## Gate 0c — SIMULATED XMR → `vid` → ZKAP
+
+**This lab path does not talk to a Monero daemon.** nimo mainnet `monerod` on `:18081`/`:18083` is refused before any socket. There was no stagenet listener on this host when 0c landed. Label every 0c result **SIMULATED** until `--intake rpc` scans a stagenet or local-dev chain (ADR-0002).
+
+```bash
+.venv/bin/leasegrid-zkap check-0c
+```
+
+Honest output is `PASS` / `FAIL` per `0c.1`–`0c.5`, then `GATE 0c: PASS  intake=SIMULATED …`.
+
+Manual loop (same issuer as 0b):
+
+```bash
+.venv/bin/leasegrid-zkap issuer --listen 127.0.0.1:8700 --intake simulated
+.venv/bin/leasegrid-zkap quote --issuer http://127.0.0.1:8700 --tokens 2
+.venv/bin/leasegrid-zkap simulate-pay --issuer http://127.0.0.1:8700 --vid <vid from quote>
+.venv/bin/leasegrid-zkap redeem --issuer http://127.0.0.1:8700 --vid <vid> \
+  --out ~/DEVELOP/leasegrid-lab-private/client-wallet.json
+```
+
+Lab rate: **0.001 XMR per token** (`PICONERO_PER_TOKEN = 1e9`). Confirmations required (simulated): **1**. Quote of 2 tokens ≈ 0.002 XMR. Tokens still do not go in the payment memo — only the 8-byte `vid`.
+
+Wallet-rpc (stagenet / local-dev only; not implemented as the default):
+
+```bash
+# WILL FAIL (mainnet ban):
+.venv/bin/leasegrid-zkap issuer --intake rpc --xmr-rpc http://127.0.0.1:18081/json_rpc
+
+# later, if you run your own stagenet wallet-rpc e.g. :38081:
+.venv/bin/leasegrid-zkap issuer --intake rpc --xmr-rpc http://127.0.0.1:38081/json_rpc
+```
 
 ## Friendnet enable (opt-in; breaks unpaid `tahoe put`)
 
@@ -105,10 +137,14 @@ A future client plugin / GBS header can attach passes to CHK upload. That is not
 
 ```
 leasegrid-zkap keygen
-leasegrid-zkap issuer --listen 127.0.0.1:8700
+leasegrid-zkap issuer --listen 127.0.0.1:8700 --intake simulated
 leasegrid-zkap storage-gate --nodeid <my_nodeid> --listen 127.0.0.1:8701
 leasegrid-zkap faucet --issuer http://127.0.0.1:8700 --out ~/DEVELOP/leasegrid-lab-private/client-wallet.json
+leasegrid-zkap quote --issuer http://127.0.0.1:8700 --tokens 2
+leasegrid-zkap simulate-pay --issuer http://127.0.0.1:8700 --vid <16 hex chars>
+leasegrid-zkap redeem --issuer http://127.0.0.1:8700 --vid <16 hex chars>
 leasegrid-zkap spend --storage http://127.0.0.1:8701 --nodeid ... --storage-index <32 hex chars>
 leasegrid-zkap settle --issuer http://127.0.0.1:8700 --from-storage http://127.0.0.1:8701
 leasegrid-zkap check-0b
+leasegrid-zkap check-0c
 ```

@@ -7,3 +7,11 @@ class ZKAPRequired(Exception):
 
 class SpendError(Exception):
     """Spend rejected (bad MAC, bad R, wrong node, etc.)."""
+
+
+class MainnetBanned(Exception):
+    """Refused to use nimo mainnet monerod (:18081/:18083) or any mainnet nettype."""
+
+
+class IssueError(Exception):
+    """Paid issuance refused (unpaid, underpay, vid mismatch, already spent)."""

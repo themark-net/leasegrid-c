@@ -12,7 +12,7 @@ The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the compa
 
 ## Status
 
-Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [`src/leasegrid_zkap/`](src/leasegrid_zkap/) and [`deploy/zkap-lab/`](deploy/zkap-lab/). That lab is **not** PyPI ZKAPAuthorizer (Tahoe 1.20 pin; see [`docs/adr/0001-thin-lab-zkap-authorizer.md`](docs/adr/0001-thin-lab-zkap-authorizer.md)). Gates 0a and 0b have dated PASS rows in [`docs/08-lab.md`](docs/08-lab.md). Gates 0c–0d are not PASS until that log says so. No mainnet wallet. Product UX remains Magic Folder–class sync (Phase 1).
+Architecture spec plus a **gate 0b/0c lab** (ristretto issuer, **SIMULATED** XMR `vid` intake, lease gate) under [`src/leasegrid_zkap/`](src/leasegrid_zkap/) and [`deploy/zkap-lab/`](deploy/zkap-lab/). That lab is **not** PyPI ZKAPAuthorizer (Tahoe 1.20 pin; see [`docs/adr/0001-thin-lab-zkap-authorizer.md`](docs/adr/0001-thin-lab-zkap-authorizer.md)). Gates 0a and 0b have live-friendnet PASS rows; gate 0c is **SIMULATED** (no chain) in [`docs/08-lab.md`](docs/08-lab.md). Gate 0d is open. No mainnet wallet. Product UX remains Magic Folder–class sync (Phase 1).
 
 **Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 
@@ -24,7 +24,7 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 4. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
 5. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
 6. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
-7. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet
+7. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gates 0b–0c on the LAN friendnet
 
 ## Two rails
 

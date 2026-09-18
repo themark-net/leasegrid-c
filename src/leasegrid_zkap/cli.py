@@ -1,4 +1,4 @@
-"""leasegrid-zkap CLI: issuer, storage-gate, faucet, spend, settle, check-0b."""
+"""leasegrid-zkap CLI: issuer, storage-gate, faucet, quote/redeem (0c), spend, settle, checks."""
 
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ from pathlib import Path
 from .constants import (
     DEFAULT_ISSUER_KEY,
     DEFAULT_LEASE_SECONDS,
+    DEFAULT_QUOTE_TOKENS,
     DEFAULT_SHARE_BYTES,
     DEFAULT_SPENT_SET,
     DEFAULT_WALLET,
+    DEFAULT_XMR_NETWORK,
     DENOMINATION,
 )
 from .crypto import generate_signing_key, issuer_info, load_signing_key, save_signing_key
@@ -48,13 +50,29 @@ def cmd_info(args) -> int:
 
 
 def cmd_issuer(args) -> int:
-    key = load_signing_key(_key_path(args.key_file))
+    from .errors import MainnetBanned
     from .issuer import start_issuer
+    from .xmr_intake import make_intake, refuse_mainnet_url
 
-    state, httpd = start_issuer(key, args.listen)
+    try:
+        if getattr(args, "xmr_rpc", ""):
+            refuse_mainnet_url(args.xmr_rpc)
+        intake = make_intake(
+            getattr(args, "intake", "simulated") or "simulated",
+            xmr_rpc=getattr(args, "xmr_rpc", "") or "",
+            network=getattr(args, "xmr_network", "") or DEFAULT_XMR_NETWORK,
+        )
+    except MainnetBanned as e:
+        print("FAIL  %s" % e, file=sys.stderr)
+        return 2
+    key = load_signing_key(_key_path(args.key_file))
+    state, httpd = start_issuer(key, args.listen, intake=intake)
     print("issuer listening %s" % state.listen, flush=True)
     print("issuer-pubkey-id %s" % state.info["issuer-pubkey-id"], flush=True)
+    print("intake-mode %s network %s" % (state.intake.mode, getattr(state.intake, "network", "")), flush=True)
     print("invariant: settlement sends spent t only; R is rejected", flush=True)
+    if state.intake.mode == "SIMULATED":
+        print("XMR intake is SIMULATED (no chain; no :18081)", flush=True)
     try:
         while True:
             import time
@@ -151,8 +169,51 @@ def cmd_settle(args) -> int:
     return 0
 
 
+def cmd_quote(args) -> int:
+    from .client import quote_tokens
+
+    out = quote_tokens(args.issuer, tokens=args.tokens)
+    print(json.dumps(out, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_simulate_pay(args) -> int:
+    from .client import simulate_pay, voucher_status
+
+    amount = args.amount_piconero
+    if amount is None:
+        st = voucher_status(args.issuer, args.vid)
+        amount = st["amount_piconero"]
+    out = simulate_pay(args.issuer, args.vid, amount, confirmations=args.confirmations)
+    print(json.dumps(out, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_redeem(args) -> int:
+    from .client import redeem_vid, save_wallet
+
+    wallet = redeem_vid(args.issuer, args.vid, count=args.count)
+    save_wallet(args.out, wallet)
+    print("wrote %s (%s tokens)" % (args.out, len(wallet["tokens"])))
+    print("issuer-pubkey-id %s" % wallet["issuer-pubkey-id"])
+    print("vid %s" % wallet.get("vid"))
+    print("intake-mode %s" % wallet.get("intake-mode"))
+    return 0
+
+
 def cmd_check(args) -> int:
     from .check_0b import main as check_main
+
+    argv = []
+    if args.live:
+        argv += ["--live", "--issuer", args.issuer, "--storage", args.storage]
+        if args.nodeid:
+            argv += ["--nodeid", args.nodeid]
+    return check_main(argv)
+
+
+def cmd_check_0c(args) -> int:
+    from .check_0c import main as check_main
 
     argv = []
     if args.live:
@@ -175,9 +236,12 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--key-file", default=DEFAULT_ISSUER_KEY)
     i.set_defaults(func=cmd_info)
 
-    iss = sub.add_parser("issuer", help="run lab issuer + faucet")
+    iss = sub.add_parser("issuer", help="run lab issuer + faucet + 0c quote/redeem")
     iss.add_argument("--key-file", default=DEFAULT_ISSUER_KEY)
     iss.add_argument("--listen", default="127.0.0.1:8700")
+    iss.add_argument("--intake", default="simulated", help="simulated (default) or rpc")
+    iss.add_argument("--xmr-rpc", default="", help="wallet-rpc URL; :18081/:18083 refused")
+    iss.add_argument("--xmr-network", default=DEFAULT_XMR_NETWORK)
     iss.set_defaults(func=cmd_issuer)
 
     sg = sub.add_parser("storage-gate", help="run storage spend HTTP (optional Tahoe wrap)")
@@ -211,12 +275,38 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--include-r", action="store_true", help="forbidden; always refused")
     t.set_defaults(func=cmd_settle)
 
+    q = sub.add_parser("quote", help="allocate vid + integrated address (0c.1)")
+    q.add_argument("--issuer", required=True)
+    q.add_argument("--tokens", type=int, default=DEFAULT_QUOTE_TOKENS)
+    q.set_defaults(func=cmd_quote)
+
+    sp = sub.add_parser("simulate-pay", help="SIMULATED XMR intake for a vid (no chain)")
+    sp.add_argument("--issuer", required=True)
+    sp.add_argument("--vid", required=True)
+    sp.add_argument("--amount-piconero", type=int, default=None)
+    sp.add_argument("--confirmations", type=int, default=None)
+    sp.set_defaults(func=cmd_simulate_pay)
+
+    rdm = sub.add_parser("redeem", help="paid issue for a paid vid (0c.3)")
+    rdm.add_argument("--issuer", required=True)
+    rdm.add_argument("--vid", required=True)
+    rdm.add_argument("--out", default=DEFAULT_WALLET)
+    rdm.add_argument("--count", type=int, default=None)
+    rdm.set_defaults(func=cmd_redeem)
+
     c = sub.add_parser("check-0b", help="print PASS/FAIL for 0b.1–0b.5")
     c.add_argument("--live", action="store_true")
     c.add_argument("--issuer", default="")
     c.add_argument("--storage", default="")
     c.add_argument("--nodeid", default="")
     c.set_defaults(func=cmd_check)
+
+    c3 = sub.add_parser("check-0c", help="print PASS/FAIL for 0c.1–0c.5 (SIMULATED default)")
+    c3.add_argument("--live", action="store_true")
+    c3.add_argument("--issuer", default="")
+    c3.add_argument("--storage", default="")
+    c3.add_argument("--nodeid", default="")
+    c3.set_defaults(func=cmd_check_0c)
     return p
 
 

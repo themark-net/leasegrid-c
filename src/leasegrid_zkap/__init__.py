@@ -1,4 +1,4 @@
-"""Leasegrid lab ZKAP authorizer (gate 0b). Not ZKAPAuthorizer; see docs/adr/0001."""
+"""Leasegrid lab ZKAP authorizer (gates 0b–0c). Not ZKAPAuthorizer; see docs/adr/0001."""
 
 from .constants import DENOMINATION, DOMAIN, PLUGIN_NAME, TOKEN_EPOCH_V0
 

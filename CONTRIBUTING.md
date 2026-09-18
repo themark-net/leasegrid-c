@@ -19,10 +19,10 @@ Open an issue first for anything that moves trust (new issuer powers, new slash 
 
 ## What is not here yet
 
-- Monero intake scanner (gate 0c)
+- Live stagenet/regtest wallet-rpc scan (gate 0c code is **SIMULATED** by default; see ADR-0002)
 - Grid-manager policy daemon (gate 0d)
 - Magic Folder / normal-person client (product goal — see roadmap Phase 1)
 
-Lab issuer + Tahoe 1.20 lease gate (gate 0b, no XMR) lives in `src/leasegrid_zkap/` with operator notes in `deploy/zkap-lab/`. Do not treat a green local `check-0b` as Phase 0 PASS until `docs/08-lab.md` records a dated live-grid row.
+Lab issuer + Tahoe 1.20 lease gate (0b) and simulated XMR `vid` intake (0c) live in `src/leasegrid_zkap/` with operator notes in `deploy/zkap-lab/`. Never point intake at nimo mainnet `:18081`/`:18083`. Do not treat a green local `check-0b` / `check-0c` as Phase 0 PASS until `docs/08-lab.md` records the dated rows (0c is SIMULATED until a chain is scanned).
 
 Product order of work is in `docs/03-roadmap.md`.

@@ -15,3 +15,6 @@ build/
 .pytest_cache/
 inventory.yaml
 *.furl
+
+# local 0c scratch (not for 0b tip)
+GATE0C_NETWORK_CONSTRAINT.md

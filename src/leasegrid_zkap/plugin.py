@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from twisted.internet.defer import succeed
-from twisted.web.resource import Resource
 from twisted.web.static import Data
 from zope.interface import implementer
 

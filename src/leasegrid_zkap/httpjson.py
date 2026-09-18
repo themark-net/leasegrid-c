@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable
+from typing import Callable
 from urllib.parse import urlparse
 
 HandlerFn = Callable[[dict | None, dict], tuple[int, dict]]

@@ -16,6 +16,7 @@ dependencies = ["python-challenge-bypass-ristretto>=2022.6.30"]
 leasegrid-zkap = "leasegrid_zkap.cli:main"
 
 [project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.6"]
 tahoe = ["tahoe-lafs==1.20.0"]
 
 [tool.setuptools]
@@ -23,3 +24,15 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

@@ -17,7 +17,7 @@ Closest substitute today is PrivateStorage + ProxyStore (same Tahoe/ZKAP family,
 **Goal:** The documented loop works on real machines. Not a market release.
 
 - [ ] XMR faucet (or tiny spend) → `vid` → ZKAP batch from issuer
-- [ ] Spend ZKAP on allocate / add_lease / renew against a storage node
+- [x] Spend ZKAP on allocate / add_lease / renew against a storage node (gate 0b faucet; no XMR)
 - [ ] Kill or eject a node; client (or repair agent) moves shares; stop paying the dead node
 - [x] Document as [`08-lab.md`](08-lab.md); no slogan-only criterion
 
@@ -108,7 +108,7 @@ Unchanged from the architecture decision:
 | Layer | Status |
 |---|---|
 | Architecture spec (00–02, 05) | Draft published |
-| Paid rails (issuer, plugin, eject) | Not built — lab gates in [`08-lab.md`](08-lab.md) |
+| Paid rails (issuer, plugin, eject) | 0b lab PASS (faucet ZKAP, no XMR); 0c–0d open — [`08-lab.md`](08-lab.md) |
 | Magic Folder / normal-person client | **Goal; not started as Leasegrid product** |
 | Operator package | Not started (local stock-Tahoe bootstrap only) |
 | Abuse / settlement / issuer-compromise designs | **Flagged; not designed** |

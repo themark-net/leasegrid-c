@@ -2,7 +2,7 @@
 
 Owner direction (2026-09-17): **Magic Folder–class sync is the product UX goal.** Tahoe’s native UI is unacceptable. Leasegrid must work for a normal person — folder sync, visible credit, recovery that does not require reading Tahoe docs — while the rails stay corner **C** (paid friendnet, XMR → ZKAP, silent eject, no slash).
 
-This file is the product roadmap. Architecture constraints remain in [`00-decision.md`](00-decision.md) and [`01-architecture.md`](01-architecture.md). Lab success criterion for the paid rails belongs in [`08-lab.md`](08-lab.md) (to be written; until then use §2 below).
+This file is the product roadmap. Architecture constraints remain in [`00-decision.md`](00-decision.md) and [`01-architecture.md`](01-architecture.md). Lab success criterion for the paid rails is [`08-lab.md`](08-lab.md) (gates 0a–0d).
 
 ## North star
 
@@ -19,7 +19,7 @@ Closest substitute today is PrivateStorage + ProxyStore (same Tahoe/ZKAP family,
 - [ ] XMR faucet (or tiny spend) → `vid` → ZKAP batch from issuer
 - [ ] Spend ZKAP on allocate / add_lease / renew against a storage node
 - [ ] Kill or eject a node; client (or repair agent) moves shares; stop paying the dead node
-- [ ] Document as [`08-lab.md`](08-lab.md); no slogan-only criterion
+- [x] Document as [`08-lab.md`](08-lab.md); no slogan-only criterion
 
 **Out of scope here:** Magic Folder polish, mobile, marketing, B-lite bonds.
 
@@ -108,7 +108,7 @@ Unchanged from the architecture decision:
 | Layer | Status |
 |---|---|
 | Architecture spec (00–02, 05) | Draft published |
-| Paid rails (issuer, plugin, eject) | Not built |
+| Paid rails (issuer, plugin, eject) | Not built — lab gates in [`08-lab.md`](08-lab.md) |
 | Magic Folder / normal-person client | **Goal; not started as Leasegrid product** |
 | Operator package | Not started (local stock-Tahoe bootstrap only) |
 | Abuse / settlement / issuer-compromise designs | **Flagged; not designed** |

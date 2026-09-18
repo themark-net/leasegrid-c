@@ -19,10 +19,10 @@ Open an issue first for anything that moves trust (new issuer powers, new slash 
 
 ## What is not here yet
 
-- Tahoe storage-server plugin
-- Issuer HTTP service
-- Monero intake scanner
-- Grid-manager policy daemon
+- Monero intake scanner (gate 0c)
+- Grid-manager policy daemon (gate 0d)
 - Magic Folder / normal-person client (product goal — see roadmap Phase 1)
 
-Those belong in later repos or later directories once the lab criterion in `docs/08-lab.md` is the implementation target, not a slogan. Product order of work is in `docs/03-roadmap.md`.
+Lab issuer + Tahoe 1.20 lease gate (gate 0b, no XMR) lives in `src/leasegrid_zkap/` with operator notes in `deploy/zkap-lab/`. Do not treat a green local `check-0b` as Phase 0 PASS until `docs/08-lab.md` records a dated live-grid row.
+
+Product order of work is in `docs/03-roadmap.md`.

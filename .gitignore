@@ -10,3 +10,8 @@ env/
 secrets/
 *.keys
 wallet/
+dist/
+build/
+.pytest_cache/
+inventory.yaml
+*.furl

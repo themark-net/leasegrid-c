@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leasegrid-zkap-lab"
+version = "0.1.0"
+description = "Leasegrid gate 0b lab ZKAP issuer + storage lease gate (Tahoe 1.20)"
+readme = "deploy/zkap-lab/README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Leasegrid" }]
+dependencies = ["python-challenge-bypass-ristretto>=2022.6.30"]
+
+[project.scripts]
+leasegrid-zkap = "leasegrid_zkap.cli:main"
+
+[project.optional-dependencies]
+tahoe = ["tahoe-lafs==1.20.0"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

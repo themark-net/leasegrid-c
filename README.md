@@ -19,6 +19,16 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 **U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
 **U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md). Installer / recovery HITL / XMR wait for U3–U5.
 
+## Run it locally (client + server, one machine)
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -U pip && .venv/bin/pip install -e ".[sync,tahoe]"
+scripts/dev-grid.sh                      # shell 1: introducer + 3 storage + issuer; prints an invite furl
+LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 .venv/bin/leasegrid-sync   # shell 2: paste the furl → Join
+```
+
+Join creates and runs a Tahoe client for you; Credit → Top up hits the lab faucet; Folders → Add folder syncs via Magic Folder. Details: [`docs/ops/dev-grid.md`](docs/ops/dev-grid.md).
+
 **Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 
 ## Read in this order

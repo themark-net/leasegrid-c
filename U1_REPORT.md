@@ -3,7 +3,7 @@
 **Status:** PASS (nimo lab, 2026-09-19)  
 **Cite:** `docs/design/14-U0-DEVBOT-HANDOFF.md` · design 10–13 · `docs/09-ui-track.md`  
 **Branch:** `feat/u1-gridsync-spike` · **Repo:** themark-net/leasegrid-c  
-**HEAD:** fill after commit (`git rev-parse HEAD`)
+**HEAD:** `72a4125` (`feat/u1-gridsync-spike`)
 
 Native **Leasegrid Sync** (PyQt wrap, Gridsync folder-list mental model + Magic Folder). Not Tahoe WUI. Not Electron. Credit / installer / recovery HITL / XMR wait for U2–U5.
 

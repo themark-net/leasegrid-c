@@ -1,0 +1,2 @@
+# U1 loop exits
+DONE = PR tip: native Leasegrid Sync (Gridsync fork/wrap) boots Linux window; joins existing friendnet; one Magic Folder syncs with evidence; no WUI product path; in-window FAIL on join/add; dogfood note on nimo; deferred U2–U5 listed; ci-local + tip GHA green. Cite design 10–14 / handoff 14. Cap 8. 3 identical failures → STOPPED_EXIT PM. Prefer Grok Build; yield if Desk Kronos blocked.

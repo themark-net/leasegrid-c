@@ -3,7 +3,7 @@
 **Status:** PASS (nimo lab, 2026-09-19)  
 **Cite:** `docs/design/19-U2-DEVBOT-HANDOFF.md` · design 15–18 · `docs/09-ui-track.md` U2 · U0 `12` §3 Credit  
 **Branch:** `feat/u2-credit-panel` · **Repo:** themark-net/leasegrid-c  
-**HEAD:** `becbd12` (`feat/u2-credit-panel`)  
+**HEAD:** `035592ba101fd1d48308332d8167213f00beccc8` (`feat/u2-credit-panel`)  
 **Base:** `3452a87` (U1 SHIP)
 
 Native **Leasegrid Sync** Credit place (PyQt wrap, same window as U1 Folders). Lab faucet redeem updates remaining GiB·share-months in plain language. Not Tahoe WUI. Not Electron. Not mainnet XMR. AppImage / recovery HITL / XMR wait for U3–U5.

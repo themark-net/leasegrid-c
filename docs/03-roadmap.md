@@ -31,7 +31,7 @@ Closest substitute today is PrivateStorage + ProxyStore (same Tahoe/ZKAP family,
 
 | Workstream | Intent | Notes |
 |---|---|---|
-| **Magic Folder sync client** | Primary UX. Folder in ↔ encrypted shares out. Multi-device invite codes. | **This is the product**, not an optional later. Reuse / wrap Gridsync + Magic Folder where honest; do not ship WUI-as-product. |
+| **Magic Folder sync client (native)** | Primary UX. Folder in ↔ encrypted shares out. Multi-device invite codes. **Native desktop + installer required** (see [`09-ui-track.md`](09-ui-track.md)). Web is optional alt only. | **This is the product.** Reuse / wrap Gridsync + Magic Folder; Linux AppImage/.deb first. Do not ship WUI-as-product. Start UI in parallel with Phase 0 (do not wait for 0c/0d). |
 | **Credit / balance UI** | Show remaining GiB-share-months; “Top up with XMR” as smooth as ProxyStore redeem. | Opaque ZKAP wallets do not convert. |
 | **Recovery Key / capability backup** | Scary defaults; export path; loss = total loss made obvious. | Cap DIY is not acceptable for a normal person. |
 | **Renewal automation** | Daemon renews leases before expiry so data is not silently stranded. | PrivateStorage already trains ~31-day renew habit; we must not make it worse. |
@@ -109,7 +109,7 @@ Unchanged from the architecture decision:
 |---|---|
 | Architecture spec (00–02, 05) | Draft published |
 | Paid rails (issuer, plugin, eject) | 0b lab PASS (faucet ZKAP, no XMR); 0c–0d open — [`08-lab.md`](08-lab.md) |
-| Magic Folder / normal-person client | **Goal; not started as Leasegrid product** |
+| Magic Folder / normal-person client | **UI track locked 2026-09-19** — native + installer; see [`09-ui-track.md`](09-ui-track.md); U0–U5 |
 | Operator package | Not started (local stock-Tahoe bootstrap only) |
 | Abuse / settlement / issuer-compromise designs | **Flagged; not designed** |
 

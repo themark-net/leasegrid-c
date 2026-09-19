@@ -14,9 +14,11 @@ dependencies = ["python-challenge-bypass-ristretto>=2022.6.30"]
 
 [project.scripts]
 leasegrid-zkap = "leasegrid_zkap.cli:main"
+leasegrid-sync = "leasegrid_sync.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "ruff>=0.6"]
+sync = ["PyQt5>=5.15"]
 tahoe = ["tahoe-lafs==1.20.0"]
 
 [tool.setuptools]

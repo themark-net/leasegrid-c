@@ -64,3 +64,4 @@ Reads are free at the protocol layer in v0. Charging egress is a different threa
 | Tokens | ZKAPAuthorizer + challenge-bypass-ristretto | denomination, `R` schema, spend-set |
 | Pay | monero-lws or wallet RPC + integrated addresses | quote API, `vid` lifecycle |
 | Transport | Tor onion for issuer and nodes | mandatory for the privacy claim, optional for a lab |
+| Buyer Sync UI | Gridsync-lineage PyQt wrap + Magic Folder (`src/leasegrid_sync/`) | Credit/XMR U2–U5; not Tahoe WUI |

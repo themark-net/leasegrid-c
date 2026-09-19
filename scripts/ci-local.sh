@@ -17,6 +17,13 @@ fi
 
 echo "==> using $PYTHON"
 "$PYTHON" -m pip install -q -e ".[dev]"
+# PyQt5 extra: required on GHA (3.12). Local tahoe-venv may be 3.14 without wheels.
+if "$PYTHON" -m pip install -q -e ".[sync]"; then
+  echo "==> sync extra installed"
+else
+  echo "==> sync extra skipped (PyQt5 wheels missing; UI tests will skip)"
+fi
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 "$PYTHON" -m ruff check src tests scripts --select E4,E7,E9,F
 "$PYTHON" -m pytest -q
 echo "==> ci-local PASS"

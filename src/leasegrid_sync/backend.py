@@ -20,6 +20,12 @@ from . import APP_ID
 DEFAULT_TAHOE_NODEDIR = Path.home() / ".tahoe"
 DEFAULT_MF_PORT = 19780
 GRID_NICKNAME = "lab-friendnet"
+# needed, happy, total for a client Sync creates itself. The lab friendnet has
+# three storage nodes with shares.happy = 3; Tahoe's 3/7/10 default would make
+# every upload fail there. Override with LEASEGRID_SHARES="n,h,t".
+DEFAULT_SHARES = (2, 3, 3)
+TAHOE_START_TIMEOUT = 30.0
+TAHOE_CONNECT_TIMEOUT = 30.0
 
 
 class SyncError(Exception):
@@ -65,10 +71,29 @@ def default_home() -> Path:
 
 
 def default_nodedir() -> Path:
+    """Explicit env wins; then a pre-existing ~/.tahoe; else a Sync-owned dir.
+
+    A fresh install has no ~/.tahoe, and Sync should create its own client under
+    its data home rather than squat on Tahoe's default path.
+    """
     env = os.environ.get("LEASEGRID_TAHOE_NODEDIR")
     if env:
         return Path(env).expanduser()
-    return DEFAULT_TAHOE_NODEDIR
+    if (DEFAULT_TAHOE_NODEDIR / "tahoe.cfg").is_file():
+        return DEFAULT_TAHOE_NODEDIR
+    return default_home() / "tahoe"
+
+
+def shares_config() -> tuple[int, int, int]:
+    raw = os.environ.get("LEASEGRID_SHARES", "")
+    if raw:
+        try:
+            parts = [int(p) for p in raw.split(",")]
+        except ValueError:
+            parts = []
+        if len(parts) == 3 and 0 < parts[0] <= parts[1] <= parts[2]:
+            return parts[0], parts[1], parts[2]
+    return DEFAULT_SHARES
 
 
 def which_bin(name: str, env_key: str) -> Optional[str]:
@@ -136,9 +161,147 @@ def endpoint_to_url(endpoint: str) -> str:
 
 
 class TahoeClient:
-    def __init__(self, nodedir: Optional[Path] = None, tahoe_bin: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        nodedir: Optional[Path] = None,
+        tahoe_bin: Optional[str] = None,
+        home: Optional[Path] = None,
+    ) -> None:
         self.nodedir = Path(nodedir) if nodedir else default_nodedir()
         self.tahoe_bin = tahoe_bin or which_bin("tahoe", "LEASEGRID_TAHOE_BIN")
+        self.home = Path(home) if home else default_home()
+        self.log_path = self.home / "logs" / "tahoe.log"
+        self._proc: Optional[subprocess.Popen] = None
+
+    # -- process management -------------------------------------------------
+
+    def require_bin(self) -> str:
+        if not self.tahoe_bin:
+            raise SyncError(
+                "could not join this friendnet. The Tahoe client is not installed.",
+                "install it next to Sync: pip install 'leasegrid-zkap-lab[sync,tahoe]'; Retry.",
+            )
+        return self.tahoe_bin
+
+    def is_reachable(self) -> bool:
+        try:
+            self.welcome(timeout=2.0)
+            return True
+        except SyncError:
+            return False
+
+    def create_client(self, furl: str) -> None:
+        """`tahoe create-client` into self.nodedir, bound to the invite's introducer."""
+        if self.has_nodedir():
+            return
+        if self.nodedir.exists() and any(self.nodedir.iterdir()):
+            raise SyncError(
+                "could not join this friendnet. %s exists but is not a Tahoe node."
+                % self.nodedir,
+                "move that directory aside or set LEASEGRID_TAHOE_NODEDIR; Retry.",
+            )
+        needed, happy, total = shares_config()
+        cmd = [
+            self.require_bin(),
+            "create-client",
+            "--introducer=%s" % furl,
+            "--nickname=%s" % (os.environ.get("LEASEGRID_NICKNAME") or "leasegrid-sync"),
+            "--webport=tcp:0:interface=127.0.0.1",
+            "--shares-needed=%d" % needed,
+            "--shares-happy=%d" % happy,
+            "--shares-total=%d" % total,
+            str(self.nodedir),
+        ]
+        self.nodedir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SyncError(
+                "could not join this friendnet. tahoe create-client did not run: %s" % exc,
+                "check that tahoe is installed; Retry.",
+            ) from exc
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "create-client failed").strip().split("\n")[-1]
+            raise SyncError(
+                "could not join this friendnet. Tahoe could not create a client: %s" % err,
+                "check the invite code with your inviter; Retry.",
+            )
+
+    def start(self, timeout: float = TAHOE_START_TIMEOUT) -> None:
+        """Run `tahoe run` as a child, holding stdin (Tahoe exits when stdin closes)."""
+        if self.is_reachable():
+            return
+        if not self.has_nodedir():
+            raise SyncError(
+                "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
+                "paste an introducer furl to create one; Retry.",
+            )
+        if self._proc is not None and self._proc.poll() is None:
+            return
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_f = open(self.log_path, "ab")
+        try:
+            self._proc = subprocess.Popen(
+                [self.require_bin(), "run", str(self.nodedir)],
+                stdin=subprocess.PIPE,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
+            )
+        except OSError as exc:
+            log_f.close()
+            raise SyncError(
+                "could not join this friendnet. Tahoe did not start: %s" % exc,
+                "check that tahoe is installed; Retry.",
+            ) from exc
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._proc.poll() is not None:
+                tail = _tail(self.log_path)
+                self._proc = None
+                raise SyncError(
+                    "could not join this friendnet. Tahoe exited while starting.",
+                    "see %s (%s); Retry." % (self.log_path, tail),
+                )
+            if self.is_reachable():
+                return
+            time.sleep(0.3)
+        raise SyncError(
+            "could not join this friendnet. Tahoe did not become ready in %ds." % int(timeout),
+            "see %s; Retry." % self.log_path,
+        )
+
+    def stop(self) -> None:
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        self._proc = None
+
+    def owns_process(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def wait_connected(self, timeout: float = TAHOE_CONNECT_TIMEOUT) -> ConnectionStatus:
+        """Poll until the introducer reports connected; return the last status otherwise."""
+        deadline = time.time() + timeout
+        status = self.connection_status()
+        while status.state != "Connected" and time.time() < deadline:
+            time.sleep(0.5)
+            status = self.connection_status()
+        return status
+
+    # -- status -------------------------------------------------------------
 
     def node_url(self) -> str:
         path = self.nodedir / "node.url"
@@ -223,13 +386,17 @@ class TahoeClient:
     def has_nodedir(self) -> bool:
         return (self.nodedir / "tahoe.cfg").is_file()
 
-    def join_existing(self) -> ConnectionStatus:
-        if not self.has_nodedir():
-            raise SyncError(
-                "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
-                "paste an introducer furl, or set LEASEGRID_TAHOE_NODEDIR; Retry.",
-            )
-        status = self.connection_status()
+    def _bring_up(self) -> ConnectionStatus:
+        """Reach the node (starting it if we can), then wait for the introducer."""
+        if not self.is_reachable():
+            if not self.tahoe_bin:
+                status = self.connection_status()
+                raise SyncError(
+                    "could not join this friendnet. %s" % status.detail,
+                    "start the Tahoe client (tahoe run %s); Retry." % self.nodedir,
+                )
+            self.start()
+        status = self.wait_connected()
         if status.state == "FAIL":
             raise SyncError(
                 "could not join this friendnet. %s" % status.detail,
@@ -238,27 +405,46 @@ class TahoeClient:
         if status.state == "Offline":
             raise SyncError(
                 "could not join this friendnet. Introducer is unreachable.",
-                "check LAN to the introducer; Retry.",
+                "check the network path to the introducer (and that it is running); Retry.",
             )
         return status
 
+    def join_existing(self) -> ConnectionStatus:
+        """Attach to a Tahoe node already configured at self.nodedir.
+
+        If the node exists but is not running and `tahoe` is available, Sync
+        starts it and owns that process until quit.
+        """
+        if not self.has_nodedir():
+            raise SyncError(
+                "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
+                "paste an introducer furl, or set LEASEGRID_TAHOE_NODEDIR; Retry.",
+            )
+        return self._bring_up()
+
     def join_invite(self, invite: str) -> ConnectionStatus:
+        """Join from a pb:// introducer furl.
+
+        No node yet: create a Tahoe client bound to that introducer, start it,
+        wait for the introducer to connect. Node already present: reuse it
+        (start it if needed) and confirm it reaches an introducer.
+        """
         furl = validate_introducer_furl(invite)
         if self.has_nodedir():
-            status = self.connection_status()
-            if status.state in ("Connected", "Connecting"):
-                return status
-            raise SyncError(
-                "could not join this friendnet. Tahoe is running but not connected "
-                "to this invite (%s)." % redact_furl(furl),
-                "use the existing node if this is the lab friendnet, or restart Tahoe "
-                "after an operator drops the introducer; Retry.",
-            )
-        raise SyncError(
-            "could not join this friendnet. No local Tahoe node to attach this invite to.",
-            "on nimo, use the existing ~/.tahoe client (Use existing node). "
-            "Creating a fresh client is lab-operator work.",
-        )
+            try:
+                return self._bring_up()
+            except SyncError as exc:
+                if "Introducer is unreachable" not in exc.message:
+                    raise
+                raise SyncError(
+                    "could not join this friendnet. A Tahoe client already exists at %s "
+                    "but is not connected to an introducer (invite %s)."
+                    % (self.nodedir, redact_furl(furl)),
+                    "if that client belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
+                    "to a new path; otherwise check the introducer is up; Retry.",
+                ) from exc
+        self.create_client(furl)
+        return self._bring_up()
 
 
 def _read_text(path: Path) -> str:

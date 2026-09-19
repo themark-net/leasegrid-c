@@ -139,14 +139,15 @@ class MainWindow:
         home: Optional[Path] = None,
         issuer_url: Optional[str] = None,
         credit: Optional[CreditCtl] = None,
+        autoload: bool = True,
     ) -> None:
         QtCore, QtGui, QtWidgets = _qt_api()
         self.QtCore = QtCore
         self.QtGui = QtGui
         self.QtWidgets = QtWidgets
-        self.tahoe = TahoeClient(nodedir=nodedir)
         self.home = Path(home) if home else default_home()
         self.home.mkdir(parents=True, exist_ok=True)
+        self.tahoe = TahoeClient(nodedir=nodedir, home=self.home)
         self.mf = MagicFolderCtl(config_dir=self.home / "magic-folder", nodedir=self.tahoe.nodedir)
         self.credit = credit or CreditCtl(home=self.home, issuer_url=issuer_url)
         self._joined = False
@@ -180,7 +181,10 @@ class MainWindow:
         self.poll.setInterval(3000)
         self.poll.timeout.connect(self.refresh)
 
-        self._try_autoload()
+        if autoload:
+            self._try_autoload()
+        else:
+            self.stack.setCurrentWidget(self.join_page)
 
     def _build_join_page(self):
         QtWidgets = self.QtWidgets
@@ -204,7 +208,15 @@ class MainWindow:
         self.invite_edit = QtWidgets.QLineEdit()
         self.invite_edit.setPlaceholderText("paste pb:// introducer furl…")
         self.invite_edit.setObjectName("inviteEdit")
+        self.invite_edit.returnPressed.connect(self.on_join_invite)
         v.addWidget(self.invite_edit)
+        hint = QtWidgets.QLabel(
+            "Joining creates a Tahoe client for this friendnet on this device and keeps it "
+            "running while Sync is open. Nothing is uploaded until you add a folder."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("joinHint")
+        v.addWidget(hint)
         row = QtWidgets.QHBoxLayout()
         self.join_btn = QtWidgets.QPushButton("Join friendnet")
         self.join_btn.setObjectName("joinButton")
@@ -216,6 +228,10 @@ class MainWindow:
         row.addWidget(self.existing_btn)
         row.addStretch(1)
         v.addLayout(row)
+        self.join_progress = QtWidgets.QLabel("")
+        self.join_progress.setObjectName("joinProgress")
+        self.join_progress.setWordWrap(True)
+        v.addWidget(self.join_progress)
         self.join_error = QtWidgets.QLabel("")
         self.join_error.setObjectName("joinError")
         self.join_error.setWordWrap(True)
@@ -439,11 +455,16 @@ class MainWindow:
         self.win.raise_()
         self.win.activateWindow()
 
+    def shutdown(self) -> None:
+        """Stop the daemons this Sync process started (Magic Folder, then Tahoe)."""
+        for ctl in (self.mf, self.tahoe):
+            try:
+                ctl.stop()
+            except Exception:
+                pass
+
     def quit(self) -> None:
-        try:
-            self.mf.stop()
-        except Exception:
-            pass
+        self.shutdown()
         self.app.quit()
 
     def show_join_error(self, err: SyncError) -> None:
@@ -455,6 +476,7 @@ class MainWindow:
 
     def clear_errors(self) -> None:
         self.join_error.setText("")
+        self.join_progress.setText("")
         self.folder_error.setText("")
         self.open_credit_btn.hide()
         self.credit_error.setText("")
@@ -462,29 +484,57 @@ class MainWindow:
         self.credit_success.hide()
 
     def _try_autoload(self) -> None:
-        try:
-            status = self.tahoe.join_existing()
-        except SyncError:
+        """Attach to a configured node on launch; otherwise land on the join page."""
+        if not self.tahoe.has_nodedir():
             self.stack.setCurrentWidget(self.join_page)
             return
+        self.stack.setCurrentWidget(self.join_page)
+        self._join_busy(True, "Tahoe client found at %s — connecting…" % self.tahoe.nodedir)
+        try:
+            status = self.tahoe.join_existing()
+        except SyncError as exc:
+            self._join_busy(False)
+            self.show_join_error(exc)
+            return
+        self._join_busy(False)
         self._enter_main(status.state, status.detail)
+
+    def _join_busy(self, busy: bool, text: str = "") -> None:
+        self.join_btn.setEnabled(not busy)
+        self.existing_btn.setEnabled(not busy)
+        self.invite_edit.setEnabled(not busy)
+        self.join_progress.setText(text)
+        self.QtWidgets.QApplication.processEvents()
 
     def on_join_invite(self) -> None:
         self.clear_errors()
+        invite = self.invite_edit.text()
+        progress = (
+            "Joining… starting the Tahoe client and waiting for the introducer "
+            "(this can take up to a minute the first time)."
+        )
+        if self.tahoe.has_nodedir():
+            progress = "Connecting to the existing Tahoe client…"
+        self._join_busy(True, progress)
         try:
-            status = self.tahoe.join_invite(self.invite_edit.text())
+            status = self.tahoe.join_invite(invite)
         except SyncError as exc:
+            self._join_busy(False)
             self.show_join_error(exc)
             return
+        self._join_busy(False)
         self._enter_main(status.state, status.detail)
 
     def on_join_existing(self) -> None:
         self.clear_errors()
+        self._join_busy(True, "Connecting to the existing Tahoe client…")
         try:
             status = self.tahoe.join_existing()
         except SyncError as exc:
+            self._join_busy(False)
             self.show_join_error(exc)
             return
+        self._join_busy(False)
         self._enter_main(status.state, status.detail)
 
     def _enter_main(self, state: str, detail: str) -> None:
@@ -679,8 +729,25 @@ def run_app(
     credit_tier: str = "medium",
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
-    ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url)
+    ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
     ui.show()
+    ui.QtWidgets.QApplication.processEvents()
+    try:
+        return _run_modes(ui, screenshot, dogfood_folder, credit_dogfood, credit_tier)
+    finally:
+        ui.shutdown()
+
+
+def _run_modes(
+    ui: MainWindow,
+    screenshot: Optional[Path],
+    dogfood_folder: Optional[Path],
+    credit_dogfood: bool,
+    credit_tier: str,
+) -> int:
+    if not (credit_dogfood or dogfood_folder is not None):
+        # Window is visible first so a slow Tahoe start shows progress copy, not a blank desktop.
+        ui._try_autoload()
     if credit_dogfood:
         try:
             result = ui.dogfood_credit(screenshot=screenshot, tier=credit_tier)

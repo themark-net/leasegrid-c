@@ -107,6 +107,39 @@ def test_empty_invite_fail(ui: MainWindow):
     ui.invite_edit.setText("")
     ui.on_join_invite()
     assert "FAIL" in ui.join_error.text()
+    assert ui.join_btn.isEnabled()
+    assert ui.invite_edit.isEnabled()
+
+
+def test_join_invite_success_enters_main(ui: MainWindow):
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    seen = {}
+
+    def fake_join(invite):
+        seen["progress"] = ui.join_progress.text()
+        seen["disabled"] = not ui.join_btn.isEnabled()
+        return st
+
+    ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
+    with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
+        with patch.object(ui.tahoe, "connection_status", return_value=st):
+            with patch.object(ui.mf, "list_folders", return_value=[]):
+                ui.on_join_invite()
+    # fixture nodedir already exists, so the copy is the "existing client" variant
+    assert "Connecting" in seen["progress"]
+    assert seen["disabled"]
+    assert ui.stack.currentWidget() is ui.main_page
+    assert "3 storage" in ui.status_chip.text()
+    assert ui.join_btn.isEnabled()
+    assert ui.join_progress.text() == ""
+    assert ui.join_error.text() == ""
+
+
+def test_join_page_explains_what_join_does(ui: MainWindow):
+    labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
+    blob = " ".join(w.text() for w in labels)
+    assert "creates a Tahoe client" in blob
+    assert "Nothing is uploaded until you add a folder" in blob
 
 
 def test_no_wui_cta_widgets(ui: MainWindow):

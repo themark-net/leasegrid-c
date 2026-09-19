@@ -87,6 +87,128 @@ def test_join_invite_garbage(tmp_path: Path):
     assert "invalid" in exc.value.message.lower()
 
 
+FAKE_TAHOE = """#!/usr/bin/env python3
+import pathlib, sys, time
+args = sys.argv[1:]
+nodedir = pathlib.Path(args[-1])
+if args[0] == "create-client":
+    nodedir.mkdir(parents=True)
+    (nodedir / "tahoe.cfg").write_text("\\n".join(args), encoding="utf-8")
+elif args[0] == "run":
+    (nodedir / "node.url").write_text("http://127.0.0.1:1/\\n", encoding="utf-8")
+    while True:
+        time.sleep(0.2)
+"""
+
+GOOD_FURL = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+
+
+def _fake_tahoe(tmp_path: Path) -> str:
+    (tmp_path / "bin").mkdir(exist_ok=True)
+    bin_ = tmp_path / "bin" / "tahoe"
+    bin_.write_text(FAKE_TAHOE, encoding="utf-8")
+    bin_.chmod(0o755)
+    return str(bin_)
+
+
+def _welcome_when_node_url(client: TahoeClient):
+    """Behave like a live Tahoe: unreachable until `run` has written node.url."""
+
+    def welcome(timeout: float = 5.0):
+        if not (client.nodedir / "node.url").is_file():
+            raise SyncError("could not join this friendnet. Tahoe client is not reachable.")
+        return {
+            "introducers": {"statuses": ["Connected to tcp:127.0.0.1:45001 via tcp"]},
+            "servers": [{"nickname": "storage-1", "connection_status": "connected"}],
+        }
+
+    return welcome
+
+
+def test_join_invite_creates_client_and_starts_it(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_SHARES", "2,3,3")
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite(GOOD_FURL)
+        assert st.state == "Connected"
+        assert client.owns_process()
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--introducer=%s" % GOOD_FURL in cfg
+        assert "--shares-needed=2" in cfg and "--shares-happy=3" in cfg
+        assert "--shares-total=3" in cfg
+        assert "--webport=tcp:0:interface=127.0.0.1" in cfg
+        assert client.log_path.parent == tmp_path / "home" / "logs"
+    finally:
+        client.stop()
+    assert not client.owns_process()
+
+
+def test_join_existing_starts_stopped_node(tmp_path: Path):
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_existing()
+        assert st.state == "Connected"
+        assert client.owns_process()
+    finally:
+        client.stop()
+
+
+def test_join_invite_without_tahoe_binary_is_a_clear_fail(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+    monkeypatch.delenv("LEASEGRID_TAHOE_BIN", raising=False)
+    client = TahoeClient(nodedir=tmp_path / "tahoe", home=tmp_path)
+    assert client.tahoe_bin is None
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    text = exc.value.banner()
+    assert "FAIL" in text
+    assert "not installed" in text
+    assert "[sync,tahoe]" in text
+
+
+def test_join_invite_refuses_non_tahoe_dir(tmp_path: Path):
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "random.txt").write_text("x", encoding="utf-8")
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path)
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    assert "not a Tahoe node" in exc.value.message
+
+
+def test_default_nodedir_order(tmp_path: Path, monkeypatch):
+    from leasegrid_sync import backend
+
+    monkeypatch.delenv("LEASEGRID_TAHOE_NODEDIR", raising=False)
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(backend, "DEFAULT_TAHOE_NODEDIR", tmp_path / "dot-tahoe")
+    assert backend.default_nodedir() == tmp_path / "home" / "tahoe"
+    (tmp_path / "dot-tahoe").mkdir()
+    (tmp_path / "dot-tahoe" / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    assert backend.default_nodedir() == tmp_path / "dot-tahoe"
+    monkeypatch.setenv("LEASEGRID_TAHOE_NODEDIR", str(tmp_path / "explicit"))
+    assert backend.default_nodedir() == tmp_path / "explicit"
+
+
+def test_shares_config_env(monkeypatch):
+    from leasegrid_sync.backend import DEFAULT_SHARES, shares_config
+
+    monkeypatch.delenv("LEASEGRID_SHARES", raising=False)
+    assert shares_config() == DEFAULT_SHARES
+    monkeypatch.setenv("LEASEGRID_SHARES", "3,5,7")
+    assert shares_config() == (3, 5, 7)
+    monkeypatch.setenv("LEASEGRID_SHARES", "garbage")
+    assert shares_config() == DEFAULT_SHARES
+    monkeypatch.setenv("LEASEGRID_SHARES", "5,3,1")
+    assert shares_config() == DEFAULT_SHARES
+
+
 def test_add_folder_bad_path(tmp_path: Path):
     ctl = MagicFolderCtl(config_dir=tmp_path / "mf", nodedir=tmp_path / "tahoe", mf_bin="/bin/true")
     with pytest.raises(SyncError) as exc:

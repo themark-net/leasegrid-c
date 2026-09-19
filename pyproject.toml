@@ -19,7 +19,17 @@ leasegrid-sync = "leasegrid_sync.cli:main"
 [project.optional-dependencies]
 dev = ["pytest>=7", "ruff>=0.6"]
 sync = ["PyQt5>=5.15"]
-tahoe = ["tahoe-lafs==1.20.0"]
+# Tahoe 1.20 + Magic Folder 24.3 in the same venv as the Sync app. The three
+# pins below are what keep `tahoe run` booting on a 2026 resolver: Foolscap
+# needs pyOpenSSL<25 (X509Req), which caps cryptography<45, which in turn
+# caps service-identity<25.
+tahoe = [
+  "tahoe-lafs==1.20.0",
+  "magic-folder==24.3.0",
+  "pyOpenSSL<25",
+  "cryptography<45",
+  "service-identity<25",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }

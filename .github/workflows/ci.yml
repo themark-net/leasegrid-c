@@ -18,8 +18,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install package + dev tools
         run: |
+          sudo apt-get update -q && sudo apt-get install -y -q python3-dev build-essential
           python -m pip install -U pip
-          python -m pip install -e ".[dev,sync]"
+          # [tahoe] here so the Tahoe 1.20 / pyOpenSSL pins are exercised on every push
+          # and tahoe-dependent tests (check-0b local) actually run instead of skipping.
+          python -m pip install -e ".[dev,sync,tahoe]"
+      - name: Tahoe boots
+        run: |
+          tahoe --version
+          magic-folder --version
+          tahoe create-introducer --port tcp:45001:interface=127.0.0.1 --location tcp:127.0.0.1:45001 /tmp/ci-intro
+          timeout 40 tahoe run --allow-stdin-close /tmp/ci-intro > /tmp/ci-intro.log 2>&1 &
+          for _ in $(seq 1 30); do [ -s /tmp/ci-intro/private/introducer.furl ] && break; sleep 1; done
+          test -s /tmp/ci-intro/private/introducer.furl || { cat /tmp/ci-intro.log; exit 1; }
       - name: Ruff
         run: python -m ruff check src tests --select E4,E7,E9,F
       - name: Pytest

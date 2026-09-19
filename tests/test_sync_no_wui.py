@@ -28,7 +28,13 @@ def test_sync_package_has_no_wui_product_path():
 
 def test_app_never_mentions_wui_as_cta():
     app = (SYNC / "app.py").read_text(encoding="utf-8")
+    credit = (SYNC / "credit.py").read_text(encoding="utf-8")
     assert "Add folder" in app
     assert "Join friendnet" in app
+    assert "Credit" in app
     assert "Open web UI" not in app
     assert "web UI" not in app or "does not use the Tahoe web UI" in app
+    assert "Open web UI" not in credit
+    assert "webbrowser" not in credit.lower()
+    assert "expand across nodes" in credit
+    assert "one node" in credit

@@ -14,6 +14,7 @@ if [[ -z "$PYTHON" ]]; then
 fi
 
 export LEASEGRID_TAHOE_NODEDIR="${LEASEGRID_TAHOE_NODEDIR:-$HOME/.tahoe}"
+export LEASEGRID_ISSUER_URL="${LEASEGRID_ISSUER_URL:-http://127.0.0.1:8700}"
 if [[ -x /home/mark/tahoe-venv/bin/tahoe ]]; then
   export LEASEGRID_TAHOE_BIN="${LEASEGRID_TAHOE_BIN:-/home/mark/tahoe-venv/bin/tahoe}"
 fi

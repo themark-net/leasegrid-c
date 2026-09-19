@@ -21,7 +21,7 @@ Open an issue first for anything that moves trust (new issuer powers, new slash 
 
 - Monero intake scanner (gate 0c)
 - Grid-manager policy daemon (gate 0d)
-- Magic Folder / normal-person client beyond the U1 Gridsync-wrap spike (`src/leasegrid_sync/`; U2–U5 still open)
+- Magic Folder / normal-person client beyond U1 Folders + U2 Credit (`src/leasegrid_sync/`; U3–U5 still open)
 
 Lab issuer + Tahoe 1.20 lease gate (gate 0b, no XMR) lives in `src/leasegrid_zkap/` with operator notes in `deploy/zkap-lab/`. Do not treat a green local `check-0b` as Phase 0 PASS until `docs/08-lab.md` records a dated live-grid row.
 

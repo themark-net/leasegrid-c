@@ -82,4 +82,4 @@ There is no “open the web UI” button.
 
 ## Deferred (do not expect in this spike)
 
-U2 credit/faucet UI · U3 AppImage/.deb · U4 recovery HITL · U5 XMR · Settings Tor polish · brand-final name (provisional **Leasegrid Sync**).
+U2 credit/faucet UI — see [`u2-dogfood.md`](u2-dogfood.md) · U3 AppImage/.deb · U4 recovery HITL · U5 XMR · Settings Tor polish · brand-final name (provisional **Leasegrid Sync**).

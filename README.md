@@ -16,7 +16,8 @@ The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the compa
 
 Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [`src/leasegrid_zkap/`](src/leasegrid_zkap/) and [`deploy/zkap-lab/`](deploy/zkap-lab/). That lab is **not** PyPI ZKAPAuthorizer (Tahoe 1.20 pin; see [`docs/adr/0001-thin-lab-zkap-authorizer.md`](docs/adr/0001-thin-lab-zkap-authorizer.md)). Gates 0a and 0b have dated PASS rows in [`docs/08-lab.md`](docs/08-lab.md). Gates 0c–0d are not PASS until that log says so. No mainnet wallet.
 
-**U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md). Credit / installer / recovery HITL / XMR wait for U2–U5.
+**U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
+**U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md). Installer / recovery HITL / XMR wait for U3–U5.
 
 **Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 
@@ -25,7 +26,7 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 1. [`docs/00-decision.md`](docs/00-decision.md) — what this is and is not
 2. [`docs/03-roadmap.md`](docs/03-roadmap.md) — what we build for users and in what order
 3. [`docs/09-ui-track.md`](docs/09-ui-track.md) — native buyer UI sequencing (U0–U5)
-4. [`docs/design/`](docs/design/) — U0 wireframes + U1 DevBot handoff
+4. [`docs/design/`](docs/design/) — U0 wireframes (10–14) + U2 Credit handoff (15–19)
 5. [`docs/01-architecture.md`](docs/01-architecture.md) — roles and rails
 6. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
 7. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`

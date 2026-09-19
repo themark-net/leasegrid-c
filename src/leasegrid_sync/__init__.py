@@ -1,4 +1,4 @@
-"""Leasegrid Sync — U1 Gridsync-lineage native buyer client (PyQt wrap + Magic Folder)."""
+"""Leasegrid Sync — Gridsync-lineage native buyer client (PyQt wrap + Magic Folder + lab credit)."""
 
 APP_NAME = "Leasegrid Sync"
 APP_ID = "leasegrid-sync"

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import APP_NAME
+from . import APP_NAME, __version__
 from .backend import (
     FolderRow,
     MagicFolderCtl,
@@ -19,6 +19,20 @@ from .backend import (
     default_home,
     write_probe_file,
     wait_for_file_status,
+)
+from .credit import (
+    DENOMINATION_NOTE,
+    EXPAND_FACTOR,
+    LAB_NOTE,
+    REVIEW_HEAD,
+    TIER_TOKENS,
+    XMR_LATER,
+    ZERO_FOLDER_MSG,
+    ZERO_FOLDER_NEXT,
+    CreditCtl,
+    CreditSnapshot,
+    credit_gate,
+    format_remaining,
 )
 
 THREAT_COPY = (
@@ -37,10 +51,95 @@ def _qt_api():
     return QtCore, QtGui, QtWidgets
 
 
+class TopUpDialog:
+    """Lab faucet stub. No XMR pay fields. Redeem or in-window FAIL."""
+
+    def __init__(self, parent, credit: CreditCtl, qt) -> None:
+        QtWidgets = qt
+        self.QtWidgets = QtWidgets
+        self.credit = credit
+        self.snapshot: Optional[CreditSnapshot] = None
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Top up")
+        self.dlg.setObjectName("topUpDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        title = QtWidgets.QLabel("Lab faucet (stub)")
+        font = title.font()
+        font.setBold(True)
+        title.setFont(font)
+        v.addWidget(title)
+        intro = QtWidgets.QLabel("Request prepaid credit for this friendnet.")
+        intro.setWordWrap(True)
+        v.addWidget(intro)
+        v.addWidget(QtWidgets.QLabel("Amount"))
+        self.amount_group = QtWidgets.QButtonGroup(self.dlg)
+        self.radios = {}
+        labels = {
+            "small": "Small (≈ %d GiB·mo)" % TIER_TOKENS["small"],
+            "medium": "Medium (≈ %d)" % TIER_TOKENS["medium"],
+            "large": "Large (≈ %d GiB·mo)" % TIER_TOKENS["large"],
+        }
+        for key, label in labels.items():
+            radio = QtWidgets.QRadioButton(label)
+            radio.setObjectName("tier_%s" % key)
+            self.amount_group.addButton(radio)
+            self.radios[key] = radio
+            v.addWidget(radio)
+        self.radios["medium"].setChecked(True)
+        xmr = QtWidgets.QLabel(XMR_LATER)
+        xmr.setWordWrap(True)
+        xmr.setObjectName("xmrLaterLabel")
+        v.addWidget(xmr)
+        self.status = QtWidgets.QLabel("")
+        self.status.setObjectName("topUpStatus")
+        self.status.setWordWrap(True)
+        v.addWidget(self.status)
+        row = QtWidgets.QHBoxLayout()
+        self.request_btn = QtWidgets.QPushButton("Request faucet credit")
+        self.request_btn.setObjectName("requestFaucetButton")
+        self.request_btn.clicked.connect(self.on_request)
+        self.cancel_btn = QtWidgets.QPushButton("Cancel")
+        self.cancel_btn.setObjectName("topUpCancel")
+        self.cancel_btn.clicked.connect(self.dlg.reject)
+        row.addWidget(self.request_btn)
+        row.addWidget(self.cancel_btn)
+        row.addStretch(1)
+        v.addLayout(row)
+
+    def _selected_tier(self) -> str:
+        for key, radio in self.radios.items():
+            if radio.isChecked():
+                return key
+        return "medium"
+
+    def on_request(self) -> None:
+        self.status.setStyleSheet("")
+        self.status.setText("Requesting credit from faucet…")
+        self.request_btn.setEnabled(False)
+        self.QtWidgets.QApplication.processEvents()
+        try:
+            self.snapshot = self.credit.redeem_faucet(self._selected_tier())
+        except SyncError as exc:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(exc.banner())
+            self.request_btn.setText("Retry")
+            self.request_btn.setEnabled(True)
+            self.cancel_btn.setText("Close")
+            return
+        self.dlg.accept()
+
+
 class MainWindow:
     """Thin wrapper so tests can construct the window without exec_."""
 
-    def __init__(self, nodedir: Optional[Path] = None, home: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        nodedir: Optional[Path] = None,
+        home: Optional[Path] = None,
+        issuer_url: Optional[str] = None,
+        credit: Optional[CreditCtl] = None,
+    ) -> None:
         QtCore, QtGui, QtWidgets = _qt_api()
         self.QtCore = QtCore
         self.QtGui = QtGui
@@ -49,7 +148,9 @@ class MainWindow:
         self.home = Path(home) if home else default_home()
         self.home.mkdir(parents=True, exist_ok=True)
         self.mf = MagicFolderCtl(config_dir=self.home / "magic-folder", nodedir=self.tahoe.nodedir)
+        self.credit = credit or CreditCtl(home=self.home, issuer_url=issuer_url)
         self._joined = False
+        self._credit_loaded = False
 
         self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         self.app.setApplicationName(APP_NAME)
@@ -139,9 +240,16 @@ class MainWindow:
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setObjectName("places")
         self.folders_tab = QtWidgets.QWidget()
+        self.credit_tab = QtWidgets.QWidget()
+        self.credit_tab.setObjectName("creditTab")
+        self.recovery_tab = QtWidgets.QWidget()
+        self.recovery_tab.setObjectName("recoveryTab")
         self.settings_tab = QtWidgets.QWidget()
         self.tabs.addTab(self.folders_tab, "Folders")
+        self.tabs.addTab(self.credit_tab, "Credit")
+        self.tabs.addTab(self.recovery_tab, "Recovery")
         self.tabs.addTab(self.settings_tab, "Settings")
+        self.tabs.currentChanged.connect(self._on_place_changed)
         v.addWidget(self.tabs)
 
         fl = QtWidgets.QVBoxLayout(self.folders_tab)
@@ -173,20 +281,121 @@ class MainWindow:
         self.folder_error.setWordWrap(True)
         self.folder_error.setStyleSheet("color: #8b1a1a;")
         fl.addWidget(self.folder_error)
+        self.open_credit_btn = QtWidgets.QPushButton("Open Credit")
+        self.open_credit_btn.setObjectName("openCreditButton")
+        self.open_credit_btn.clicked.connect(self.open_credit_place)
+        self.open_credit_btn.hide()
+        fl.addWidget(self.open_credit_btn)
 
+        self._build_credit_tab()
+        self._build_recovery_tab()
+        self._build_settings_tab()
+        return page
+
+    def _build_credit_tab(self) -> None:
+        QtWidgets = self.QtWidgets
+        cl = QtWidgets.QVBoxLayout(self.credit_tab)
+        head = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QLabel("Credit")
+        font = title.font()
+        font.setBold(True)
+        title.setFont(font)
+        head.addWidget(title)
+        head.addStretch(1)
+        self.credit_refresh_btn = QtWidgets.QPushButton("Refresh")
+        self.credit_refresh_btn.setObjectName("creditRefreshButton")
+        self.credit_refresh_btn.clicked.connect(self.load_credit)
+        head.addWidget(self.credit_refresh_btn)
+        cl.addLayout(head)
+
+        self.credit_loading = QtWidgets.QLabel("Loading credit balance…")
+        self.credit_loading.setObjectName("creditLoading")
+        self.credit_loading.hide()
+        cl.addWidget(self.credit_loading)
+
+        self.credit_error = QtWidgets.QLabel("")
+        self.credit_error.setObjectName("creditError")
+        self.credit_error.setWordWrap(True)
+        self.credit_error.setStyleSheet("color: #8b1a1a;")
+        self.credit_error.hide()
+        cl.addWidget(self.credit_error)
+        self.credit_retry_btn = QtWidgets.QPushButton("Retry")
+        self.credit_retry_btn.setObjectName("creditRetryButton")
+        self.credit_retry_btn.clicked.connect(self.load_credit)
+        self.credit_retry_btn.hide()
+        cl.addWidget(self.credit_retry_btn)
+
+        self.credit_body = QtWidgets.QWidget()
+        self.credit_body.setObjectName("creditBody")
+        body = QtWidgets.QVBoxLayout(self.credit_body)
+        body.setContentsMargins(0, 0, 0, 0)
+        remaining_box = QtWidgets.QGroupBox("Remaining")
+        remaining_box.setObjectName("creditRemainingBox")
+        rb = QtWidgets.QVBoxLayout(remaining_box)
+        self.credit_remaining = QtWidgets.QLabel(format_remaining(0))
+        self.credit_remaining.setObjectName("creditRemaining")
+        self.credit_remaining.setWordWrap(True)
+        rb.addWidget(self.credit_remaining)
+        denom = QtWidgets.QLabel(DENOMINATION_NOTE)
+        denom.setObjectName("creditDenomination")
+        denom.setWordWrap(True)
+        rb.addWidget(denom)
+        body.addWidget(remaining_box)
+        self.credit_topup_btn = QtWidgets.QPushButton("Top up")
+        self.credit_topup_btn.setObjectName("creditTopUpButton")
+        self.credit_topup_btn.clicked.connect(self.on_top_up)
+        body.addWidget(self.credit_topup_btn)
+        lab = QtWidgets.QLabel(LAB_NOTE)
+        lab.setObjectName("creditLabNote")
+        lab.setWordWrap(True)
+        body.addWidget(lab)
+        self.credit_success = QtWidgets.QLabel("")
+        self.credit_success.setObjectName("creditSuccess")
+        self.credit_success.setWordWrap(True)
+        self.credit_success.hide()
+        body.addWidget(self.credit_success)
+        self.credit_recent = QtWidgets.QLabel("")
+        self.credit_recent.setObjectName("creditRecent")
+        self.credit_recent.setWordWrap(True)
+        body.addWidget(self.credit_recent)
+        body.addStretch(1)
+        cl.addWidget(self.credit_body)
+        cl.addStretch(1)
+
+    def _build_recovery_tab(self) -> None:
+        QtWidgets = self.QtWidgets
+        rl = QtWidgets.QVBoxLayout(self.recovery_tab)
+        rl.addWidget(QtWidgets.QLabel("Recovery"))
+        note = QtWidgets.QLabel(
+            "Recovery key export is not in this build (U4).\n"
+            "Lose this device and access can be gone. U4 adds the export HITL."
+        )
+        note.setWordWrap(True)
+        note.setObjectName("recoveryNote")
+        rl.addWidget(note)
+        rl.addStretch(1)
+
+    def _build_settings_tab(self) -> None:
+        QtWidgets = self.QtWidgets
         sl = QtWidgets.QVBoxLayout(self.settings_tab)
-        sl.addWidget(QtWidgets.QLabel("Settings (U1 stub)"))
+        sl.addWidget(QtWidgets.QLabel("Settings"))
         note = QtWidgets.QLabel(
             "Transport policy: full privacy claims often want Tor; Magic Folder sync "
             "that feels normal may use LAN/WAN. This is a visible design flag — polish in U4.\n\n"
-            "Deferred (not this spike): Credit panel (U2), AppImage/.deb (U3), "
-            "recovery-key HITL (U4), XMR top-up (U5)."
+            "Coming later\n"
+            "· Linux AppImage / .deb installer — U3\n"
+            "· Recovery key export HITL — U4\n"
+            "· Monero (XMR) top-up — U5 (after mint rails)\n\n"
+            "About\n"
+            "%s (buyer) · version %s\n"
+            "Grid: lab-friendnet\n"
+            "Credit: open the Credit place to view balance / Top up."
+            % (APP_NAME, __version__)
         )
         note.setWordWrap(True)
         note.setObjectName("settingsNote")
         sl.addWidget(note)
         sl.addStretch(1)
-        return page
 
     def _init_tray(self) -> None:
         QtWidgets = self.QtWidgets
@@ -201,6 +410,8 @@ class MainWindow:
         menu = QtWidgets.QMenu()
         open_act = menu.addAction("Open Sync")
         open_act.triggered.connect(self.show)
+        credit_act = menu.addAction("Credit")
+        credit_act.triggered.connect(self.open_credit_place)
         quit_act = menu.addAction("Quit")
         quit_act.triggered.connect(self.quit)
         self.tray.setContextMenu(menu)
@@ -238,12 +449,17 @@ class MainWindow:
     def show_join_error(self, err: SyncError) -> None:
         self.join_error.setText(err.banner())
 
-    def show_folder_error(self, err: SyncError) -> None:
+    def show_folder_error(self, err: SyncError, open_credit: bool = False) -> None:
         self.folder_error.setText(err.banner())
+        self.open_credit_btn.setVisible(open_credit)
 
     def clear_errors(self) -> None:
         self.join_error.setText("")
         self.folder_error.setText("")
+        self.open_credit_btn.hide()
+        self.credit_error.setText("")
+        self.credit_error.hide()
+        self.credit_success.hide()
 
     def _try_autoload(self) -> None:
         try:
@@ -303,11 +519,23 @@ class MainWindow:
     def on_add_folder(self) -> None:
         QtWidgets = self.QtWidgets
         self.clear_errors()
+        remaining = self.credit.remaining_tokens()
+        if credit_gate(remaining, 0) == "zero":
+            self.show_folder_error(SyncError(ZERO_FOLDER_MSG, ZERO_FOLDER_NEXT), open_credit=True)
+            return
         path = QtWidgets.QFileDialog.getExistingDirectory(
             self.win, "Choose a local folder to sync", str(Path.home())
         )
         if not path:
             return
+        need = self.credit.estimate_tokens(Path(path))
+        gate = credit_gate(remaining, need)
+        if gate == "zero":
+            self.show_folder_error(SyncError(ZERO_FOLDER_MSG, ZERO_FOLDER_NEXT), open_credit=True)
+            return
+        if gate == "review":
+            if not self._review_expansion(need, remaining):
+                return
         try:
             name = self.mf.add_folder(path)
         except SyncError as exc:
@@ -315,6 +543,85 @@ class MainWindow:
             return
         self.refresh()
         self.folder_error.setText("Added folder %s" % name)
+
+    def _review_expansion(self, need: int, remaining: int) -> bool:
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QMessageBox(self.win)
+        box.setObjectName("expansionReview")
+        box.setWindowTitle("REVIEW")
+        box.setText(REVIEW_HEAD)
+        box.setInformativeText(
+            "Share expansion is expected. Estimated need: ~%.1f× upload.\n"
+            "Uploading 1 GiB uses more than 1 GiB of credit.\n"
+            "Need about %d GiB·mo; remaining %d GiB·mo."
+            % (EXPAND_FACTOR, need, remaining)
+        )
+        topup = box.addButton("Top up", QtWidgets.QMessageBox.AcceptRole)
+        box.addButton("Cancel add", QtWidgets.QMessageBox.RejectRole)
+        box.exec_()
+        if box.clickedButton() is topup:
+            self.open_credit_place()
+            self.on_top_up()
+        return False
+
+    def open_credit_place(self) -> None:
+        self.show()
+        if self.stack.currentWidget() is not self.main_page:
+            return
+        self.tabs.setCurrentWidget(self.credit_tab)
+        self.load_credit()
+
+    def _on_place_changed(self, idx: int) -> None:
+        if not self._joined:
+            return
+        if self.tabs.widget(idx) is self.credit_tab:
+            self.load_credit()
+
+    def load_credit(self) -> None:
+        self.credit_success.hide()
+        self.credit_error.hide()
+        self.credit_retry_btn.hide()
+        self.credit_body.hide()
+        self.credit_loading.show()
+        self.QtWidgets.QApplication.processEvents()
+        try:
+            snap = self.credit.load_balance()
+        except SyncError as exc:
+            self.credit_loading.hide()
+            self.credit_error.setText(exc.banner())
+            self.credit_error.show()
+            self.credit_retry_btn.show()
+            return
+        self.apply_credit_snapshot(snap)
+
+    def apply_credit_snapshot(self, snap: CreditSnapshot, success_note: str = "") -> None:
+        self._credit_loaded = True
+        self.credit_loading.hide()
+        self.credit_error.hide()
+        self.credit_retry_btn.hide()
+        self.credit_body.show()
+        self.credit_remaining.setText(snap.remaining_text)
+        if snap.recent:
+            lines = ["Recent"]
+            for row in snap.recent:
+                lines.append("· %s  %s    %s" % (row.title, row.delta, row.when))
+            self.credit_recent.setText("\n".join(lines))
+            self.credit_recent.show()
+        else:
+            self.credit_recent.setText("")
+            self.credit_recent.hide()
+        if success_note:
+            self.credit_success.setText(success_note)
+            self.credit_success.show()
+        else:
+            self.credit_success.hide()
+
+    def on_top_up(self) -> None:
+        dlg = TopUpDialog(self.win, self.credit, self.QtWidgets)
+        result = dlg.dlg.exec_()
+        if result == self.QtWidgets.QDialog.Accepted and dlg.snapshot is not None:
+            note = "Top-up complete.\n" + dlg.snapshot.remaining_text
+            self.apply_credit_snapshot(dlg.snapshot, success_note=note)
 
     def grab_to(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -342,15 +649,56 @@ class MainWindow:
             "grid": status.detail,
         }
 
+    def dogfood_credit(self, screenshot: Optional[Path] = None, tier: str = "medium") -> dict:
+        """Join existing friendnet, redeem lab faucet, show updated Credit balance."""
+        self.clear_errors()
+        status = self.tahoe.join_existing()
+        self._enter_main(status.state, status.detail)
+        before = self.credit.remaining_tokens()
+        self.open_credit_place()
+        snap = self.credit.redeem_faucet(tier)
+        note = "Top-up complete.\n" + snap.remaining_text
+        self.apply_credit_snapshot(snap, success_note=note)
+        if screenshot:
+            self.grab_to(screenshot)
+        return {
+            "before": before,
+            "after": snap.balance.tokens,
+            "remaining": snap.remaining_text,
+            "issuer": snap.balance.issuer_pubkey_id,
+            "grid": status.detail,
+        }
+
 
 def run_app(
     nodedir: Optional[Path] = None,
     screenshot: Optional[Path] = None,
     dogfood_folder: Optional[Path] = None,
+    issuer_url: Optional[str] = None,
+    credit_dogfood: bool = False,
+    credit_tier: str = "medium",
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
-    ui = MainWindow(nodedir=nodedir)
+    ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url)
     ui.show()
+    if credit_dogfood:
+        try:
+            result = ui.dogfood_credit(screenshot=screenshot, tier=credit_tier)
+        except SyncError as exc:
+            ui.open_credit_place()
+            ui.credit_loading.hide()
+            ui.credit_error.setText(exc.banner())
+            ui.credit_error.show()
+            ui.credit_retry_btn.show()
+            if screenshot:
+                ui.grab_to(screenshot)
+            print(exc.banner(), file=sys.stderr)
+            return 1
+        print(
+            "U2 credit-dogfood before=%s after=%s remaining=%s"
+            % (result["before"], result["after"], result["remaining"].split("\n")[0])
+        )
+        return 0
     if dogfood_folder is not None:
         try:
             result = ui.dogfood_one_folder(dogfood_folder, screenshot=screenshot)

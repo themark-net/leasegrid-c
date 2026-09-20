@@ -50,10 +50,39 @@ def cmd_info(args) -> int:
 def cmd_issuer(args) -> int:
     key = load_signing_key(_key_path(args.key_file))
     from .issuer import start_issuer
+    from .payment import FakeChain, PricePolicy, VoucherStore
 
-    state, httpd = start_issuer(key, args.listen)
+    chain = None
+    if args.chain == "fake":
+        chain = FakeChain()
+    elif args.chain != "none":
+        print("unsupported --chain %s (wallet-rpc lands in S3)" % args.chain, file=sys.stderr)
+        return 2
+    price = int(round(float(args.price_xmr) * 10**12))
+    policy = PricePolicy(
+        price_piconero=price,
+        quote_ttl=int(args.quote_ttl),
+        grace=int(args.grace),
+        confirmations_small=int(args.confirmations),
+        confirmations_large=int(args.confirmations_large),
+    )
+    store = VoucherStore(os.path.expanduser(args.db)) if args.db else VoucherStore()
+    state, httpd = start_issuer(
+        key,
+        args.listen,
+        chain=chain,
+        policy=policy,
+        store=store,
+        faucet=bool(args.faucet),
+        poll_interval=float(args.poll_interval),
+    )
     print("issuer listening %s" % state.listen, flush=True)
     print("issuer-pubkey-id %s" % state.info["issuer-pubkey-id"], flush=True)
+    print(
+        "chain %s  faucet %s  price %s XMR/token  db %s"
+        % (state.chain_kind, "on" if state.faucet else "off", args.price_xmr, args.db or "memory"),
+        flush=True,
+    )
     print("invariant: settlement sends spent t only; R is rejected", flush=True)
     try:
         while True:
@@ -175,9 +204,19 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--key-file", default=DEFAULT_ISSUER_KEY)
     i.set_defaults(func=cmd_info)
 
-    iss = sub.add_parser("issuer", help="run lab issuer + faucet")
+    iss = sub.add_parser("issuer", help="run issuer (quote/redeem; optional faucet; optional fake chain)")
     iss.add_argument("--key-file", default=DEFAULT_ISSUER_KEY)
     iss.add_argument("--listen", default="127.0.0.1:8700")
+    iss.add_argument("--chain", default="none", choices=["none", "fake"],
+                     help="payment detector: none (quotes 503) or fake (lab; /v0/fake/pay)")
+    iss.add_argument("--faucet", action="store_true", help="enable free /v0/issue (lab only)")
+    iss.add_argument("--price-xmr", default="0.006", help="XMR per token (1 GiB-share-month)")
+    iss.add_argument("--quote-ttl", default=str(30 * 60), help="seconds a quote is 'exact'")
+    iss.add_argument("--grace", default=str(24 * 3600), help="seconds after expiry quoted price still holds")
+    iss.add_argument("--confirmations", default="2", help="required depth below the large threshold")
+    iss.add_argument("--confirmations-large", default="10")
+    iss.add_argument("--db", default="", help="SQLite voucher store (default: in-memory)")
+    iss.add_argument("--poll-interval", default="5", help="seconds between chain polls")
     iss.set_defaults(func=cmd_issuer)
 
     sg = sub.add_parser("storage-gate", help="run storage spend HTTP (optional Tahoe wrap)")

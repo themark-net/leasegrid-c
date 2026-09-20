@@ -80,7 +80,7 @@ Wrapping a live storage node makes **anonymous allocate fail** (that is 0b.2). `
 4. Issuer on nimo (or leasegrid-1):
 
    ```bash
-   .venv/bin/leasegrid-zkap issuer --listen 10.42.0.0:8700
+   .venv/bin/leasegrid-zkap issuer --listen 10.42.0.0:8700 --faucet
    ```
 
    Bind the address nimo actually has on `10.42.0.0/24`; do not publish it in git.
@@ -105,7 +105,7 @@ A future client plugin / GBS header can attach passes to CHK upload. That is not
 
 ```
 leasegrid-zkap keygen
-leasegrid-zkap issuer --listen 127.0.0.1:8700
+leasegrid-zkap issuer --listen 127.0.0.1:8700 --faucet          # faucet is opt-in; --chain fake for the XMR flow
 leasegrid-zkap storage-gate --nodeid <my_nodeid> --listen 127.0.0.1:8701
 leasegrid-zkap faucet --issuer http://127.0.0.1:8700 --out ~/DEVELOP/leasegrid-lab-private/client-wallet.json
 leasegrid-zkap spend --storage http://127.0.0.1:8701 --nodeid ... --storage-index <32 hex chars>

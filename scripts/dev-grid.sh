@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local Leasegrid server side on 127.0.0.1: Tahoe introducer + N storage nodes +
-# lab ZKAP issuer/faucet. Runs in the foreground (Ctrl-C stops everything),
+# ZKAP issuer (faucet + fake-chain XMR flow). Runs in the foreground (Ctrl-C stops everything),
 # prints the invite furl and the env the Sync client needs.
 #
 #   scripts/dev-grid.sh            # start (reuses state in $LEASEGRID_DEVGRID_DIR)
@@ -191,8 +191,11 @@ for n in $(seq 1 "$STORAGE_COUNT"); do
   run_tahoe "storage-$n" "$DIR/storage-$n"
 done
 
-# Issuer + faucet
-run_bg issuer leasegrid-zkap issuer --key-file "$KEY" --listen "$ISSUER_LISTEN"
+# Issuer: faucet on (lab), fake payment chain on (quote → /v0/fake/pay → redeem
+# is the XMR flow with the chain simulated; LEASEGRID_DEVGRID_CHAIN=none disables).
+CHAIN="${LEASEGRID_DEVGRID_CHAIN:-fake}"
+run_bg issuer leasegrid-zkap issuer --key-file "$KEY" --listen "$ISSUER_LISTEN" \
+  --faucet --chain "$CHAIN" --db "$DIR/private/issuer-vouchers.sqlite" --poll-interval 1
 for _ in $(seq 1 20); do
   curl -fsS "http://$ISSUER_LISTEN/health" >/dev/null 2>&1 && break
   sleep 0.5
@@ -230,7 +233,7 @@ dev-grid up  (state: $DIR)
   introducer   tcp:127.0.0.1:$INTRO_PORT
   storage      $STORAGE_COUNT nodes on 127.0.0.1:$((STORAGE_PORT_BASE + 1)).. (webport none)
   paid leases  $(if [[ "$GATED" == "1" ]]; then echo "ON — spend HTTP 127.0.0.1:$((SPEND_PORT_BASE + 1)).. ; unpaid uploads refused"; else echo "off — LEASEGRID_GATED=1 to require credit"; fi)
-  issuer       http://$ISSUER_LISTEN  (faucet /v0/issue)
+  issuer       http://$ISSUER_LISTEN  (faucet /v0/issue; XMR quote/redeem on chain=$CHAIN)
   invite codes $RELAY_NOTE
   logs         $DIR/logs/
 

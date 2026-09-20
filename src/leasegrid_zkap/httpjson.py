@@ -63,7 +63,15 @@ class QuietJSONHandler(BaseHTTPRequestHandler):
 
     def _dispatch(self) -> None:
         path = urlparse(self.path).path
+        tail = ""
         fn = self.routes.get((self.command, path))
+        if fn is None:
+            # Prefix routes end with "/" and receive the remainder as headers["x-path-tail"],
+            # e.g. ("GET", "/v0/voucher/") serves /v0/voucher/<vid>.
+            for (method, prefix), candidate in self.routes.items():
+                if method == self.command and prefix.endswith("/") and path.startswith(prefix):
+                    fn, tail = candidate, path[len(prefix):]
+                    break
         if fn is None:
             self._send(404, {"error": "not found"})
             return
@@ -73,7 +81,10 @@ class QuietJSONHandler(BaseHTTPRequestHandler):
             self._send(400, {"error": str(e)})
             return
         try:
-            code, out = fn(body, dict(self.headers.items()))
+            headers = dict(self.headers.items())
+            if tail:
+                headers["x-path-tail"] = tail
+            code, out = fn(body, headers)
         except Exception as e:
             self._send(500, {"error": "internal", "class": type(e).__name__})
             return

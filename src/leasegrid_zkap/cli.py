@@ -47,16 +47,49 @@ def cmd_info(args) -> int:
     return 0
 
 
+def _issuer_chain(args):
+    """Build the ChainWatcher for `issuer --chain`. Raises SystemExit(2) on bad config."""
+    kind = getattr(args, "chain", "none")
+    if kind == "none":
+        return None
+    if kind == "fake":
+        from .payment import FakeChain
+
+        return FakeChain()
+    if kind == "wallet-rpc":
+        url = (
+            getattr(args, "wallet_rpc_url", "")
+            or os.environ.get("LEASEGRID_WALLET_RPC")
+            or ""
+        )
+        if not url:
+            print("need --wallet-rpc-url or LEASEGRID_WALLET_RPC", file=sys.stderr)
+            raise SystemExit(2)
+        from .payment.chain_walletrpc import WalletRpcChain
+
+        user = getattr(args, "wallet_rpc_user", "") or os.environ.get("LEASEGRID_WALLET_RPC_USER") or None
+        password = (
+            getattr(args, "wallet_rpc_password", "")
+            or os.environ.get("LEASEGRID_WALLET_RPC_PASSWORD")
+            or None
+        )
+        account = int(getattr(args, "wallet_rpc_account", 0) or 0)
+        return WalletRpcChain(url, account_index=account, user=user, password=password)
+    print("unsupported --chain %s" % kind, file=sys.stderr)
+    raise SystemExit(2)
+
+
 def cmd_issuer(args) -> int:
     key = load_signing_key(_key_path(args.key_file))
     from .issuer import start_issuer
-    from .payment import FakeChain, PricePolicy, VoucherStore
+    from .payment import PricePolicy, VoucherStore
 
-    chain = None
-    if args.chain == "fake":
-        chain = FakeChain()
-    elif args.chain != "none":
-        print("unsupported --chain %s (wallet-rpc lands in S3)" % args.chain, file=sys.stderr)
+    try:
+        chain = _issuer_chain(args)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print("issuer chain: %s" % exc, file=sys.stderr)
         return 2
     price = int(round(float(args.price_xmr) * 10**12))
     policy = PricePolicy(
@@ -292,8 +325,20 @@ def build_parser() -> argparse.ArgumentParser:
     iss = sub.add_parser("issuer", help="run issuer (quote/redeem; optional faucet; optional fake chain)")
     iss.add_argument("--key-file", default=DEFAULT_ISSUER_KEY)
     iss.add_argument("--listen", default="127.0.0.1:8700")
-    iss.add_argument("--chain", default="none", choices=["none", "fake"],
-                     help="payment detector: none (quotes 503) or fake (lab; /v0/fake/pay)")
+    iss.add_argument(
+        "--chain",
+        default="none",
+        choices=["none", "fake", "wallet-rpc"],
+        help="payment detector: none (quotes 503), fake (lab; /v0/fake/pay), wallet-rpc (monero-wallet-rpc)",
+    )
+    iss.add_argument(
+        "--wallet-rpc-url",
+        default="",
+        help="monero-wallet-rpc JSON-RPC URL (or LEASEGRID_WALLET_RPC)",
+    )
+    iss.add_argument("--wallet-rpc-user", default="")
+    iss.add_argument("--wallet-rpc-password", default="")
+    iss.add_argument("--wallet-rpc-account", default="0", help="wallet account index (default 0)")
     iss.add_argument("--faucet", action="store_true", help="enable free /v0/issue (lab only)")
     iss.add_argument("--price-xmr", default="0.006", help="XMR per token (1 GiB-share-month)")
     iss.add_argument("--quote-ttl", default=str(30 * 60), help="seconds a quote is 'exact'")

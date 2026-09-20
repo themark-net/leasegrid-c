@@ -20,6 +20,7 @@ from .constants import DENOMINATION, TOKEN_EPOCH_V0
 from .crypto import CryptoError, issuer_info, sign_blinded
 from .httpjson import make_handler, parse_listen, serve_background
 from .payment import ChainWatcher, FakeChain, PricePolicy, VoucherStore
+from .payment.chain_walletrpc import WalletRpcChain
 from .payment.store import DuplicateVid, StoreError
 
 SCHEME_V0 = "ristretto-v0"
@@ -71,6 +72,8 @@ class IssuerState:
             return "none"
         if isinstance(self.chain, FakeChain):
             return "fake"
+        if isinstance(self.chain, WalletRpcChain):
+            return "wallet-rpc"
         return type(self.chain).__name__
 
     def stats(self) -> dict:

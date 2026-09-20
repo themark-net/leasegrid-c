@@ -80,7 +80,7 @@ Secrets (furls, keys, wallet files) stay **off git**.
 
 **Record:** network (stage/main), approximate amount, confirmations required, PASS/FAIL. No tx secrets in git.
 
-**Implementation (code, not a PASS):** the quote → voucher → redeem lifecycle runs in CI against `FakeChain` (`src/leasegrid_zkap/payment/`, `leasegrid-zkap topup`, gated `packaging/exit-test.sh`). Attribution is a **fresh subaddress per quote** ([`07-payment.md`](07-payment.md) §3 / [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md)), not the integrated-address form in 0c.1–0c.2 above — those rows stay until the owner accepts §14. Live 0c (stagenet `WalletRpcChain`, dated PASS) is S3+S7 and is not started.
+**Implementation (code, not a PASS):** the quote → voucher → redeem lifecycle runs in CI against `FakeChain` (`src/leasegrid_zkap/payment/`, `leasegrid-zkap topup`, gated `packaging/exit-test.sh`). `WalletRpcChain` talks to `monero-wallet-rpc` (`create_address` / `get_transfers` / `get_height`) and is covered by a JSON-RPC stand-in in CI; `--chain wallet-rpc` is wired. Attribution is a **fresh subaddress per quote** ([`07-payment.md`](07-payment.md) §3 / [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md)), not the integrated-address form in 0c.1–0c.2 above — those rows stay until the owner accepts §14. Live 0c (stagenet + dated PASS) is S7 and is not started.
 
 ### Gate 0d — Silent eject + repair
 

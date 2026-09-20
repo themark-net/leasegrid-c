@@ -5,7 +5,9 @@ else — quote, confirmation policy, voucher state machine, idempotent redeem,
 settlement ledger — lives here and runs without Monero.
 """
 
+from .backup import BackupError, backup_sqlite, restore_sqlite
 from .chain import ChainWatcher, FakeChain, Transfer
+from .chain_walletrpc import WalletRpcChain, WalletRpcError
 from .policy import PICONERO, PricePolicy
 from .store import (
     STATES,
@@ -15,6 +17,7 @@ from .store import (
 )
 
 __all__ = [
+    "BackupError",
     "PICONERO",
     "STATES",
     "ChainWatcher",
@@ -23,5 +26,9 @@ __all__ = [
     "Transfer",
     "Voucher",
     "VoucherStore",
+    "WalletRpcChain",
+    "WalletRpcError",
     "advance",
+    "backup_sqlite",
+    "restore_sqlite",
 ]

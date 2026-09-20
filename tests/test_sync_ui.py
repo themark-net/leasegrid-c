@@ -29,8 +29,12 @@ class FakeCredit:
         self.tokens = tokens
         self.fail_load = False
         self.fail_redeem = False
+        self.fail_quote = False
         self.pubkey = "lab"
         self.refusal = None
+        self.quote: dict | None = None
+        self.poll: dict | None = None
+        self.pending: list = []
 
     def remaining_tokens(self) -> int:
         return self.tokens
@@ -69,6 +73,22 @@ class FakeCredit:
 
     def reject_opaque_import(self, _blob: str = "") -> None:
         raise SyncError(OPAQUE_REJECT, "Stay on Leasegrid Sync credit. Close.")
+
+    def quote_topup(self, tokens: int) -> dict:
+        if self.fail_quote:
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not answer. Payments already sent are safe; retry later.",
+                "Retry later.",
+            )
+        q = dict(self.quote or {})
+        q.setdefault("tokens_quoted", tokens)
+        return q
+
+    def poll_topup(self, vid: str) -> dict:
+        return dict(self.poll or {"vid": vid, "state": "quoted", "tokens_added": 0})
+
+    def pending_topups(self) -> list:
+        return list(self.pending)
 
 
 @pytest.fixture
@@ -468,16 +488,109 @@ def test_redeem_fail_in_dialog(ui: MainWindow, fake_credit: FakeCredit):
     assert fake_credit.tokens == 8
 
 
-def test_topup_dialog_has_no_xmr_fields(ui: MainWindow):
+def test_topup_continue_quotes_and_shows_pay(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "4fakeAddressForPay",
+        "amount_xmr": "0.12",
+        "amount_piconero": 120000000000,
+        "pay_uri": "monero:4fakeAddressForPay?tx_amount=0.12",
+        "quote_expires": 2000000000,
+        "grace_until": 2000086400,
+        "confirmations_required": 2,
+        "tokens_quoted": 20,
+        "state": "quoted",
+    }
     dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
-    edits = dlg.dlg.findChildren(PyQt5.QtWidgets.QLineEdit)
-    assert edits == []
+    dlg.radios["medium"].setChecked(True)
+    dlg.on_continue()
+    assert dlg.page == "pay"
+    assert "4fakeAddressForPay" in dlg.pay_address.text()
+    assert "0.12" in dlg.pay_amount.text()
+    assert "XMR" in dlg.pay_amount.text()
     blob = " ".join(w.text() for w in dlg.dlg.findChildren(PyQt5.QtWidgets.QLabel))
-    assert "XMR" in blob
-    assert "not available" in blob.lower()
-    assert "Request faucet credit" in dlg.request_btn.text()
+    assert "send exactly" in blob.lower()
+    assert "24" in blob  # grace hours
     assert "Open web UI" not in blob
     assert "http://127.0.0.1" not in blob
+    assert dlg.copy_address_btn.isEnabled()
+
+
+def test_topup_poll_issued_accepts(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "4addr",
+        "amount_xmr": "0.06",
+        "tokens_quoted": 10,
+        "state": "quoted",
+        "quote_expires": 2000000000,
+        "grace_until": 2000086400,
+        "confirmations_required": 2,
+    }
+    fake_credit.poll = {"vid": "aabbccddeeff0011", "state": "issued", "tokens_added": 10}
+    fake_credit.tokens = 18
+    dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
+    dlg.radios["small"].setChecked(True)
+    dlg.on_continue()
+    dlg.on_poll()
+    assert dlg.page == "done"
+    assert dlg.snapshot is not None
+    assert dlg.snapshot.balance.tokens == 18
+    assert "+10" in dlg.status.text() or "10" in dlg.status.text()
+
+
+def test_topup_issuer_unreachable_is_review(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.fail_quote = True
+    dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
+    dlg.on_continue()
+    assert dlg.page == "choose"
+    assert "REVIEW" in dlg.status.text()
+    assert "issuer" in dlg.status.text().lower()
+    assert "localhost" not in dlg.status.text()
+    assert "http://" not in dlg.status.text()
+
+
+def test_topup_underpaid_keeps_same_address(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "4same",
+        "amount_xmr": "0.12",
+        "tokens_quoted": 20,
+        "state": "quoted",
+        "quote_expires": 2000000000,
+        "grace_until": 2000086400,
+        "confirmations_required": 2,
+    }
+    fake_credit.poll = {
+        "vid": "aabbccddeeff0011",
+        "state": "underpaid",
+        "tokens_added": 0,
+        "voucher": {"amount_xmr_seen": "0.05", "amount_xmr": "0.05", "amount_seen": 5 * 10**10},
+    }
+    dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
+    dlg.on_continue()
+    dlg.on_poll()
+    assert dlg.page == "pay"
+    assert "4same" in dlg.pay_address.text()
+    assert "underpaid" in dlg.status.text().lower() or "0.05" in dlg.status.text()
+
+
+def test_credit_panel_lists_pending_vouchers(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.pending = [{"vid": "aa", "state": "quoted", "tokens_quoted": 20, "amount_xmr": "0.12"}]
+    _enter(ui)
+    ui.load_credit()
+    assert not ui.credit_pending.isHidden()
+    assert "0.12" in ui.credit_pending.text() or "20" in ui.credit_pending.text()
+    assert "quoted" in ui.credit_pending.text().lower() or "waiting" in ui.credit_pending.text().lower()
+
+
+def test_export_warn_mentions_credit_seed(ui: MainWindow):
+    from leasegrid_sync.app import ExportRecoveryDialog
+    from leasegrid_sync.recovery import EXPORT_WARN
+
+    assert "credit seed" in EXPORT_WARN.lower()
+    dlg = ExportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, default_dir=ui.home)
+    assert "credit seed" in dlg.dlg.findChild(PyQt5.QtWidgets.QLabel, "exportWarn").text().lower()
 
 
 def test_refresh_surfaces_spender_refusal(ui: MainWindow, fake_credit: FakeCredit):

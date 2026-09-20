@@ -59,9 +59,10 @@ def test_denomination_honesty_rejects_one_to_one():
     assert "1:1" not in blob
 
 
-def test_xmr_is_later_label_only():
+def test_xmr_copy_does_not_claim_received_before_confirm():
     assert "XMR" in XMR_LATER
-    assert "not available" in XMR_LATER.lower()
+    assert "received" not in XMR_LATER.lower()
+    assert "1:1" not in XMR_LATER
 
 
 def test_credit_gate():

@@ -45,8 +45,8 @@ DENOMINATION_NOTE = (
 )
 
 LAB_NOTE = (
-    "Lab note: Top up uses a faucet stub until XMR mint is ready. "
-    "Opaque ZKAP wallets from other apps do not convert."
+    "Top up quotes XMR for this friendnet. A lab faucet is still in the dialog "
+    "for unpaid grids. Opaque ZKAP wallets from other apps do not convert."
 )
 
 OPAQUE_REJECT = (
@@ -55,9 +55,9 @@ OPAQUE_REJECT = (
 )
 
 XMR_LATER = (
-    "Later: Top up with Monero (XMR) when mint rails PASS. "
-    "(XMR is not available in this build.)"
+    "Pay the quoted XMR exactly. Credits appear after confirmations, never at zero-conf."
 )
+XMR_TIERS = {"small": 10, "medium": 50, "large": 200}
 
 LOAD_FAIL_MSG = "could not load credit balance. Issuer unreachable or returned an error."
 LOAD_FAIL_NEXT = "Retry; check network; if lab is down, ask your friendnet operator."
@@ -312,6 +312,53 @@ class CreditCtl:
             json.dumps({"events": events[:20]}, indent=2) + "\n",
             encoding="utf-8",
         )
+
+    def _topup_client(self):
+        from leasegrid_zkap.payment.topup import TopUpClient
+
+        return TopUpClient(self.issuer_url, self.wallet_path, self.topup_state_path)
+
+    def quote_topup(self, tokens: int) -> dict:
+        try:
+            return self._topup_client().quote(int(tokens))
+        except SyncError:
+            raise
+        except Exception as exc:
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not answer. Payments already sent are safe; retry later.",
+                "Retry later. Do not send more XMR until Credit shows the quote again.",
+            ) from exc
+
+    def poll_topup(self, vid: str) -> dict:
+        try:
+            r = self._topup_client().redeem(str(vid))
+        except SyncError:
+            raise
+        except Exception as exc:
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not answer. Payments already sent are safe; retry later.",
+                "Retry later.",
+            ) from exc
+        n = int(r.get("tokens_added") or 0)
+        if n:
+            self._append_recent("XMR top-up", n)
+        return r
+
+    def pending_topups(self) -> list[dict[str, Any]]:
+        if not self.topup_state_path.is_file():
+            return []
+        try:
+            from leasegrid_zkap.payment.topup import TopUpState
+
+            st = TopUpState(self.topup_state_path)
+            out = []
+            for vid, rec in st.pending.items():
+                row = dict(rec)
+                row["vid"] = vid
+                out.append(row)
+            return out
+        except Exception:
+            return []
 
     def resume_pending_topups(self) -> int:
         """Finish XMR top-ups the issuer has confirmed since we last looked. Never raises.

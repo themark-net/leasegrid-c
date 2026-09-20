@@ -49,7 +49,9 @@ EXPORT_STOP = "STOP — read this."
 EXPORT_WARN = (
     "Anyone with this key (and its passphrase, if set) can read and change your synced "
     "folders and spend your credit. If you lose the key and this computer, your data "
-    "access can be gone forever. Leasegrid cannot reset it."
+    "access can be gone forever. Leasegrid cannot reset it. "
+    "This file includes your credit seed; credits bought after this export can be "
+    "recovered from the issuer for about a year."
 )
 ACK_LOSS = "I understand: loss can mean total loss."
 ACK_STORE = "I will store this file somewhere safe, offline."

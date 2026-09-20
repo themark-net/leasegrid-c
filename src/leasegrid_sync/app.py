@@ -28,8 +28,8 @@ from .credit import (
     EXPAND_FACTOR,
     LAB_NOTE,
     REVIEW_HEAD,
-    TIER_TOKENS,
     XMR_LATER,
+    XMR_TIERS,
     ZERO_FOLDER_MSG,
     ZERO_FOLDER_NEXT,
     CreditCtl,
@@ -115,66 +115,203 @@ def install_excepthook(ui: "MainWindow") -> None:
 
 
 class TopUpDialog:
-    """Lab faucet stub. No XMR pay fields. Redeem or in-window FAIL."""
+    """U5: quote XMR → pay URI → poll → collect. Lab faucet stays as a second button."""
 
     def __init__(self, parent, credit: CreditCtl, qt) -> None:
+        from PyQt5 import QtCore
+
         QtWidgets = qt
         self.QtWidgets = QtWidgets
+        self.QtCore = QtCore
         self.credit = credit
         self.snapshot: Optional[CreditSnapshot] = None
+        self.quote: Optional[dict] = None
+        self.page = "choose"
         self.dlg = QtWidgets.QDialog(parent)
         self.dlg.setWindowTitle("Top up")
         self.dlg.setObjectName("topUpDialog")
         self.dlg.setModal(True)
         v = QtWidgets.QVBoxLayout(self.dlg)
-        title = QtWidgets.QLabel("Lab faucet (stub)")
+        self.stack = QtWidgets.QStackedWidget()
+        self.choose_page = QtWidgets.QWidget()
+        self.pay_page = QtWidgets.QWidget()
+        self.stack.addWidget(self.choose_page)
+        self.stack.addWidget(self.pay_page)
+        v.addWidget(self.stack)
+
+        cv = QtWidgets.QVBoxLayout(self.choose_page)
+        title = QtWidgets.QLabel("Buy credit with XMR")
         font = title.font()
         font.setBold(True)
         title.setFont(font)
-        v.addWidget(title)
-        intro = QtWidgets.QLabel("Request prepaid credit for this friendnet.")
+        cv.addWidget(title)
+        intro = QtWidgets.QLabel("Prepaid share-capacity for this friendnet. Not a 1:1 disk meter.")
         intro.setWordWrap(True)
-        v.addWidget(intro)
-        v.addWidget(QtWidgets.QLabel("Amount"))
+        cv.addWidget(intro)
+        cv.addWidget(QtWidgets.QLabel("Amount"))
         self.amount_group = QtWidgets.QButtonGroup(self.dlg)
         self.radios = {}
         labels = {
-            "small": "Small (≈ %d GiB·mo)" % TIER_TOKENS["small"],
-            "medium": "Medium (≈ %d)" % TIER_TOKENS["medium"],
-            "large": "Large (≈ %d GiB·mo)" % TIER_TOKENS["large"],
+            "small": "Small (≈ %d GiB·mo)" % XMR_TIERS["small"],
+            "medium": "Medium (≈ %d GiB·mo)" % XMR_TIERS["medium"],
+            "large": "Large (≈ %d GiB·mo)" % XMR_TIERS["large"],
         }
         for key, label in labels.items():
             radio = QtWidgets.QRadioButton(label)
             radio.setObjectName("tier_%s" % key)
             self.amount_group.addButton(radio)
             self.radios[key] = radio
-            v.addWidget(radio)
+            cv.addWidget(radio)
         self.radios["medium"].setChecked(True)
         xmr = QtWidgets.QLabel(XMR_LATER)
         xmr.setWordWrap(True)
         xmr.setObjectName("xmrLaterLabel")
-        v.addWidget(xmr)
+        cv.addWidget(xmr)
+
+        pv = QtWidgets.QVBoxLayout(self.pay_page)
+        pay_title = QtWidgets.QLabel("Pay this quote")
+        pf = pay_title.font()
+        pf.setBold(True)
+        pay_title.setFont(pf)
+        pv.addWidget(pay_title)
+        hint = QtWidgets.QLabel(
+            "Send exactly this amount. After the timer we still credit for 24 h at this price."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("payHint")
+        pv.addWidget(hint)
+        self.pay_amount = QtWidgets.QLabel("")
+        self.pay_amount.setObjectName("payAmount")
+        self.pay_amount.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        pv.addWidget(self.pay_amount)
+        self.pay_address = QtWidgets.QLabel("")
+        self.pay_address.setObjectName("payAddress")
+        self.pay_address.setWordWrap(True)
+        self.pay_address.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        pv.addWidget(self.pay_address)
+        crow = QtWidgets.QHBoxLayout()
+        self.copy_address_btn = QtWidgets.QPushButton("Copy address")
+        self.copy_address_btn.setObjectName("copyAddressButton")
+        self.copy_address_btn.clicked.connect(self.on_copy_address)
+        self.copy_amount_btn = QtWidgets.QPushButton("Copy amount")
+        self.copy_amount_btn.setObjectName("copyAmountButton")
+        self.copy_amount_btn.clicked.connect(self.on_copy_amount)
+        crow.addWidget(self.copy_address_btn)
+        crow.addWidget(self.copy_amount_btn)
+        crow.addStretch(1)
+        pv.addLayout(crow)
+
         self.status = QtWidgets.QLabel("")
         self.status.setObjectName("topUpStatus")
         self.status.setWordWrap(True)
         v.addWidget(self.status)
         row = QtWidgets.QHBoxLayout()
+        self.continue_btn = QtWidgets.QPushButton("Continue")
+        self.continue_btn.setObjectName("topUpContinue")
+        self.continue_btn.clicked.connect(self.on_continue)
         self.request_btn = QtWidgets.QPushButton("Request faucet credit")
         self.request_btn.setObjectName("requestFaucetButton")
         self.request_btn.clicked.connect(self.on_request)
         self.cancel_btn = QtWidgets.QPushButton("Cancel")
         self.cancel_btn.setObjectName("topUpCancel")
         self.cancel_btn.clicked.connect(self.dlg.reject)
+        row.addWidget(self.continue_btn)
         row.addWidget(self.request_btn)
         row.addWidget(self.cancel_btn)
         row.addStretch(1)
         v.addLayout(row)
+        self._timer = None
 
     def _selected_tier(self) -> str:
         for key, radio in self.radios.items():
             if radio.isChecked():
                 return key
         return "medium"
+
+    def _tokens(self) -> int:
+        return int(XMR_TIERS.get(self._selected_tier(), 50))
+
+    def on_continue(self) -> None:
+        self.status.setStyleSheet("")
+        self.status.setText("Asking the issuer for a quote…")
+        self.continue_btn.setEnabled(False)
+        self.QtWidgets.QApplication.processEvents()
+        try:
+            self.quote = self.credit.quote_topup(self._tokens())
+        except SyncError as exc:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(exc.banner())
+            self.continue_btn.setEnabled(True)
+            self.continue_btn.setText("Retry")
+            return
+        self._show_pay()
+
+    def _show_pay(self) -> None:
+        q = self.quote or {}
+        self.page = "pay"
+        self.pay_amount.setText("%s XMR" % q.get("amount_xmr", ""))
+        self.pay_address.setText(str(q.get("address") or ""))
+        self.stack.setCurrentWidget(self.pay_page)
+        self.continue_btn.hide()
+        self.request_btn.hide()
+        self.cancel_btn.setText("Close")
+        self.status.setText("Waiting for payment…")
+        self._start_poll()
+
+    def _start_poll(self) -> None:
+        if self._timer is None:
+            self._timer = self.QtCore.QTimer(self.dlg)
+            self._timer.setInterval(2000)
+            self._timer.timeout.connect(self.on_poll)
+        self._timer.start()
+
+    def on_poll(self) -> None:
+        if not self.quote:
+            return
+        try:
+            r = self.credit.poll_topup(self.quote["vid"])
+        except SyncError as exc:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(exc.banner())
+            return
+        state = str(r.get("state") or "")
+        v = r.get("voucher") or {}
+        if state == "issued":
+            if self._timer is not None:
+                self._timer.stop()
+            try:
+                self.snapshot = self.credit.load_balance()
+            except SyncError:
+                self.snapshot = None
+            n = int(r.get("tokens_added") or r.get("tokens") or 0)
+            bal = self.snapshot.balance.tokens if self.snapshot else n
+            self.page = "done"
+            self.status.setStyleSheet("")
+            self.status.setText("+%d credits. Balance: %d" % (n, bal))
+            self.cancel_btn.setText("Done")
+            self.cancel_btn.clicked.disconnect()
+            self.cancel_btn.clicked.connect(self.dlg.accept)
+            return
+        if state == "underpaid":
+            seen = v.get("amount_xmr") or v.get("amount_xmr_seen") or v.get("amount_seen")
+            self.status.setText(
+                "Underpaid. Received %s; send the rest to the same address, or leave it — nothing is lost."
+                % seen
+            )
+            return
+        if state in ("seen", "confirming"):
+            need = v.get("confirmations_required") or (self.quote or {}).get("confirmations_required") or 2
+            have = v.get("confirmations") or 0
+            self.status.setText("Payment seen. Confirming %s of %s…" % (have, need))
+            return
+        if state == "quoted":
+            self.status.setText("Waiting for payment…")
+
+    def on_copy_address(self) -> None:
+        self.QtWidgets.QApplication.clipboard().setText(self.pay_address.text())
+
+    def on_copy_amount(self) -> None:
+        self.QtWidgets.QApplication.clipboard().setText(self.pay_amount.text())
 
     def on_request(self) -> None:
         self.status.setStyleSheet("")
@@ -641,6 +778,11 @@ class MainWindow:
         self.credit_topup_btn.setObjectName("creditTopUpButton")
         self.credit_topup_btn.clicked.connect(self.on_top_up)
         body.addWidget(self.credit_topup_btn)
+        self.credit_pending = QtWidgets.QLabel("")
+        self.credit_pending.setObjectName("creditPending")
+        self.credit_pending.setWordWrap(True)
+        self.credit_pending.hide()
+        body.addWidget(self.credit_pending)
         lab = QtWidgets.QLabel(LAB_NOTE)
         lab.setObjectName("creditLabNote")
         lab.setWordWrap(True)
@@ -1056,6 +1198,27 @@ class MainWindow:
             self.credit_success.show()
         else:
             self.credit_success.hide()
+        self._render_pending()
+
+    def _render_pending(self) -> None:
+        pending = []
+        try:
+            pending = self.credit.pending_topups()
+        except Exception:
+            pending = []
+        if not pending:
+            self.credit_pending.hide()
+            self.credit_pending.setText("")
+            return
+        lines = ["Pending"]
+        for row in pending:
+            state = str(row.get("state") or "waiting")
+            n = row.get("tokens_quoted") or row.get("n") or "?"
+            amt = row.get("amount_xmr") or ""
+            extra = (" · %s XMR" % amt) if amt else ""
+            lines.append("· %s · %s credits%s" % (state, n, extra))
+        self.credit_pending.setText("\n".join(lines))
+        self.credit_pending.show()
 
     def on_top_up(self) -> None:
         dlg = TopUpDialog(self.win, self.credit, self.QtWidgets)

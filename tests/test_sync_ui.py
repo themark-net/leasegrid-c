@@ -421,23 +421,22 @@ def test_excepthook_keeps_window_alive_and_shows_review(ui: MainWindow):
             raise ValueError("slot blew up")
         except ValueError as exc:
             sys.excepthook(type(exc), exc, exc.__traceback__)
-        box = ui.win.findChild(PyQt5.QtWidgets.QMessageBox, "unexpectedReview")
-        assert box is not None and box.isVisible()
-        assert not box.isModal()
-        assert "ValueError" in box.informativeText()
-        assert "slot blew up" in box.informativeText()
-        assert "sync-ui.log" in box.informativeText()
+        banner = ui.win.findChild(PyQt5.QtWidgets.QLabel, "unexpectedReview")
+        assert banner is not None and not banner.isHidden()
+        assert "ValueError" in banner.text()
+        assert "slot blew up" in banner.text()
+        assert "sync-ui.log" in banner.text()
         assert ui.status_chip.text().startswith("REVIEW")
         assert (ui.home / "logs" / "sync-ui.log").is_file()
-        # a second failure reuses the visible box instead of stacking dialogs
+        # a second failure reuses the same banner instead of stacking dialogs
         try:
             raise KeyError("again")
         except KeyError as exc:
             sys.excepthook(type(exc), exc, exc.__traceback__)
-        boxes = ui.win.findChildren(PyQt5.QtWidgets.QMessageBox, "unexpectedReview")
-        assert len(boxes) == 1
-        assert "KeyError" in boxes[0].informativeText()
-        boxes[0].hide()
+        banners = ui.win.findChildren(PyQt5.QtWidgets.QLabel, "unexpectedReview")
+        assert len(banners) == 1
+        assert "KeyError" in banners[0].text()
+        banners[0].hide()
     finally:
         sys.excepthook = saved
 

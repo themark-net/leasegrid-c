@@ -106,7 +106,10 @@ def install_excepthook(ui: "MainWindow") -> None:
             return
         path = log_exception(ui.home, "uncaught", exc)
         sys.__excepthook__(exc_type, exc, tb)
-        ui.show_unexpected(exc, path)
+        try:
+            ui.show_unexpected(exc, path)
+        except Exception:
+            pass  # logging already happened; never let the hook itself abort
 
     sys.excepthook = hook
 
@@ -432,6 +435,14 @@ class MainWindow:
         self.stack = QtWidgets.QStackedWidget()
         layout = QtWidgets.QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
+        # In-window REVIEW, not QMessageBox: PyQt5's offscreen plugin on Windows
+        # access-violates in QMessageBox.show() (CI test_excepthook_…).
+        self.unexpected_review = QtWidgets.QLabel("")
+        self.unexpected_review.setObjectName("unexpectedReview")
+        self.unexpected_review.setWordWrap(True)
+        self.unexpected_review.setStyleSheet("color: #8b1a1a; padding: 8px 12px;")
+        self.unexpected_review.hide()
+        layout.addWidget(self.unexpected_review)
         layout.addWidget(self.stack)
 
         self.join_page = self._build_join_page()
@@ -807,27 +818,14 @@ class MainWindow:
         self.join_error.setText(err.banner())
 
     def show_unexpected(self, exc: BaseException, log_path: Optional[Path] = None) -> None:
-        """One non-modal REVIEW box for an exception no place-specific handler caught."""
-        QtWidgets = self.QtWidgets
+        """One in-window REVIEW banner for an exception no place-specific handler caught."""
         err = unexpected_error(exc, "Leasegrid Sync kept running, but the last action failed.")
         self.status_chip.setText("REVIEW  " + err.message.split(" Unexpected error: ")[-1])
-        box = getattr(self, "_unexpected_box", None)
-        if box is not None and box.isVisible():
-            box.setInformativeText(err.banner())
-            return
-        box = QtWidgets.QMessageBox(self.win)
-        box.setObjectName("unexpectedReview")
-        box.setIcon(QtWidgets.QMessageBox.Warning)
-        box.setWindowTitle("REVIEW")
-        box.setText(REVIEW_HEAD.split(" — ")[0] + " — something went wrong")
         text = err.banner()
         if log_path is not None:
             text += "\nLog: %s" % log_path
-        box.setInformativeText(text)
-        box.addButton("Close", QtWidgets.QMessageBox.AcceptRole)
-        box.setModal(False)
-        box.show()
-        self._unexpected_box = box
+        self.unexpected_review.setText(text)
+        self.unexpected_review.show()
 
     def show_folder_error(self, err: SyncError, open_credit: bool = False) -> None:
         self.folder_error.setText(err.banner())

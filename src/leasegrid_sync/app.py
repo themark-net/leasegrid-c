@@ -1087,7 +1087,9 @@ def _run_modes(
             "U2 credit-dogfood before=%s after=%s remaining=%s"
             % (result["before"], result["after"], result["remaining"].split("\n")[0])
         )
-        return 0
+        if dogfood_folder is None:
+            return 0
+        # both flags: top up first, then the upload that spends it (paid-path CI)
     if dogfood_folder is not None:
         try:
             result = ui.dogfood_one_folder(dogfood_folder, screenshot=screenshot)

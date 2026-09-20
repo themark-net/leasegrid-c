@@ -467,3 +467,27 @@ def test_no_wui_cta_on_credit(ui: MainWindow):
         assert needle not in blob
     assert "credit" in blob
     assert "top up" in blob
+
+
+def test_run_modes_runs_credit_then_folder_when_both_requested(ui: MainWindow, tmp_path: Path):
+    """--credit-dogfood --dogfood-folder: top up, then the upload that spends it (CI paid path)."""
+    from leasegrid_sync.app import _run_modes
+
+    order = []
+    folder = tmp_path / "sync"
+
+    def credit(screenshot=None, tier="medium"):
+        order.append("credit")
+        return {"before": 0, "after": 50, "remaining": "About 50 GiB"}
+
+    def one_folder(path, screenshot=None):
+        order.append("folder")
+        return {"folder": str(path), "probe": "p", "status": {"relpath": "p"}, "grid": "g"}
+
+    with patch.object(ui, "dogfood_credit", side_effect=credit):
+        with patch.object(ui, "dogfood_one_folder", side_effect=one_folder):
+            assert _run_modes(ui, None, folder, True, "medium") == 0
+            assert order == ["credit", "folder"]
+            order.clear()
+            assert _run_modes(ui, None, None, True, "medium") == 0
+            assert order == ["credit"]

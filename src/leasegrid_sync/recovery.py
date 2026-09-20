@@ -458,6 +458,24 @@ class RecoveryCtl:
             self.tahoe.create_client(bundle.introducer_furl, shares=bundle.shares)
         status = self.tahoe.join_invite(bundle.introducer_furl)
 
+        # Credit first: on a gated grid `tahoe mkdir` (personal DMD) is a paid
+        # write. Restoring folders before the wallet is how a new device used
+        # to fail with "could not create a folder" after an XMR top-up.
+        wallet_restored = False
+        credit_recovered = 0
+        credit_error = ""
+        if bundle.wallet and not self.credit.wallet_path.is_file():
+            from leasegrid_zkap.client import save_wallet
+
+            save_wallet(self.credit.wallet_path, bundle.wallet)
+            wallet_restored = True
+        if bundle.credit_seed:
+            say("Re-collecting credit from the issuer…")
+            try:
+                credit_recovered = self._recover_credit(bundle)
+            except Exception as exc:  # folders can still land; Credit → Retry later
+                credit_error = "%s: %s" % (type(exc).__name__, str(exc).splitlines()[0] if str(exc) else "")
+
         say("Preparing Magic Folder…")
         self.mf.ensure_init()
         existing = {r.name for r in read_folder_records(self.mf.config_dir)}
@@ -495,22 +513,6 @@ class RecoveryCtl:
                     self.mf.scan_local(name)
                 except SyncError:
                     pass
-
-        wallet_restored = False
-        if bundle.wallet and not self.credit.wallet_path.is_file():
-            from leasegrid_zkap.client import save_wallet
-
-            save_wallet(self.credit.wallet_path, bundle.wallet)
-            wallet_restored = True
-
-        credit_recovered = 0
-        credit_error = ""
-        if bundle.credit_seed:
-            say("Re-collecting credit from the issuer…")
-            try:
-                credit_recovered = self._recover_credit(bundle)
-            except Exception as exc:  # the rest of the restore stands; credit can be retried later
-                credit_error = "%s: %s" % (type(exc).__name__, str(exc).splitlines()[0] if str(exc) else "")
 
         return RestoreResult(
             folders=restored,

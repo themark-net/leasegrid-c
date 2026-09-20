@@ -180,6 +180,34 @@ def test_restore_rejoins_as_new_participant(mf_config: Path, tmp_path: Path):
     assert readcap.startswith("URI:DIR2-RO:")
 
 
+def test_restore_writes_wallet_before_mkdir(mf_config: Path, tmp_path: Path):
+    """Gated grid: tahoe mkdir is a paid write; the wallet must already be on disk."""
+    home = tmp_path / "home"
+    home.mkdir()
+    nodedir = tmp_path / "tahoe"
+    key = tmp_path / "key.leasegrid-recovery"
+    key.write_bytes(encode_recovery_file(_bundle(), "pw"))
+
+    tahoe = TahoeClient(nodedir=nodedir, tahoe_bin="/bin/true", home=home)
+    mf = MagicFolderCtl(config_dir=mf_config, nodedir=nodedir, mf_bin="/bin/true")
+    credit = CreditCtl(home=home, issuer_url="http://127.0.0.1:1")
+    ctl = RecoveryCtl(home, tahoe, mf, credit, folder_root=tmp_path / "Leasegrid")
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    saw = {"wallet_before_mkdir": False}
+
+    def mkdir() -> str:
+        saw["wallet_before_mkdir"] = credit.wallet_path.is_file()
+        return PERSONAL
+
+    with patch.object(tahoe, "join_invite", return_value=st), \
+         patch.object(tahoe, "mkdir", side_effect=mkdir), \
+         patch.object(mf, "ensure_running", return_value=None), \
+         patch.object(mf, "scan_local", return_value=None), \
+         patch.object(mf, "add_participant", return_value=None):
+        result = ctl.restore(key, "pw", progress=lambda t: None)
+    assert result.wallet_restored and saw["wallet_before_mkdir"]
+
+
 def test_restore_wrong_passphrase_touches_nothing(mf_config: Path, tmp_path: Path):
     home = tmp_path / "home"
     nodedir = tmp_path / "tahoe"

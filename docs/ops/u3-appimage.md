@@ -83,7 +83,7 @@ AppImage as an artifact, and attaches it to the GitHub Release on `v*` tags.
 
 ## Not done
 
-- No `.deb`, no macOS, no Windows (Tahoe + PyQt both build there; the launcher is portable).
+- No `.deb`. (macOS and Windows bundles exist: [`installers.md`](installers.md).)
 - Placeholder icon (`packaging/make_icon.py`).
 - No code signing / update channel. Users verify the SHA from the release page.
 - No Tor bundled; transport policy setting still to come.

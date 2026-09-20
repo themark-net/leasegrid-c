@@ -131,5 +131,5 @@ go back).
 
 ## Not in this slice
 
-XMR top-up (U5), macOS / Windows. The Linux
-AppImage (U3) is in [`u3-appimage.md`](u3-appimage.md).
+XMR top-up (U5). Installers for all three OSes are in
+[`installers.md`](installers.md).

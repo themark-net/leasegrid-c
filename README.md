@@ -18,7 +18,7 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 
 **U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
 **U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md).  
-**U3:** Linux AppImage (Sync + Tahoe + Magic Folder, no Python needed): `packaging/build-appimage.sh`, [`docs/ops/u3-appimage.md`](docs/ops/u3-appimage.md).  
+**U3:** Installers for Linux (AppImage), macOS (.dmg) and Windows (setup.exe / zip) bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](docs/ops/installers.md).  
 **U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md).  
 **Paid path:** with `LEASEGRID_GATED=1` storage refuses unpaid leases and the client spends Credit per upload: [`docs/ops/paid-path.md`](docs/ops/paid-path.md) (read the denomination finding). XMR top-up (U5) still open.
 

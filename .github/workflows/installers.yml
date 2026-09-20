@@ -39,6 +39,7 @@ concurrency:
 jobs:
   linux:
     runs-on: ubuntu-22.04
+    timeout-minutes: 40
     permissions:
       contents: write
     steps:
@@ -60,6 +61,16 @@ jobs:
         run: |
           APP="$(ls dist/Leasegrid_Sync-*.AppImage)"
           packaging/exit-test.sh "leasegrid-sync/tahoe" "$APP" --appimage-extract-and-run
+      - name: Exit test logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exit-test-logs-linux
+          path: |
+            ${{ runner.temp }}/lg-exit/*.out
+            ${{ runner.temp }}/lg-exit/home*/logs/*.log
+            ${{ runner.temp }}/lg-exit/grid/logs/*.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Leasegrid_Sync-linux-x86_64.AppImage
@@ -74,6 +85,7 @@ jobs:
 
   macos:
     runs-on: macos-15-intel
+    timeout-minutes: 40
     permissions:
       contents: write
     steps:
@@ -91,6 +103,16 @@ jobs:
         run: packaging/build-desktop.sh
       - name: Exit test (client = .app only)
         run: packaging/exit-test.sh "MacOS/tahoe" "dist/Leasegrid Sync.app/Contents/MacOS/leasegrid-sync"
+      - name: Exit test logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exit-test-logs-macos
+          path: |
+            ${{ runner.temp }}/lg-exit/*.out
+            ${{ runner.temp }}/lg-exit/home*/logs/*.log
+            ${{ runner.temp }}/lg-exit/grid/logs/*.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Leasegrid_Sync-macos-x86_64.dmg
@@ -105,6 +127,7 @@ jobs:
 
   windows:
     runs-on: windows-2022
+    timeout-minutes: 40
     permissions:
       contents: write
     defaults:
@@ -127,6 +150,16 @@ jobs:
         run: packaging/build-desktop.sh
       - name: Exit test (client = bundle only)
         run: packaging/exit-test.sh 'leasegrid-sync\\tahoe.exe' dist/leasegrid-sync/leasegrid-sync-cli.exe
+      - name: Exit test logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exit-test-logs-windows
+          path: |
+            ${{ runner.temp }}/lg-exit/*.out
+            ${{ runner.temp }}/lg-exit/home*/logs/*.log
+            ${{ runner.temp }}/lg-exit/grid/logs/*.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Leasegrid_Sync-win64

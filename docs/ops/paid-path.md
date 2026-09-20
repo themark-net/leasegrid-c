@@ -111,6 +111,6 @@ Node view: `curl http://127.0.0.1:8711/v0/info` shows `spent`.
 - Settlement (node → issuer spent preimages) still manual: `leasegrid-zkap settle …`.
 - Lease *renewal* payments: the gate accepts `renew` with the original grant; nothing schedules
   a renewal spend after 30 days.
-- Tahoe's per-server `allocate_buckets` failure on `NoCredit` surfaces via Magic Folder as
-  “error 500”; a friendlier Folders-page banner (“Out of credit — Top up”) is a UI follow-up
-  reading `credit-recent.json`.
+- Renewal / settlement automation as above. (The Folders place now reads the spender's
+  `Upload refused…` events and shows “sync is paused by the friendnet … Credit → Top up”
+  instead of Magic Folder's raw error 500.)

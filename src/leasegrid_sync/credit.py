@@ -272,6 +272,30 @@ class CreditCtl:
             )
         return rows
 
+    def recent_refusal(self, within_seconds: float = 120.0) -> Optional[str]:
+        """Newest 'Upload refused…' / 'Pass rejected…' event the Tahoe-side spender wrote, if fresh.
+
+        The spender (leasegrid_zkap.spender) runs inside the Tahoe client; this file is
+        how the window learns that writes are being refused for lack of credit.
+        """
+        if not self.recent_path.is_file():
+            return None
+        try:
+            data = json.loads(self.recent_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        items = data.get("events") if isinstance(data, dict) else None
+        if not isinstance(items, list) or not items:
+            return None
+        newest = items[0] if isinstance(items[0], dict) else {}
+        title = str(newest.get("title") or "")
+        ts = float(newest.get("ts") or 0)
+        if not (title.startswith("Upload refused") or title.startswith("Pass rejected")):
+            return None
+        if time.time() - ts > within_seconds:
+            return None
+        return title
+
     def _append_recent(self, title: str, tokens: int) -> None:
         events: list[dict[str, Any]] = []
         if self.recent_path.is_file():

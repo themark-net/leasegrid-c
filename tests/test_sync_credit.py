@@ -174,3 +174,26 @@ def test_tier_sizes():
     assert TIER_TOKENS["small"] == 10
     assert TIER_TOKENS["medium"] == 50
     assert TIER_TOKENS["large"] == 100
+
+
+def test_recent_refusal_reads_spender_events(tmp_path: Path):
+    import time
+
+    ctl = CreditCtl(home=tmp_path, issuer_url="http://127.0.0.1:1")
+    assert ctl.recent_refusal() is None
+    ctl.recent_path.write_text(json.dumps({"events": [
+        {"title": "Upload refused: out of credit", "tokens": 0, "ts": time.time()},
+        {"title": "Faucet top-up", "tokens": 10, "ts": time.time() - 100},
+    ]}))
+    assert ctl.recent_refusal() == "Upload refused: out of credit"
+    # stale refusal is not a current problem
+    ctl.recent_path.write_text(json.dumps({"events": [
+        {"title": "Upload refused: out of credit", "tokens": 0, "ts": time.time() - 3600},
+    ]}))
+    assert ctl.recent_refusal() is None
+    # newest event is a spend -> uploads are flowing
+    ctl.recent_path.write_text(json.dumps({"events": [
+        {"title": "Lease on abc · def", "tokens": -1, "ts": time.time()},
+        {"title": "Upload refused: out of credit", "tokens": 0, "ts": time.time()},
+    ]}))
+    assert ctl.recent_refusal() is None

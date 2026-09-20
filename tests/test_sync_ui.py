@@ -29,9 +29,13 @@ class FakeCredit:
         self.fail_load = False
         self.fail_redeem = False
         self.pubkey = "lab"
+        self.refusal = None
 
     def remaining_tokens(self) -> int:
         return self.tokens
+
+    def recent_refusal(self, within_seconds: float = 120.0):
+        return self.refusal
 
     def load_balance(self) -> CreditSnapshot:
         if self.fail_load:
@@ -394,6 +398,32 @@ def test_topup_dialog_has_no_xmr_fields(ui: MainWindow):
     assert "Request faucet credit" in dlg.request_btn.text()
     assert "Open web UI" not in blob
     assert "http://127.0.0.1" not in blob
+
+
+def test_refresh_surfaces_spender_refusal(ui: MainWindow, fake_credit: FakeCredit):
+    """Wallet ran dry mid-sync: the Tahoe-side spender wrote an event; Folders says so."""
+    _enter(ui)
+    assert "paused" not in ui.folder_error.text()
+    fake_credit.refusal = "Upload refused: out of credit"
+    with patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.refresh()
+    assert "FAIL" in ui.folder_error.text()
+    assert "sync is paused" in ui.folder_error.text()
+    assert "out of credit" in ui.folder_error.text()
+    assert not ui.open_credit_btn.isHidden()
+
+
+def test_add_folder_500_with_refusal_shows_credit_copy(ui: MainWindow, fake_credit: FakeCredit):
+    _enter(ui)
+    fake_credit.refusal = "Upload refused: no credit on this device"
+    with patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value="/tmp"), \
+         patch.object(ui.credit, "estimate_tokens", return_value=1, create=True), \
+         patch.object(ui.mf, "add_folder", side_effect=SyncError(
+             "folder not added. Error: Magic Folder HTTP API reported error 500", "Retry.")):
+        ui.on_add_folder()
+    assert "error 500" not in ui.folder_error.text()
+    assert "no credit on this device" in ui.folder_error.text()
+    assert not ui.open_credit_btn.isHidden()
 
 
 def test_add_folder_zero_credit_open_credit(ui: MainWindow, fake_credit: FakeCredit):

@@ -841,6 +841,21 @@ class MainWindow:
             self.show_folder_error(exc)
             return
         self._render_rows(rows)
+        self._show_refusal_if_any()
+
+    def _show_refusal_if_any(self) -> bool:
+        """Storage refused a write for lack of credit (spender event): say so on Folders."""
+        reason = self.credit.recent_refusal()
+        if not reason:
+            return False
+        self.show_folder_error(
+            SyncError(
+                "sync is paused by the friendnet. %s." % reason,
+                "Credit → Top up; uploads resume on the next scan.",
+            ),
+            open_credit=True,
+        )
+        return True
 
     def _render_rows(self, rows: list[FolderRow]) -> None:
         self.table.setRowCount(len(rows))
@@ -875,7 +890,10 @@ class MainWindow:
         try:
             name = self.mf.add_folder(path)
         except SyncError as exc:
-            self.show_folder_error(exc)
+            # A gated node refusing the folder's directories surfaces as a Magic
+            # Folder 500; the spender's event tells the real story.
+            if not self._show_refusal_if_any():
+                self.show_folder_error(exc)
             return
         self.refresh()
         self.folder_error.setText("Added folder %s" % name)

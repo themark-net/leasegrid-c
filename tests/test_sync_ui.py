@@ -60,7 +60,7 @@ class FakeCredit:
                 "top-up did not complete. Faucet or issuer rejected the request (or network error).",
                 "Retry; if lab is down, ask your operator. Balance unchanged.",
             )
-        add = {"small": 10, "medium": 50, "large": 100}.get(tier, count or 50)
+        add = {"small": 10, "medium": 50, "large": 200}.get(tier, count or 50)
         self.tokens += int(add)
         return CreditSnapshot(
             balance=CreditBalance(tokens=self.tokens, issuer_pubkey_id=self.pubkey),
@@ -82,6 +82,14 @@ class FakeCredit:
             )
         q = dict(self.quote or {})
         q.setdefault("tokens_quoted", tokens)
+        self.pending.append(
+            {
+                "vid": q.get("vid"),
+                "state": q.get("state") or "quoted",
+                "tokens_quoted": q.get("tokens_quoted"),
+                "amount_xmr": q.get("amount_xmr"),
+            }
+        )
         return q
 
     def poll_topup(self, vid: str) -> dict:
@@ -325,14 +333,16 @@ def test_enter_main_shows_folders_tab(ui: MainWindow):
     assert ui.status_chip.text().startswith("Connected")
 
 
-def test_settings_stub_defers_u5_not_credit(ui: MainWindow):
+def test_settings_stub_does_not_defer_shipped_xmr_topup(ui: MainWindow):
     note = ui.settings_tab.findChild(PyQt5.QtWidgets.QLabel, "settingsNote")
     text = note.text() if note is not None else ""
-    assert "U5" in text and "AppImage" in text
-    assert "U3" not in text and "U4" not in text  # both shipped; no stale "coming later"
-    assert "Credit panel (U2)" not in text
+    assert "AppImage" in text
+    assert "U3" not in text and "U4" not in text and "U5" not in text
+    assert "after mint rails" not in text.lower()
     assert "Credit:" in text
     assert "open the Credit place" in text
+    assert "XMR" in text
+    assert "Credit → Top up" in text or "Top up" in text
 
 
 def test_connected_autoload_skips_join(tmp_path: Path):
@@ -565,14 +575,23 @@ def test_topup_underpaid_keeps_same_address(ui: MainWindow, fake_credit: FakeCre
         "vid": "aabbccddeeff0011",
         "state": "underpaid",
         "tokens_added": 0,
-        "voucher": {"amount_xmr_seen": "0.05", "amount_xmr": "0.05", "amount_seen": 5 * 10**10},
+        # live /v0/voucher/{vid} shape: piconero ints, no amount_xmr_* aliases
+        "voucher": {
+            "amount_seen": 5 * 10**10,
+            "amount_due": 12 * 10**10,
+            "amount_confirmed": 0,
+        },
     }
     dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
     dlg.on_continue()
     dlg.on_poll()
     assert dlg.page == "pay"
     assert "4same" in dlg.pay_address.text()
-    assert "underpaid" in dlg.status.text().lower() or "0.05" in dlg.status.text()
+    assert "underpaid" in dlg.status.text().lower()
+    assert "0.05" in dlg.status.text()
+    assert "0.07" in dlg.status.text()  # remaining due
+    assert "50000000000" not in dlg.status.text()
+    assert "nothing is lost" in dlg.status.text().lower()
 
 
 def test_credit_panel_lists_pending_vouchers(ui: MainWindow, fake_credit: FakeCredit):
@@ -582,6 +601,43 @@ def test_credit_panel_lists_pending_vouchers(ui: MainWindow, fake_credit: FakeCr
     assert not ui.credit_pending.isHidden()
     assert "0.12" in ui.credit_pending.text() or "20" in ui.credit_pending.text()
     assert "quoted" in ui.credit_pending.text().lower() or "waiting" in ui.credit_pending.text().lower()
+
+
+def test_topup_copy_amount_is_numeric_xmr(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "4fakeAddressForPay",
+        "amount_xmr": "0.12",
+        "tokens_quoted": 20,
+        "state": "quoted",
+    }
+    dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
+    dlg.on_continue()
+    dlg.on_copy_amount()
+    clipped = ui.QtWidgets.QApplication.clipboard().text()
+    assert clipped == "0.12"
+    assert "XMR" not in clipped
+
+
+def test_topup_close_stops_timer_and_lists_pending(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "4addr",
+        "amount_xmr": "0.12",
+        "tokens_quoted": 20,
+        "state": "quoted",
+    }
+    _enter(ui)
+    ui.load_credit()
+    assert ui.credit_pending.isHidden()
+    dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
+    dlg.on_continue()
+    assert dlg._timer is not None and dlg._timer.isActive()
+    dlg.dlg.reject()
+    assert dlg._timer is None or not dlg._timer.isActive()
+    ui._apply_topup_result(dlg, ui.QtWidgets.QDialog.Rejected)
+    assert not ui.credit_pending.isHidden()
+    assert "0.12" in ui.credit_pending.text() or "20" in ui.credit_pending.text()
 
 
 def test_export_warn_mentions_credit_seed(ui: MainWindow):

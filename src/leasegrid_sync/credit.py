@@ -29,7 +29,7 @@ from .backend import SyncError, default_home
 
 DEFAULT_ISSUER_URL = "http://127.0.0.1:8700"
 EXPAND_FACTOR = 3.2  # shares span nodes; upload size is not credit 1:1
-TIER_TOKENS = {"small": 10, "medium": 50, "large": 100}
+TIER_TOKENS = {"small": 10, "medium": 50, "large": 200}
 
 PLAIN_ZERO = (
     "Credit remaining: none.\n"
@@ -57,7 +57,7 @@ OPAQUE_REJECT = (
 XMR_LATER = (
     "Pay the quoted XMR exactly. Credits appear after confirmations, never at zero-conf."
 )
-XMR_TIERS = {"small": 10, "medium": 50, "large": 200}
+XMR_TIERS = TIER_TOKENS
 
 LOAD_FAIL_MSG = "could not load credit balance. Issuer unreachable or returned an error."
 LOAD_FAIL_NEXT = "Retry; check network; if lab is down, ask your friendnet operator."
@@ -68,6 +68,40 @@ REDEEM_FAIL_NEXT = "Retry; if lab is down, ask your operator. Balance unchanged.
 ZERO_FOLDER_MSG = "folder not added. Not enough storage credit to allocate shares."
 ZERO_FOLDER_NEXT = "Credit → Top up, then Add folder again."
 REVIEW_HEAD = "REVIEW — this folder needs more credit than the raw size."
+
+
+def format_xmr_amount(piconero: Any) -> str:
+    from leasegrid_zkap.payment.policy import PricePolicy
+
+    try:
+        n = int(piconero)
+    except (TypeError, ValueError):
+        return ""
+    return PricePolicy.format_xmr(n)
+
+
+def underpaid_copy(voucher: dict[str, Any], quoted_piconero: Any = None) -> str:
+    """Buyer line for a live /v0/voucher row (piconero ints, no amount_xmr_*)."""
+    seen = voucher.get("amount_seen")
+    if seen is None:
+        seen = voucher.get("amount_confirmed") or 0
+    due = voucher.get("amount_due")
+    if due is None:
+        due = quoted_piconero or 0
+    try:
+        seen_n = int(seen)
+    except (TypeError, ValueError):
+        seen_n = 0
+    try:
+        due_n = int(due)
+    except (TypeError, ValueError):
+        due_n = 0
+    rest = max(0, due_n - seen_n)
+    return (
+        "Underpaid. Received %s XMR; send at least %s more to the same address, "
+        "or leave it — nothing is lost."
+        % (format_xmr_amount(seen_n), format_xmr_amount(rest))
+    )
 
 
 MintFn = Callable[[str, int], dict]

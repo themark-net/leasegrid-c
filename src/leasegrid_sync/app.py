@@ -36,6 +36,7 @@ from .credit import (
     CreditSnapshot,
     credit_gate,
     format_remaining,
+    underpaid_copy,
 )
 from .recovery import (
     ACK_LOSS,
@@ -126,6 +127,7 @@ class TopUpDialog:
         self.credit = credit
         self.snapshot: Optional[CreditSnapshot] = None
         self.quote: Optional[dict] = None
+        self._amount_xmr = ""
         self.page = "choose"
         self.dlg = QtWidgets.QDialog(parent)
         self.dlg.setWindowTitle("Top up")
@@ -221,6 +223,7 @@ class TopUpDialog:
         row.addStretch(1)
         v.addLayout(row)
         self._timer = None
+        self.dlg.finished.connect(self._stop_poll)
 
     def _selected_tier(self) -> str:
         for key, radio in self.radios.items():
@@ -249,7 +252,8 @@ class TopUpDialog:
     def _show_pay(self) -> None:
         q = self.quote or {}
         self.page = "pay"
-        self.pay_amount.setText("%s XMR" % q.get("amount_xmr", ""))
+        self._amount_xmr = str(q.get("amount_xmr") or "")
+        self.pay_amount.setText("%s XMR" % self._amount_xmr)
         self.pay_address.setText(str(q.get("address") or ""))
         self.stack.setCurrentWidget(self.pay_page)
         self.continue_btn.hide()
@@ -265,7 +269,23 @@ class TopUpDialog:
             self._timer.timeout.connect(self.on_poll)
         self._timer.start()
 
+    def _stop_poll(self, _result: int = 0) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+
     def on_poll(self) -> None:
+        try:
+            self._on_poll()
+        except Exception:
+            try:
+                self.status.setStyleSheet("color: #8b1a1a;")
+                self.status.setText(
+                    "REVIEW — Could not check this quote. Payments already sent are safe; retry later."
+                )
+            except Exception:
+                pass
+
+    def _on_poll(self) -> None:
         if not self.quote:
             return
         try:
@@ -277,8 +297,7 @@ class TopUpDialog:
         state = str(r.get("state") or "")
         v = r.get("voucher") or {}
         if state == "issued":
-            if self._timer is not None:
-                self._timer.stop()
+            self._stop_poll()
             try:
                 self.snapshot = self.credit.load_balance()
             except SyncError:
@@ -293,11 +312,8 @@ class TopUpDialog:
             self.cancel_btn.clicked.connect(self.dlg.accept)
             return
         if state == "underpaid":
-            seen = v.get("amount_xmr") or v.get("amount_xmr_seen") or v.get("amount_seen")
-            self.status.setText(
-                "Underpaid. Received %s; send the rest to the same address, or leave it — nothing is lost."
-                % seen
-            )
+            quoted = (self.quote or {}).get("amount_piconero") or (self.quote or {}).get("amount_due")
+            self.status.setText(underpaid_copy(v, quoted))
             return
         if state in ("seen", "confirming"):
             need = v.get("confirmations_required") or (self.quote or {}).get("confirmations_required") or 2
@@ -311,7 +327,7 @@ class TopUpDialog:
         self.QtWidgets.QApplication.clipboard().setText(self.pay_address.text())
 
     def on_copy_amount(self) -> None:
-        self.QtWidgets.QApplication.clipboard().setText(self.pay_amount.text())
+        self.QtWidgets.QApplication.clipboard().setText(self._amount_xmr)
 
     def on_request(self) -> None:
         self.status.setStyleSheet("")
@@ -889,8 +905,8 @@ class MainWindow:
             "Transport policy: full privacy claims often want Tor; Magic Folder sync "
             "that feels normal may use LAN/WAN. This is a visible design flag; a transport setting is still to come.\n\n"
             "Coming later\n"
-            "· .deb / macOS / Windows installers (Linux AppImage ships now)\n"
-            "· Monero (XMR) top-up — U5 (after mint rails)\n\n"
+            "· .deb package (AppImage / macOS / Windows installers ship now)\n\n"
+            "Credit → Top up quotes XMR for this friendnet. Live stagenet settlement is still to come.\n\n"
             "About\n"
             "%s (buyer) · version %s\n"
             "Grid: lab-friendnet\n"
@@ -1223,9 +1239,14 @@ class MainWindow:
     def on_top_up(self) -> None:
         dlg = TopUpDialog(self.win, self.credit, self.QtWidgets)
         result = dlg.dlg.exec_()
+        self._apply_topup_result(dlg, result)
+
+    def _apply_topup_result(self, dlg: TopUpDialog, result) -> None:
         if result == self.QtWidgets.QDialog.Accepted and dlg.snapshot is not None:
             note = "Top-up complete.\n" + dlg.snapshot.remaining_text
             self.apply_credit_snapshot(dlg.snapshot, success_note=note)
+            return
+        self._render_pending()
 
     def grab_to(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

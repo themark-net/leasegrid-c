@@ -174,7 +174,7 @@ def test_redeem_fail_leaves_balance_unchanged(tmp_path: Path, issuer):
 def test_tier_sizes():
     assert TIER_TOKENS["small"] == 10
     assert TIER_TOKENS["medium"] == 50
-    assert TIER_TOKENS["large"] == 100
+    assert TIER_TOKENS["large"] == 200
 
 
 def test_recent_refusal_reads_spender_events(tmp_path: Path):
@@ -262,5 +262,58 @@ def test_load_balance_collects_pending_xmr_topups(tmp_path: Path):
         assert snap.balance.tokens == 3
         assert snap.recent and snap.recent[0].title == "XMR top-up" and snap.recent[0].delta == "+3 GiB·mo"
         assert ctl.load_balance().balance.tokens == 3  # idempotent
+    finally:
+        httpd.shutdown()
+
+
+def test_quote_and_poll_topup_against_fake_issuer(tmp_path: Path):
+    """CreditCtl methods the dialog calls, against a real FakeChain issuer."""
+    from leasegrid_zkap.client import http_json
+    from leasegrid_zkap.issuer import start_issuer as start_pay_issuer
+    from leasegrid_zkap.payment import FakeChain, PricePolicy
+
+    PRICE = 6 * 10**9
+    state, httpd = start_pay_issuer(
+        generate_signing_key(),
+        "127.0.0.1:0",
+        chain=FakeChain(),
+        policy=PricePolicy(price_piconero=PRICE),
+        faucet=False,
+    )
+    try:
+        ctl = CreditCtl(home=tmp_path, issuer_url=state.listen)
+        q = ctl.quote_topup(4)
+        assert q["vid"] and q["address"] and q["amount_xmr"]
+        assert ctl.pending_topups()
+        idle = ctl.poll_topup(q["vid"])
+        assert idle["state"] == "quoted"
+        assert idle["tokens_added"] == 0
+        http_json(
+            state.listen + "/v0/fake/pay",
+            "POST",
+            {"vid": q["vid"], "amount_piconero": 4 * PRICE, "mine": 2},
+        )
+        issued = ctl.poll_topup(q["vid"])
+        assert issued["state"] == "issued"
+        assert issued["tokens_added"] == 4
+        snap = ctl.load_balance()
+        assert snap.balance.tokens == 4
+        assert snap.recent and snap.recent[0].title == "XMR top-up"
+
+        q2 = ctl.quote_topup(4)
+        http_json(
+            state.listen + "/v0/fake/pay",
+            "POST",
+            {"vid": q2["vid"], "amount_piconero": PRICE // 2, "mine": 2},
+        )
+        short = ctl.poll_topup(q2["vid"])
+        assert short["state"] == "underpaid"
+        assert int(short["voucher"]["amount_seen"]) == PRICE // 2
+        from leasegrid_sync.credit import underpaid_copy
+
+        text = underpaid_copy(short["voucher"])
+        assert "0.003" in text
+        assert str(PRICE // 2) not in text
+        assert "nothing is lost" in text.lower()
     finally:
         httpd.shutdown()

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Leasegrid Sync
+Comment=Sync folders with a paid friendnet you trust
+Exec=leasegrid-sync
+Icon=leasegrid-sync
+Terminal=false
+Categories=Network;FileTransfer;
+StartupNotify=true

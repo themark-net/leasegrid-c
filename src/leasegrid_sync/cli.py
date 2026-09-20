@@ -66,6 +66,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Faucet amount tier for --credit-dogfood (default: medium).",
     )
     p.add_argument(
+        "--join",
+        metavar="INVITE",
+        default=None,
+        help="Headless: join the friendnet from a pb:// invite (creates and starts the Tahoe "
+        "client if needed), print the connection line, stop the daemons, exit. Combine with "
+        "--dogfood-folder / --credit-dogfood to continue into the window flows.",
+    )
+    p.add_argument(
         "--export-recovery",
         metavar="PATH",
         default=None,
@@ -104,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.export_recovery or args.restore_recovery:
         return _recovery_headless(args, nodedir)
+    if args.join and not (args.dogfood_folder or args.credit_dogfood or args.screenshot):
+        return _join_headless(args, nodedir)
     try:
         from .app import run_app
     except ImportError as exc:
@@ -122,7 +132,23 @@ def main(argv: list[str] | None = None) -> int:
         issuer_url=args.issuer,
         credit_dogfood=args.credit_dogfood,
         credit_tier=args.credit_tier,
+        invite=args.join,
     )
+
+
+def _join_headless(args, nodedir: Path) -> int:
+    from .backend import default_home
+
+    tahoe = TahoeClient(nodedir=nodedir, home=default_home())
+    try:
+        st = tahoe.join_invite(args.join.strip())
+    except SyncError as exc:
+        print(exc.banner(), file=sys.stderr)
+        tahoe.stop()
+        return 1
+    print("%s\t%s\t%s" % (st.state, st.detail, tahoe.nodedir))
+    tahoe.stop()
+    return 0 if st.state == "Connected" else 1
 
 
 def _recovery_headless(args, nodedir: Path) -> int:

@@ -97,5 +97,5 @@ owns the process until Quit. Encoding for a Sync-created client is
 
 ## Not in this slice
 
-Installer (U3), XMR top-up (U5), ZKAP-gated storage in dev-grid, invite codes
-shorter than a furl, macOS / Windows.
+XMR top-up (U5), ZKAP-gated storage in dev-grid, invite codes shorter than a
+furl, macOS / Windows. The Linux AppImage (U3) is in [`u3-appimage.md`](u3-appimage.md).

@@ -279,10 +279,11 @@ def test_enter_main_shows_folders_tab(ui: MainWindow):
     assert ui.status_chip.text().startswith("Connected")
 
 
-def test_settings_stub_defers_u3_u5_not_credit(ui: MainWindow):
+def test_settings_stub_defers_u5_not_credit(ui: MainWindow):
     note = ui.settings_tab.findChild(PyQt5.QtWidgets.QLabel, "settingsNote")
     text = note.text() if note is not None else ""
-    assert "U3" in text and "U4" in text and "U5" in text
+    assert "U5" in text and "AppImage" in text
+    assert "U3" not in text and "U4" not in text  # both shipped; no stale "coming later"
     assert "Credit panel (U2)" not in text
     assert "Credit:" in text
     assert "open the Credit place" in text

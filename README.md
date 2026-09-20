@@ -18,7 +18,8 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 
 **U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
 **U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md).  
-**U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md). Installer (U3) / XMR (U5) still open.
+**U3:** Linux AppImage (Sync + Tahoe + Magic Folder, no Python needed): `packaging/build-appimage.sh`, [`docs/ops/u3-appimage.md`](docs/ops/u3-appimage.md).  
+**U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md). XMR top-up (U5) still open.
 
 ## Run it locally (client + server, one machine)
 

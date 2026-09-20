@@ -686,7 +686,7 @@ class MainWindow:
             "Transport policy: full privacy claims often want Tor; Magic Folder sync "
             "that feels normal may use LAN/WAN. This is a visible design flag — polish in U4.\n\n"
             "Coming later\n"
-            "· Linux AppImage / .deb installer — U3\n"
+            "· .deb / macOS / Windows installers (Linux AppImage ships now)\n"
             "· Monero (XMR) top-up — U5 (after mint rails)\n\n"
             "About\n"
             "%s (buyer) · version %s\n"
@@ -1013,12 +1013,24 @@ def run_app(
     issuer_url: Optional[str] = None,
     credit_dogfood: bool = False,
     credit_tier: str = "medium",
+    invite: Optional[str] = None,
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
     ui.show()
     ui.QtWidgets.QApplication.processEvents()
     try:
+        if invite:
+            # Headless join first (creates + starts the client); the modes below then
+            # attach to it as an existing node and quit stops what we started.
+            try:
+                ui.tahoe.join_invite(invite.strip())
+            except SyncError as exc:
+                ui.show_join_error(exc)
+                if screenshot:
+                    ui.grab_to(screenshot)
+                print(exc.banner(), file=sys.stderr)
+                return 1
         return _run_modes(ui, screenshot, dogfood_folder, credit_dogfood, credit_tier)
     finally:
         ui.shutdown()

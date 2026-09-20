@@ -209,6 +209,34 @@ def test_shares_config_env(monkeypatch):
     assert shares_config() == DEFAULT_SHARES
 
 
+def test_ensure_credit_plugin_edits_cfg_once(tmp_path: Path):
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text(
+        "[node]\nnickname = x\n\n[client]\n# comment kept\nintroducer.furl =\n"
+        "shares.needed = 2\n\n[storage]\nenabled = false\n",
+        encoding="utf-8",
+    )
+    home = tmp_path / "home"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin="/bin/true", home=home)
+    assert client.ensure_credit_plugin() is True
+    text = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+    assert "# comment kept" in text
+    client_section = text.split("[client]", 1)[1].split("[storage]", 1)[0]
+    assert "storage.plugins = leasegrid-zkap-v0" in client_section
+    assert "[storageclient.plugins.leasegrid-zkap-v0]" in text
+    assert "wallet-path = %s" % (home / "credit-wallet.json") in text
+    assert "recent-path = %s" % (home / "credit-recent.json") in text
+    assert client.ensure_credit_plugin() is False  # idempotent
+    assert text == (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+    import configparser
+
+    cfg = configparser.ConfigParser()
+    cfg.read(nodedir / "tahoe.cfg")
+    assert cfg.get("client", "storage.plugins") == "leasegrid-zkap-v0"
+    assert cfg.getboolean("client", "force_foolscap") is True
+
+
 def test_add_folder_bad_path(tmp_path: Path):
     ctl = MagicFolderCtl(config_dir=tmp_path / "mf", nodedir=tmp_path / "tahoe", mf_bin="/bin/true")
     with pytest.raises(SyncError) as exc:

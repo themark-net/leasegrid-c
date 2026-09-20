@@ -47,8 +47,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           set -euo pipefail
-          # Server side from the dev venv; the client side uses ONLY the AppImage.
-          export LEASEGRID_DEVGRID_DIR=/tmp/ci-grid
+          # Server side from the dev venv (gated: uploads must be paid); the client
+          # side uses ONLY the AppImage.
+          export LEASEGRID_DEVGRID_DIR=/tmp/ci-grid LEASEGRID_GATED=1
           PATH="$PWD/.venv/bin:$PATH" scripts/dev-grid.sh > /tmp/ci-grid.out 2>&1 &
           for _ in $(seq 1 60); do grep -q "dev-grid up" /tmp/ci-grid.out && break; sleep 1; done
           grep -q "dev-grid up" /tmp/ci-grid.out || { cat /tmp/ci-grid.out; exit 1; }
@@ -64,8 +65,13 @@ jobs:
           grep -q "^Connected" /tmp/ci-join.out
           env -i HOME=/tmp/ci-home PATH=/usr/bin:/bin USER=ci QT_QPA_PLATFORM=offscreen \
             LEASEGRID_SYNC_HOME=/tmp/ci-home LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 \
-            timeout 240 "$APP" --appimage-extract-and-run --dogfood-folder /tmp/ci-sync --credit-dogfood --credit-tier small
+            timeout 240 "$APP" --appimage-extract-and-run --dogfood-folder /tmp/ci-sync --credit-dogfood --credit-tier medium
           grep -q "leasegrid-sync" /tmp/ci-home/logs/tahoe.log  # bundled tahoe, not a system one
+          # Paid: the upload spent tokens on every node.
+          for p in 8711 8712 8713; do
+            curl -fsS "http://127.0.0.1:$p/v0/info" | grep -q '"spent": [1-9]'
+          done
+          grep -q "Lease on" /tmp/ci-home/credit-recent.json
       - uses: actions/upload-artifact@v4
         with:
           name: Leasegrid_Sync-x86_64.AppImage

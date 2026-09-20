@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -71,13 +72,40 @@ def faucet_mint(issuer_url: str, count: int = 8) -> dict:
     }
 
 
+@contextlib.contextmanager
+def wallet_lock(path: str | os.PathLike):
+    """Cross-process exclusive lock on a wallet file (Sync tops up while Tahoe spends).
+
+    Uses an flock on ``<wallet>.lock`` beside the wallet so the wallet itself can be
+    replaced atomically. Falls back to no locking where fcntl is unavailable.
+    """
+    lock_path = Path(path).expanduser().with_name(Path(path).name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - non-POSIX
+        yield
+        return
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
 def save_wallet(path: str | os.PathLike, wallet: dict) -> None:
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(wallet, f, indent=2, sort_keys=True)
         f.write("\n")
+    os.replace(tmp, path)
 
 
 def load_wallet(path: str | os.PathLike) -> dict:

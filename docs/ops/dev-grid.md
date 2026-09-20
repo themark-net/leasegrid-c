@@ -95,7 +95,15 @@ owns the process until Quit. Encoding for a Sync-created client is
 | Join, node dir exists for another grid | FAIL — A Tahoe client already exists at … but is not connected… Next: set LEASEGRID_TAHOE_NODEDIR |
 | Join, Tahoe crashes on start | FAIL — Tahoe exited while starting. Next: see …/logs/tahoe.log |
 
+## Paid mode
+
+`LEASEGRID_GATED=1 scripts/dev-grid.sh` makes every storage node run the
+`leasegrid-zkap-v0` plugin: uploads are refused until the Sync client has Credit,
+and each upload spends tokens. Details, evidence and the denomination finding
+in [`paid-path.md`](paid-path.md). A grid created gated stays gated (`--reset` to
+go back).
+
 ## Not in this slice
 
-XMR top-up (U5), ZKAP-gated storage in dev-grid, invite codes shorter than a
-furl, macOS / Windows. The Linux AppImage (U3) is in [`u3-appimage.md`](u3-appimage.md).
+XMR top-up (U5), invite codes shorter than a furl, macOS / Windows. The Linux
+AppImage (U3) is in [`u3-appimage.md`](u3-appimage.md).

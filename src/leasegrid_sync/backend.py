@@ -24,7 +24,10 @@ GRID_NICKNAME = "lab-friendnet"
 # three storage nodes with shares.happy = 3; Tahoe's 3/7/10 default would make
 # every upload fail there. Override with LEASEGRID_SHARES="n,h,t".
 DEFAULT_SHARES = (2, 3, 3)
+CREDIT_PLUGIN_NAME = "leasegrid-zkap-v0"
+CREDIT_PLUGIN_SECTION = "[storageclient.plugins.%s]" % CREDIT_PLUGIN_NAME
 TAHOE_START_TIMEOUT = 30.0
+STORAGE_SETTLE_SECONDS = 6.0
 TAHOE_CONNECT_TIMEOUT = 30.0
 
 
@@ -226,6 +229,55 @@ class TahoeClient:
                 "could not join this friendnet. Tahoe could not create a client: %s" % err,
                 "check the invite code with your inviter; Retry.",
             )
+        self.ensure_credit_plugin()
+
+    def ensure_credit_plugin(self) -> bool:
+        """Enable the ZKAP storage plugin in tahoe.cfg, pointed at this app's wallet.
+
+        Harmless on an ungated grid (Tahoe falls back to anonymous storage when a
+        node does not announce the plugin); on a gated grid it is what pays for
+        uploads. force_foolscap is required: 1.20 prefers GBS/HTTP when a node
+        announces it, and the HTTP path never consults storage plugins.
+        Edits are line-based so Tahoe's commented template survives.
+        Returns True when the file changed (a running node needs a restart).
+        """
+        cfg_path = self.nodedir / "tahoe.cfg"
+        if not cfg_path.is_file():
+            return False
+        text = cfg_path.read_text(encoding="utf-8")
+        if CREDIT_PLUGIN_SECTION in text:
+            return False
+        lines = text.splitlines()
+        out: list[str] = []
+        in_client = False
+        added_plugins = False
+        client_lines = ["storage.plugins = %s" % CREDIT_PLUGIN_NAME, "force_foolscap = true"]
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                if in_client and not added_plugins:
+                    out += client_lines
+                    added_plugins = True
+                in_client = stripped == "[client]"
+            elif in_client and (
+                stripped.startswith("storage.plugins") or stripped.startswith("force_foolscap")
+            ):
+                continue  # replaced by client_lines
+            out.append(line)
+        if in_client and not added_plugins:
+            out += client_lines
+            added_plugins = True
+        if not added_plugins:
+            out += ["", "[client]"] + client_lines
+        out += [
+            "",
+            CREDIT_PLUGIN_SECTION,
+            "wallet-path = %s" % (self.home / "credit-wallet.json"),
+            "grants-path = %s" % (self.home / "credit-grants.json"),
+            "recent-path = %s" % (self.home / "credit-recent.json"),
+        ]
+        cfg_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        return True
 
     def start(self, timeout: float = TAHOE_START_TIMEOUT) -> None:
         """Run `tahoe run` as a child, holding stdin (Tahoe exits when stdin closes)."""
@@ -297,6 +349,12 @@ class TahoeClient:
         deadline = time.time() + timeout
         status = self.connection_status()
         while status.state != "Connected" and time.time() < deadline:
+            time.sleep(0.5)
+            status = self.connection_status()
+        # Storage (Foolscap) handshakes land a beat after the introducer; don't
+        # report "0 storage" for a grid that is simply still connecting.
+        settle = time.time() + STORAGE_SETTLE_SECONDS
+        while status.state == "Connected" and "0 storage" in status.detail and time.time() < settle:
             time.sleep(0.5)
             status = self.connection_status()
         return status
@@ -414,6 +472,8 @@ class TahoeClient:
                     "could not join this friendnet. %s" % status.detail,
                     "start the Tahoe client (tahoe run %s); Retry." % self.nodedir,
                 )
+            # Node is down anyway, so this is the safe moment to (re)enable paying.
+            self.ensure_credit_plugin()
             self.start()
         status = self.wait_connected()
         if status.state == "FAIL":

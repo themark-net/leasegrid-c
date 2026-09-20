@@ -6,9 +6,12 @@
 #   scripts/dev-grid.sh            # start (reuses state in $LEASEGRID_DEVGRID_DIR)
 #   scripts/dev-grid.sh --reset    # wipe state, then start
 #   scripts/dev-grid.sh --furl     # print the invite furl of a running grid and exit
+#   LEASEGRID_GATED=1 scripts/dev-grid.sh   # storage refuses unpaid leases (ZKAP plugin)
 #
-# This is the lab "server". It does not gate storage with ZKAPs (that is
-# deploy/zkap-lab/ on the friendnet). The client side is `leasegrid-sync`.
+# This is the lab "server". With LEASEGRID_GATED=1 every storage node runs the
+# leasegrid-zkap-v0 plugin: uploads need a token per (node, storage index) and
+# the Sync client pays from its Credit wallet. Without it storage is free.
+# The client side is `leasegrid-sync`.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,6 +20,8 @@ STORAGE_COUNT="${LEASEGRID_DEVGRID_STORAGE:-3}"
 INTRO_PORT="${LEASEGRID_DEVGRID_INTRO_PORT:-45001}"
 STORAGE_PORT_BASE="${LEASEGRID_DEVGRID_STORAGE_PORT_BASE:-45010}"
 ISSUER_LISTEN="${LEASEGRID_DEVGRID_ISSUER_LISTEN:-127.0.0.1:8700}"
+GATED="${LEASEGRID_GATED:-0}"
+SPEND_PORT_BASE="${LEASEGRID_DEVGRID_SPEND_PORT_BASE:-8710}"
 
 if [[ -x "$ROOT/.venv/bin/tahoe" ]]; then
   export PATH="$ROOT/.venv/bin:$PATH"
@@ -78,7 +83,29 @@ if [[ ! -s "$FURL_FILE" ]]; then
 fi
 FURL="$(cat "$FURL_FILE")"
 
+# Issuer key first: gated storage nodes verify passes with it.
+KEY="$DIR/private/issuer.signing.key"
+if [[ ! -f "$KEY" ]]; then
+  leasegrid-zkap keygen --key-file "$KEY" >/dev/null
+fi
+
 # Storage nodes (no web UI; they are servers, not the product)
+gate_storage_cfg() { # nodedir, spend-port
+  local nodedir="$1" sport="$2" cfg="$1/tahoe.cfg"
+  grep -q "storageserver.plugins.leasegrid-zkap-v0" "$cfg" && return 0
+  # `[storage]` exists in Tahoe's template; plugin lines go right after it.
+  # force_foolscap: Tahoe 1.20 clients take GBS/HTTP whenever it is announced and
+  # HTTP never consults storage plugins, so a gated node must not offer it.
+  sed -i 's/^\[storage\]$/[storage]\nplugins = leasegrid-zkap-v0\nforce_foolscap = true/' "$cfg"
+  {
+    echo
+    echo "[storageserver.plugins.leasegrid-zkap-v0]"
+    echo "issuer-signing-key-file = $KEY"
+    echo "spend-listen = tcp:$sport:interface=127.0.0.1"
+    echo "spend-url = http://127.0.0.1:$sport"
+    echo "spent-set-path = $nodedir/private/spent-set.json"
+  } >> "$cfg"
+}
 for n in $(seq 1 "$STORAGE_COUNT"); do
   port=$((STORAGE_PORT_BASE + n))
   if [[ ! -f "$DIR/storage-$n/tahoe.cfg" ]]; then
@@ -90,14 +117,16 @@ for n in $(seq 1 "$STORAGE_COUNT"); do
       --webport none \
       "$DIR/storage-$n" >/dev/null
   fi
+  if [[ "$GATED" == "1" ]]; then
+    gate_storage_cfg "$DIR/storage-$n" $((SPEND_PORT_BASE + n))
+  elif grep -q "storageserver.plugins.leasegrid-zkap-v0" "$DIR/storage-$n/tahoe.cfg"; then
+    echo "dev-grid: storage-$n was created gated; run with LEASEGRID_GATED=1 or --reset" >&2
+    exit 1
+  fi
   run_tahoe "storage-$n" "$DIR/storage-$n"
 done
 
 # Issuer + faucet
-KEY="$DIR/private/issuer.signing.key"
-if [[ ! -f "$KEY" ]]; then
-  leasegrid-zkap keygen --key-file "$KEY" >/dev/null
-fi
 run_bg issuer leasegrid-zkap issuer --key-file "$KEY" --listen "$ISSUER_LISTEN"
 for _ in $(seq 1 20); do
   curl -fsS "http://$ISSUER_LISTEN/health" >/dev/null 2>&1 && break
@@ -109,6 +138,7 @@ cat <<EOF
 dev-grid up  (state: $DIR)
   introducer   tcp:127.0.0.1:$INTRO_PORT
   storage      $STORAGE_COUNT nodes on 127.0.0.1:$((STORAGE_PORT_BASE + 1)).. (webport none)
+  paid leases  $(if [[ "$GATED" == "1" ]]; then echo "ON — spend HTTP 127.0.0.1:$((SPEND_PORT_BASE + 1)).. ; unpaid uploads refused"; else echo "off — LEASEGRID_GATED=1 to require credit"; fi)
   issuer       http://$ISSUER_LISTEN  (faucet /v0/issue)
   logs         $DIR/logs/
 

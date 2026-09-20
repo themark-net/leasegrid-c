@@ -15,7 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from leasegrid_zkap.client import ClientError, faucet_mint, http_json, load_wallet, save_wallet
+from leasegrid_zkap.client import (
+    ClientError,
+    faucet_mint,
+    http_json,
+    load_wallet,
+    save_wallet,
+    wallet_lock,
+)
 from leasegrid_zkap.constants import DENOMINATION, GIB
 
 from .backend import SyncError, default_home
@@ -316,12 +323,6 @@ class CreditCtl:
         info = self.ping_issuer()
         existing = None
         try:
-            existing = self._read_wallet()
-        except SyncError as exc:
-            if OPAQUE_REJECT in exc.message:
-                raise
-            existing = None
-        try:
             minted = self._mint(self.issuer_url, int(count))
         except SyncError:
             raise
@@ -333,8 +334,17 @@ class CreditCtl:
         live_id = str(info.get("issuer-pubkey-id") or "")
         if minted_id and live_id and minted_id != live_id:
             raise SyncError(REDEEM_FAIL_MSG, REDEEM_FAIL_NEXT)
-        merged = merge_wallets(existing, minted)
-        save_wallet(self.wallet_path, merged)
+        # Read-merge-write under the wallet lock: the Tahoe client may be spending
+        # from this same file right now.
+        with wallet_lock(self.wallet_path):
+            try:
+                existing = self._read_wallet()
+            except SyncError as exc:
+                if OPAQUE_REJECT in exc.message:
+                    raise
+                existing = None
+            merged = merge_wallets(existing, minted)
+            save_wallet(self.wallet_path, merged)
         self._append_recent("Faucet top-up", int(count))
         tokens = len(merged.get("tokens") or [])
         return CreditSnapshot(

@@ -39,10 +39,17 @@ fi
 T="$T/lg-exit"
 rm -rf "$T"; mkdir -p "$T/home" "$T/sync" "$T/home2"
 
-# macOS ships no coreutils timeout(1); perl is everywhere.
+# Resolve the timeout tool now, before PATH is scrubbed for the client: on
+# Windows a bare `timeout` would then hit System32's TIMEOUT.EXE; macOS ships no
+# coreutils timeout(1) at all, and perl is everywhere.
+if timeout --version >/dev/null 2>&1; then
+  TIMEOUT_CMD=("$(command -v timeout)")
+else
+  TIMEOUT_CMD=(perl -e 'alarm shift; exec @ARGV')
+fi
 run_timeout() { # seconds, cmd...
   local s="$1"; shift
-  if command -v timeout >/dev/null 2>&1; then timeout "$s" "$@"; else perl -e 'alarm shift; exec @ARGV' "$s" "$@"; fi
+  "${TIMEOUT_CMD[@]}" "$s" "$@"
 }
 
 # Client env: nothing from the venv; only what a fresh desktop would have.

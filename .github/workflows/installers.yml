@@ -32,6 +32,10 @@ on:
 env:
   QT_QPA_PLATFORM: offscreen
 
+concurrency:
+  group: installers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux:
     runs-on: ubuntu-22.04

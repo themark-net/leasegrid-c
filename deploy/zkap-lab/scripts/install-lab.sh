@@ -42,7 +42,7 @@ fi
 
 if [[ "$COPY_DROPIN" -eq 1 ]]; then
   DEST="$("$PY" -c 'import twisted.plugins, os; print(os.path.dirname(twisted.plugins.__file__))')"
-  cp "$ROOT/twisted/plugins/leasegrid_zkap_dropin.py" "$DEST/"
+  cp "$ROOT/src/twisted/plugins/leasegrid_zkap_dropin.py" "$DEST/"
   rm -f "$DEST/dropin.cache"
   echo "dropin -> $DEST/leasegrid_zkap_dropin.py"
 fi

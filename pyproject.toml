@@ -37,8 +37,9 @@ tahoe = [
 [tool.setuptools]
 package-dir = { "" = "src" }
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# twisted.plugins is listed explicitly (no __init__.py of our own) so the
+# storage-plugin dropin lands in site-packages/twisted/plugins on install.
+packages = ["leasegrid_zkap", "leasegrid_sync", "twisted.plugins"]
 
 
 [tool.pytest.ini_options]

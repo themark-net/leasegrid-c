@@ -21,7 +21,7 @@ import twisted.plugins as _tp  # noqa: E402
 
 plugin_dir = Path(list(_tp.__path__)[0])
 datas = [(str(p), "twisted/plugins") for p in plugin_dir.glob("*.py")]
-datas += [(str(ROOT / "twisted" / "plugins" / "leasegrid_zkap_dropin.py"), "twisted/plugins")]
+datas += [(str(ROOT / "src" / "twisted" / "plugins" / "leasegrid_zkap_dropin.py"), "twisted/plugins")]
 datas += collect_data_files("allmydata")
 datas += collect_data_files("magic_folder")
 datas += collect_data_files("foolscap")

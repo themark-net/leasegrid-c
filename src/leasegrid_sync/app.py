@@ -684,7 +684,7 @@ class MainWindow:
         sl.addWidget(QtWidgets.QLabel("Settings"))
         note = QtWidgets.QLabel(
             "Transport policy: full privacy claims often want Tor; Magic Folder sync "
-            "that feels normal may use LAN/WAN. This is a visible design flag — polish in U4.\n\n"
+            "that feels normal may use LAN/WAN. This is a visible design flag; a transport setting is still to come.\n\n"
             "Coming later\n"
             "· .deb / macOS / Windows installers (Linux AppImage ships now)\n"
             "· Monero (XMR) top-up — U5 (after mint rails)\n\n"

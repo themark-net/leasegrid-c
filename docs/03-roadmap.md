@@ -108,7 +108,7 @@ Unchanged from the architecture decision:
 | Layer | Status |
 |---|---|
 | Architecture spec (00–02, 05) | Draft published |
-| Paid rails (issuer, plugin, eject) | 0b lab PASS (faucet ZKAP, no XMR); 0c–0d open — [`08-lab.md`](08-lab.md) |
+| Paid rails (issuer, plugin, eject) | 0b lab PASS; XMR quote/redeem against FakeChain (S0–S2, S5); live 0c / 0d open — [`08-lab.md`](08-lab.md) |
 | Magic Folder / normal-person client | **UI track locked 2026-09-19** — native + installer; see [`09-ui-track.md`](09-ui-track.md); U0–U5 |
 | Operator package | Not started (local stock-Tahoe bootstrap only) |
 | Abuse / settlement / issuer-compromise designs | Payment, settlement, issuer-compromise: **designed** ([`07-payment.md`](07-payment.md), proposed). Abuse / free reads: flagged; not designed |

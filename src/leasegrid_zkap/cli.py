@@ -154,17 +154,21 @@ def cmd_topup(args) -> int:
 
     tc = _topup_client(args)
     q = tc.quote(int(args.tokens))
-    print("vid            %s" % q["vid"])
-    print("pay exactly    %s XMR  (%d piconero)" % (q["amount_xmr"], q["amount_piconero"]))
-    print("to address     %s" % q["address"])
-    print("uri            %s" % q["pay_uri"])
-    print("price window   until %s (quoted price honoured %ds more after that)"
-          % (time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(q["quote_expires"])),
-             int(q["grace_until"] - q["quote_expires"])))
-    print("confirmations  %d" % q["confirmations_required"])
-    print("denomination   %s" % q.get("denomination", DENOMINATION), flush=True)
+    if args.json:
+        print(json.dumps(q, sort_keys=True), flush=True)
+    else:
+        print("vid            %s" % q["vid"])
+        print("pay exactly    %s XMR  (%d piconero)" % (q["amount_xmr"], q["amount_piconero"]))
+        print("to address     %s" % q["address"])
+        print("uri            %s" % q["pay_uri"])
+        print("price window   until %s (quoted price honoured %ds more after that)"
+              % (time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(q["quote_expires"])),
+                 int(q["grace_until"] - q["quote_expires"])))
+        print("confirmations  %d" % q["confirmations_required"])
+        print("denomination   %s" % q.get("denomination", DENOMINATION), flush=True)
     if not args.wait:
-        print("then:          leasegrid-zkap resume --issuer %s --wallet %s" % (args.issuer, args.wallet))
+        if not args.json:
+            print("then:          leasegrid-zkap resume --issuer %s --wallet %s" % (args.issuer, args.wallet))
         return 0
     deadline = time.time() + float(args.wait)
     last = ""
@@ -334,6 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
     tu.add_argument("--tokens", type=int, required=True, help="GiB-share-months to buy")
     tu.add_argument("--wait", default="", help="seconds to wait for payment + confirmations, then collect")
     tu.add_argument("--poll", default="2", help="seconds between checks while waiting")
+    tu.add_argument("--json", action="store_true", help="print the quote as one JSON object (CI / scripts)")
     tu.set_defaults(func=cmd_topup)
 
     ru = sub.add_parser("resume", help="finish pending top-ups (after a crash or a slow payment)")

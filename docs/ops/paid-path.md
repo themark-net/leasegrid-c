@@ -51,6 +51,23 @@ storage client never consults storage plugins (`storage_client._should_we_use_ht
 This is the concrete form of the 0b note “GBS HTTP has no ZKAP header”. Moving the paid path to
 GBS needs a header/extension upstream; Foolscap is fully supported in 1.20 so the lab runs on it.
 
+## XMR lab path (FakeChain)
+
+Same spend path; credit is bought with a quote instead of the faucet. The issuer
+is still `--chain fake` — no Monero daemon. This is what the installer exit test
+runs (`07-payment.md` S5):
+
+```
+$ leasegrid-zkap topup --issuer http://127.0.0.1:8700 \
+    --wallet "$LEASEGRID_SYNC_HOME/credit-wallet.json" --tokens 20 --json
+$ # POST /v0/fake/pay  {vid, amount_piconero, mine: 2}
+$ leasegrid-sync --credit-status                     20
+$ leasegrid-sync --dogfood-folder /tmp/lg-paid-sync
+U1 dogfood … probe=u1-hello.txt status={… 'size': 34}
+```
+
+`--credit-dogfood` (faucet) is still the U2 window path until U5.
+
 ## Evidence (dev grid, gated, 2026-09-20)
 
 ```

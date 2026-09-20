@@ -335,3 +335,27 @@ def test_spender_drops_unverified_token_already_spent_elsewhere(tmp_path: Path):
             ihttpd.shutdown()
     finally:
         httpd.shutdown()
+
+
+def test_cli_topup_json(issuer, home, capsys):
+    from leasegrid_zkap.cli import main
+
+    state = issuer[0]
+    code = main(
+        [
+            "topup",
+            "--issuer",
+            state.listen,
+            "--wallet",
+            str(home / "credit-wallet.json"),
+            "--tokens",
+            "3",
+            "--json",
+        ]
+    )
+    assert code == 0
+    q = json.loads(capsys.readouterr().out)
+    assert q["tokens_quoted"] == 3
+    assert q["amount_piconero"] == 3 * PRICE
+    assert len(q["vid"]) == 16
+    assert q["address"] and q["pay_uri"].startswith("monero:")

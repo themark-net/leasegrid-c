@@ -66,13 +66,18 @@ from the venv, then drives the bundle with the venv scrubbed from PATH
 
 1. `--version` for the client.
 2. `--join <furl>` → `Connected · introducer up · 3 storage`.
-3. `--credit-dogfood --dogfood-folder` → faucet top-up, then an upload that
-   spends tokens; `/v0/info` on all three storage nodes shows `spent ≥ 1`, and
+3. XMR path (FakeChain): `leasegrid-zkap topup --json` → `POST /v0/fake/pay` →
+   bundled `--credit-status` collects the batch → `--dogfood-folder` spends
+   those tokens. `/v0/info` on all three storage nodes shows `spent ≥ 1`, and
    the twistd banner in `tahoe.log` names the bundled `tahoe` (the *needle*),
-   not a system one.
+   not a system one. Lab faucet (`--credit-dogfood`) stays as the U2 dogfood
+   path; the installer exit test now buys credit the way a real XMR payment
+   will.
 4. `dev-grid.sh --invite` → a second Sync home joins with the short code via the
    grid's local wormhole relay; the joined `tahoe.cfg` carries the invite's
    nickname and encoding.
+5. `--export-recovery` from the paying home, `--restore-recovery` on a third
+   home → Credit re-collects the same XMR batch from the seed.
 
 ## Evidence (CI run 35491091151, 2026-09-20)
 

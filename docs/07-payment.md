@@ -1,6 +1,6 @@
 # 07 — Payment design: XMR → `vid` → ZKAP → settlement
 
-**Status:** Proposed design, 2026-09-20. Covers gate 0c ([`08-lab.md`](08-lab.md)), U5 ([`09-ui-track.md`](09-ui-track.md)), and three roadmap flags: *issuer trust / key rotation / compromise*, *multi-issuer / settlement*, *pricing & denomination UX* ([`03-roadmap.md`](03-roadmap.md)). Companion ADR: [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md).
+**Status:** Proposed design, 2026-09-20. **Implemented against `FakeChain`:** S0 (store/policy), S1 (issuer HTTP), S2 (buyer seed / WAL / CLI), S5 code (dev-grid `--chain fake` + exit-test quote → `/v0/fake/pay` → Credit collects → paid upload → recovery-key re-collect; three-OS installer CI is the remaining exit). **Not started:** S3 `WalletRpcChain` / stagenet, S6 U5 UI (Credit still offers the lab faucet), S7 live gate 0c, S8 epochs, S9 `rsa-bssa-v1`. Covers gate 0c ([`08-lab.md`](08-lab.md)), U5 ([`09-ui-track.md`](09-ui-track.md)), and three roadmap flags: *issuer trust / key rotation / compromise*, *multi-issuer / settlement*, *pricing & denomination UX* ([`03-roadmap.md`](03-roadmap.md)). Companion ADR: [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md). Owner decisions in §14 are still open.
 
 Constraints inherited, not re-argued: corner C ([`00-decision.md`](00-decision.md)), roles and rails ([`01-architecture.md`](01-architecture.md)), wire objects ([`02-objects.md`](02-objects.md)). Where this doc deviates from `02-objects.md` it says so and the ADR carries the decision.
 
@@ -344,12 +344,12 @@ Written so a devbot can take one row at a time; every row names its test and its
 
 | # | Slice | Code | Exit |
 |---|---|---|---|
-| S0 | Voucher store + state machine + effective price + `FakeChain` | `leasegrid_zkap/payment/{store,chain,policy}.py` | unit tests for every §2.2 transition |
-| S1 | Issuer endpoints `/v0/keys`, `/v0/quote`, `/v0/voucher/{vid}`, `/v0/redeem` (idempotent, cached batch), `/v0/ledger`; `--chain fake|wallet-rpc` flag; `--faucet` opt-in | `issuer.py`, `cli.py` | integration: quote → fake pay → redeem twice → identical batch |
-| S2 | Client: `credit_seed`, deterministic vid/tokens, WAL pending record, `topup` + `recover` in `leasegrid_zkap` CLI; wallet keyed by `(issuer, epoch)` | `client.py`, `credit.py` | recovery test: wipe wallet, keep seed, balance returns |
+| S0 | ✅ Voucher store + state machine + effective price + `FakeChain` | `leasegrid_zkap/payment/{store,chain,policy}.py` | unit tests for every §2.2 transition |
+| S1 | ✅ Issuer endpoints `/v0/keys`, `/v0/quote`, `/v0/voucher/{vid}`, `/v0/redeem` (idempotent, cached batch), `/v0/ledger`; `--chain fake|wallet-rpc` flag; `--faucet` opt-in | `issuer.py`, `cli.py` | integration: quote → fake pay → redeem twice → identical batch |
+| S2 | ✅ Client: `credit_seed`, deterministic vid/tokens, WAL pending record, `topup` + `recover` in `leasegrid_zkap` CLI; wallet keyed by `(issuer, epoch)` | `client.py`, `credit.py` | recovery test: wipe wallet, keep seed, balance returns |
 | S3 | `WalletRpcChain` against `monero-wallet-rpc` (view-only, stagenet); poller; SQLite backup/restore script | `payment/chain_walletrpc.py`, `deploy/zkap-lab/` | manual stagenet smoke; restore drill |
 | S4 | Settlement v1: `nodeid`+`epoch` in body, global dedup, conflicts, per-node ledger; `spend-listen` batches nightly | `issuer.py`, `plugin.py` | unit + integration |
-| S5 | dev-grid `--chain fake`; exit-test payment steps | `scripts/dev-grid.sh`, `packaging/exit-test.sh` | three-OS installers workflow green |
+| S5 | ✅ code: dev-grid `--chain fake`; exit-test payment steps (installer CI is the remaining exit) | `scripts/dev-grid.sh`, `packaging/exit-test.sh` | three-OS installers workflow green |
 | S6 | U5 UI: Top up states (§11), Pending list, worker thread, recovery-key copy | `leasegrid_sync/app.py`, `credit.py` | `tests/test_sync_ui.py`; screenshots |
 | S7 | **Gate 0c live** on stagenet | — | dated PASS row in `08-lab.md` |
 | S8 | Epoch rotation + `/v0/exchange` + node key pull | `crypto.py`, `plugin.py` | burn-epoch integration test |

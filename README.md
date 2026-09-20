@@ -20,7 +20,7 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 **U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md).  
 **U3:** Installers for Linux (AppImage), macOS (.dmg) and Windows (setup.exe / zip) bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](docs/ops/installers.md).  
 **U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md).  
-**Paid path:** with `LEASEGRID_GATED=1` storage refuses unpaid leases and the client spends Credit per upload: [`docs/ops/paid-path.md`](docs/ops/paid-path.md) (read the denomination finding). XMR top-up (U5) still open.
+**Paid path:** with `LEASEGRID_GATED=1` storage refuses unpaid leases and the client spends Credit per upload: [`docs/ops/paid-path.md`](docs/ops/paid-path.md) (read the denomination finding). XMR quote → redeem runs against a FakeChain in CI ([`docs/07-payment.md`](docs/07-payment.md) S0–S2, S5); the U5 window and live stagenet (gate 0c) are still open.
 
 ## Run it locally (client + server, one machine)
 
@@ -43,7 +43,7 @@ Join accepts a furl or a `tahoe invite` code and creates and runs a Tahoe client
 4. [`docs/design/`](docs/design/) — U0 wireframes (10–14) + U2 Credit handoff (15–19)
 5. [`docs/01-architecture.md`](docs/01-architecture.md) — roles and rails
 6. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
-7. [`docs/07-payment.md`](docs/07-payment.md) — XMR → `vid` → ZKAP → settlement design (gate 0c / U5; proposed)
+7. [`docs/07-payment.md`](docs/07-payment.md) — XMR → `vid` → ZKAP → settlement (gate 0c / U5; FakeChain S0–S2, S5 in tree; live 0c not PASS)
 8. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
 9. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
 10. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet

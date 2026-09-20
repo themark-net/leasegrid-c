@@ -168,11 +168,12 @@ def _recovery_headless(args, nodedir: Path) -> int:
         if args.export_recovery:
             bundle = ctl.export(Path(args.export_recovery).expanduser(), passphrase)
             print(
-                "recovery-export path=%s folders=%d wallet=%s encrypted=%s"
+                "recovery-export path=%s folders=%d wallet=%s credit-seed=%s encrypted=%s"
                 % (
                     args.export_recovery,
                     len(bundle.folders),
                     "yes" if bundle.wallet else "no",
+                    "yes" if bundle.credit_seed else "no",
                     "yes" if passphrase else "NO",
                 )
             )
@@ -182,12 +183,16 @@ def _recovery_headless(args, nodedir: Path) -> int:
             passphrase,
             progress=lambda text: print(text, file=sys.stderr),
         )
+        credit = str(result.credit_recovered)
+        if result.credit_recover_error:
+            credit += " error=%s" % result.credit_recover_error
         print(
-            "recovery-restore folders=%s skipped=%s wallet=%s author=%s grid=%s"
+            "recovery-restore folders=%s skipped=%s wallet=%s credit=%s author=%s grid=%s"
             % (
                 ",".join(result.folders) or "-",
                 ",".join(result.skipped) or "-",
                 "restored" if result.wallet_restored else "kept",
+                credit,
                 result.author_name,
                 result.grid,
             )

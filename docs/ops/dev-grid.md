@@ -26,6 +26,8 @@ booting on a current resolver. Needs `python3-dev` + a C compiler for `netifaces
 
 ```bash
 scripts/dev-grid.sh            # or --reset to wipe previous state
+# --chain fake is the default (XMR quote → /v0/fake/pay → redeem).
+# --chain none disables quotes (issuer still serves the lab faucet).
 ```
 
 Prints the invite furl and stays in the foreground. Ctrl-C stops everything.
@@ -45,6 +47,11 @@ leasegrid-sync
    starts `tahoe run`, and waits for the introducer. Chip:
    **Connected · introducer up · 3 storage**.
 2. **Credit** → **Top up** → **Request faucet credit**. Balance updates.
+   XMR (FakeChain, no Monero daemon) from another shell:
+   `leasegrid-zkap topup --issuer http://127.0.0.1:8700 --wallet "$LEASEGRID_SYNC_HOME/credit-wallet.json" --tokens 20 --json`
+   then `POST /v0/fake/pay` with that `vid` and `mine: 2`, then **Credit → Retry**
+   (or `leasegrid-sync --credit-status`). U5 will put this quote/pay/pending
+   flow in the window.
 3. **Folders** → **Add folder**. Drop a file in; the row goes **Up to date**.
 4. Tray **Quit** stops Magic Folder and the Tahoe client Sync started.
    Relaunching `leasegrid-sync` restarts them and lands on Folders.
@@ -103,6 +110,7 @@ owns the process until Quit. Encoding for a Sync-created client is
 | Name | Purpose |
 |------|---------|
 | `LEASEGRID_DEVGRID_DIR` | dev-grid state (default `~/.local/share/leasegrid-devgrid`) |
+| `LEASEGRID_DEVGRID_CHAIN` | `fake` (default) or `none`; same as `--chain` |
 | `LEASEGRID_DEVGRID_STORAGE` | number of storage nodes (default 3) |
 | `LEASEGRID_ISSUER_URL` | issuer for the Credit place (dev-grid: `http://127.0.0.1:8700`) |
 | `LEASEGRID_SYNC_HOME` | Sync data: Tahoe client, Magic Folder config, wallet, logs |
@@ -131,5 +139,7 @@ go back).
 
 ## Not in this slice
 
-XMR top-up (U5). Installers for all three OSes are in
+U5 window states for XMR (quote / pay URI / pending / confirmed). The rail
+itself is in tree against FakeChain — see [`07-payment.md`](../07-payment.md)
+S5 and [`paid-path.md`](paid-path.md). Installers for all three OSes are in
 [`installers.md`](installers.md).

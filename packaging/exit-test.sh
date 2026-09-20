@@ -12,9 +12,10 @@
 #            "dist/Leasegrid Sync.app/Contents/MacOS/leasegrid-sync"
 #            dist/leasegrid-sync/leasegrid-sync-cli.exe
 #
-# Proves: --version; join by furl -> Connected; credit top-up + paid upload
-# (tokens spent on every storage node); a second home joins by short invite code
-# through the grid's local wormhole relay.
+# Proves: --version; join by furl -> Connected; XMR quote → /v0/fake/pay →
+# Credit collects → paid upload (tokens spent on every storage node); a second
+# home joins by short invite code; a third home restores the recovery key and
+# re-collects the XMR batch.
 set -euo pipefail
 
 NEEDLE="$1"; shift
@@ -37,7 +38,7 @@ else
   VENV_BIN="$ROOT/.venv/bin"
 fi
 T="$T/lg-exit"
-rm -rf "$T"; mkdir -p "$T/home" "$T/sync" "$T/home2"
+rm -rf "$T"; mkdir -p "$T/home" "$T/sync" "$T/home2" "$T/home3"
 
 # Resolve the timeout tool now, before PATH is scrubbed for the client: on
 # Windows a bare `timeout` would then hit System32's TIMEOUT.EXE; macOS ships no
@@ -55,10 +56,11 @@ run_timeout() { # seconds, cmd...
 # Client env: nothing from the venv; only what a fresh desktop would have.
 # stdout goes to a file, never a pipe: if the client is killed by the timeout
 # while a child still holds the pipe, `| tee` would wait for EOF forever.
-client() { # SYNC_HOME=<dir> [WORMHOLE=<url>] OUT=<file> client args...
+client() { # SYNC_HOME=<dir> [WORMHOLE=<url>] [PASSPHRASE=<pw>] OUT=<file> client args...
   local rc=0
   local vars=(LEASEGRID_SYNC_HOME="$SYNC_HOME" LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 QT_QPA_PLATFORM=offscreen)
   [[ -n "${WORMHOLE:-}" ]] && vars+=(LEASEGRID_WORMHOLE_SERVER="$WORMHOLE")
+  [[ -n "${PASSPHRASE:-}" ]] && vars+=(LEASEGRID_RECOVERY_PASSPHRASE="$PASSPHRASE")
   if [[ "$OS" == windows ]]; then
     # env -i would drop SYSTEMROOT & co. that Windows executables need; scrub PATH instead.
     (export PATH="/c/Windows/System32:/c/Windows" "${vars[@]}"; run_timeout 300 "${CLIENT[@]}" "$@") >"$OUT" || rc=$?
@@ -96,9 +98,34 @@ echo "==> join by furl"
 SYNC_HOME="$T/home" OUT="$T/join.out" client --join "$FURL"
 grep -q "^Connected" "$T/join.out"
 
-echo "==> credit top-up, then a paid upload"
-SYNC_HOME="$T/home" OUT="$T/dogfood.out" client --dogfood-folder "$T/sync" --credit-dogfood --credit-tier medium
-grep -q "^U2 credit-dogfood" "$T/dogfood.out"
+if [[ "$OS" == windows ]]; then
+  PY="$VENV_BIN/python.exe"
+  ZKAP="$VENV_BIN/leasegrid-zkap.exe"
+else
+  PY="$VENV_BIN/python"
+  ZKAP="$VENV_BIN/leasegrid-zkap"
+fi
+
+echo "==> XMR quote → fake pay → Credit collects"
+WALLET="$T/home/credit-wallet.json"
+"$ZKAP" topup --issuer http://127.0.0.1:8700 --wallet "$WALLET" --tokens 20 --json > "$T/quote.json"
+"$PY" - "$T/quote.json" <<'PY'
+import json, sys
+from leasegrid_zkap.client import http_json
+q = json.load(open(sys.argv[1], encoding="utf-8"))
+http_json(
+    "http://127.0.0.1:8700/v0/fake/pay",
+    "POST",
+    {"vid": q["vid"], "amount_piconero": q["amount_piconero"], "mine": 2},
+)
+print("paid", q["vid"], q["amount_piconero"])
+PY
+SYNC_HOME="$T/home" OUT="$T/credit.out" client --credit-status
+grep -q "^20" "$T/credit.out"
+grep -q "XMR top-up" "$T/home/credit-recent.json"
+
+echo "==> paid upload with those XMR tokens"
+SYNC_HOME="$T/home" OUT="$T/dogfood.out" client --dogfood-folder "$T/sync"
 grep -q "^U1 dogfood" "$T/dogfood.out"
 grep -q "$NEEDLE" "$T/home/logs/tahoe.log" || { echo "tahoe.log lacks '$NEEDLE' (did a system tahoe run?)"; head -5 "$T/home/logs/tahoe.log"; exit 1; }
 for p in 8711 8712 8713; do
@@ -116,5 +143,15 @@ SYNC_HOME="$T/home2" WORMHOLE="$RELAY" OUT="$T/join2.out" client --join "$CODE"
 grep -q "^Connected" "$T/join2.out"
 grep -q "^nickname = ci-code" "$T/home2/tahoe/tahoe.cfg"
 grep -q "^shares.needed = 2" "$T/home2/tahoe/tahoe.cfg"
+
+echo "==> third home restores the recovery key and re-collects the XMR batch"
+PASSPHRASE=ci-exit SYNC_HOME="$T/home" OUT="$T/export.out" client --export-recovery "$T/key.leasegrid-recovery"
+grep -q "credit-seed=yes" "$T/export.out"
+PASSPHRASE=ci-exit SYNC_HOME="$T/home3" OUT="$T/restore.out" client --restore-recovery "$T/key.leasegrid-recovery"
+# spent tokens are missing from the snapshot; recover fills them from the seed
+grep -E -q 'credit=[1-9]' "$T/restore.out" || { echo "restore did not re-collect spent credit"; cat "$T/restore.out"; exit 1; }
+SYNC_HOME="$T/home3" OUT="$T/credit3.out" client --credit-status
+# 20 XMR tokens again: leftover snapshot + recovered spent ones
+grep -q "^20" "$T/credit3.out"
 
 echo "==> exit test PASS ($OS)"

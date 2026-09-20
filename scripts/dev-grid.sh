@@ -5,6 +5,7 @@
 #
 #   scripts/dev-grid.sh            # start (reuses state in $LEASEGRID_DEVGRID_DIR)
 #   scripts/dev-grid.sh --reset    # wipe state, then start
+#   scripts/dev-grid.sh --chain fake|none   # payment detector (default: fake)
 #   scripts/dev-grid.sh --furl     # print the invite furl of a running grid and exit
 #   scripts/dev-grid.sh --invite [NICK]   # (grid running, other shell) print a one-time
 #                                         # short invite code and wait for the joiner
@@ -91,8 +92,30 @@ for bin in tahoe leasegrid-zkap; do
   fi
 done
 
-if [[ "${1:-}" == "--reset" ]]; then
-  rm -rf "$DIR"
+CHAIN="${LEASEGRID_DEVGRID_CHAIN:-fake}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --reset)
+      rm -rf "$DIR"
+      shift
+      ;;
+    --chain)
+      CHAIN="${2:-}"
+      shift 2 || true
+      ;;
+    --chain=*)
+      CHAIN="${1#--chain=}"
+      shift
+      ;;
+    *)
+      echo "dev-grid: unknown argument: $1 (try --reset, --chain fake|none, --furl, --invite)" >&2
+      exit 1
+      ;;
+  esac
+done
+if [[ "$CHAIN" != "fake" && "$CHAIN" != "none" ]]; then
+  echo "dev-grid: --chain must be fake or none (got '$CHAIN')" >&2
+  exit 1
 fi
 mkdir -p "$DIR/logs" "$DIR/private"
 
@@ -191,9 +214,8 @@ for n in $(seq 1 "$STORAGE_COUNT"); do
   run_tahoe "storage-$n" "$DIR/storage-$n"
 done
 
-# Issuer: faucet on (lab), fake payment chain on (quote → /v0/fake/pay → redeem
-# is the XMR flow with the chain simulated; LEASEGRID_DEVGRID_CHAIN=none disables).
-CHAIN="${LEASEGRID_DEVGRID_CHAIN:-fake}"
+# Issuer: faucet on (lab), payment chain from --chain / LEASEGRID_DEVGRID_CHAIN
+# (fake = quote → /v0/fake/pay → redeem; none = quotes 503).
 run_bg issuer leasegrid-zkap issuer --key-file "$KEY" --listen "$ISSUER_LISTEN" \
   --faucet --chain "$CHAIN" --db "$DIR/private/issuer-vouchers.sqlite" --poll-interval 1
 for _ in $(seq 1 20); do

@@ -56,3 +56,31 @@ def test_credit_status_fail_closed(tmp_path, monkeypatch, capsys):
     assert code == 1
     assert "FAIL" in err
     assert "could not load credit balance" in err
+
+
+def test_credit_status_collects_pending_xmr_topup(tmp_path, monkeypatch, capsys):
+    """Exit-test path: quote + fake pay, then --credit-status collects the batch."""
+    from leasegrid_zkap.client import http_json
+    from leasegrid_zkap.crypto import generate_signing_key
+    from leasegrid_zkap.issuer import start_issuer
+    from leasegrid_zkap.payment import FakeChain, PricePolicy
+    from leasegrid_zkap.payment.topup import TopUpClient
+
+    price = 6 * 10**9
+    home = tmp_path / "home"
+    home.mkdir()
+    state, httpd = start_issuer(
+        generate_signing_key(), "127.0.0.1:0", chain=FakeChain(), policy=PricePolicy(price_piconero=price), faucet=False
+    )
+    try:
+        monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+        monkeypatch.setenv("LEASEGRID_ISSUER_URL", state.listen)
+        tc = TopUpClient(state.listen, home / "credit-wallet.json")
+        q = tc.quote(4)
+        http_json(state.listen + "/v0/fake/pay", "POST", {"vid": q["vid"], "amount_piconero": 4 * price, "mine": 2})
+        code = main(["--credit-status"])
+        out = capsys.readouterr().out
+        assert code == 0
+        assert out.startswith("4\t")
+    finally:
+        httpd.shutdown()

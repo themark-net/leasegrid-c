@@ -74,6 +74,28 @@ from the venv, then drives the bundle with the venv scrubbed from PATH
    grid's local wormhole relay; the joined `tahoe.cfg` carries the invite's
    nickname and encoding.
 
+## Evidence (CI run 35491091151, 2026-09-20)
+
+Same script, three runners, client side is the bundle only:
+
+```
+macos-15-intel   ==> built …/dist/Leasegrid_Sync-0.1.0-macos-x86_64.dmg  (85 MB)
+                 Connected	introducer up · 3 storage	/Users/runner/work/_temp/lg-exit/home/tahoe
+                 U2 credit-dogfood before=0 after=50 …   U1 dogfood … 'size': 34
+                 Connected	introducer up · 3 storage	/Users/runner/work/_temp/lg-exit/home2/tahoe   (short code)
+                 ==> exit test PASS (macos)
+windows-2022     ==> built …/dist/Leasegrid_Sync-0.1.0-win64.zip (104 MB), …-win64-setup.exe (86 MB)
+                 Connected	introducer up · 3 storage	D:\a\_temp\lg-exit\home\tahoe
+                 U2 credit-dogfood before=0 after=50 …   U1 dogfood folder=D:\a\_temp\lg-exit\sync …
+                 Connected	introducer up · 3 storage	D:\a\_temp\lg-exit\home2\tahoe   (short code)
+                 ==> exit test PASS (windows)
+ubuntu-22.04     ==> built …/dist/Leasegrid_Sync-0.1.0-x86_64.AppImage (70 MB)
+                 ==> exit test PASS (linux)
+```
+
+The unit suite (`ci.yml`) runs on the same three runners; `wallet_lock`'s
+msvcrt path and the `.bat`-wrapped fake `tahoe` are exercised on Windows there.
+
 ## Trust and signing (not done)
 
 - **Linux**: unsigned AppImage; verify the SHA-256 from the release page.

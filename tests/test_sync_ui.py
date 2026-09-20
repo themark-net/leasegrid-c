@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -380,6 +381,65 @@ def test_credit_load_fail_retry(ui: MainWindow, fake_credit: FakeCredit):
     ui.credit_retry_btn.click()
     assert not ui.credit_body.isHidden()
     assert "About 8 GiB" in ui.credit_remaining.text()
+
+
+def test_credit_tab_survives_non_sync_error(ui: MainWindow, fake_credit: FakeCredit):
+    """A backend surprise (not SyncError) must become a FAIL banner, never reach Qt.
+
+    PyQt5 aborts the process on any exception that escapes a slot; the Credit
+    tab's currentChanged slot used to let anything but SyncError through.
+    """
+    _enter(ui)
+    with patch.object(
+        fake_credit, "load_balance", side_effect=RuntimeError("Remote end closed connection")
+    ):
+        ui.tabs.setCurrentWidget(ui.credit_tab)
+    assert not ui.credit_error.isHidden()
+    text = ui.credit_error.text()
+    assert text.startswith("FAIL")
+    assert "RuntimeError" in text and "Remote end closed" in text
+    assert "Next:" in text and "sync-ui.log" in text
+    assert not ui.credit_retry_btn.isHidden()
+    assert ui.credit_body.isHidden()
+    log = ui.home / "logs" / "sync-ui.log"
+    assert log.is_file()
+    assert "RuntimeError: Remote end closed connection" in log.read_text(encoding="utf-8")
+    ui.credit_retry_btn.click()
+    assert not ui.credit_body.isHidden()
+    assert "About 8 GiB" in ui.credit_remaining.text()
+
+
+def test_excepthook_keeps_window_alive_and_shows_review(ui: MainWindow):
+    from leasegrid_sync.app import install_excepthook
+
+    _enter(ui)
+    saved = sys.excepthook
+    try:
+        install_excepthook(ui)
+        assert sys.excepthook is not saved
+        try:
+            raise ValueError("slot blew up")
+        except ValueError as exc:
+            sys.excepthook(type(exc), exc, exc.__traceback__)
+        box = ui.win.findChild(PyQt5.QtWidgets.QMessageBox, "unexpectedReview")
+        assert box is not None and box.isVisible()
+        assert not box.isModal()
+        assert "ValueError" in box.informativeText()
+        assert "slot blew up" in box.informativeText()
+        assert "sync-ui.log" in box.informativeText()
+        assert ui.status_chip.text().startswith("REVIEW")
+        assert (ui.home / "logs" / "sync-ui.log").is_file()
+        # a second failure reuses the visible box instead of stacking dialogs
+        try:
+            raise KeyError("again")
+        except KeyError as exc:
+            sys.excepthook(type(exc), exc, exc.__traceback__)
+        boxes = ui.win.findChildren(PyQt5.QtWidgets.QMessageBox, "unexpectedReview")
+        assert len(boxes) == 1
+        assert "KeyError" in boxes[0].informativeText()
+        boxes[0].hide()
+    finally:
+        sys.excepthook = saved
 
 
 def test_balance_updates_after_redeem(ui: MainWindow, fake_credit: FakeCredit):

@@ -197,3 +197,43 @@ def test_recent_refusal_reads_spender_events(tmp_path: Path):
         {"title": "Upload refused: out of credit", "tokens": 0, "ts": time.time()},
     ]}))
     assert ctl.recent_refusal() is None
+
+
+def _serve_bytes(payload: bytes):
+    """One-shot TCP server: accept, send payload (maybe nothing), close."""
+    import socket
+    import threading
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def run():
+        conn, _ = srv.accept()
+        try:
+            conn.recv(4096)
+            if payload:
+                conn.sendall(payload)
+        finally:
+            conn.close()
+            srv.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    return "http://127.0.0.1:%d" % srv.getsockname()[1]
+
+
+def test_ping_issuer_wraps_non_http_service_as_sync_error(tmp_path: Path):
+    """Issuer URL pointing at a non-HTTP port (RemoteDisconnected) is a FAIL, not a crash."""
+    url = _serve_bytes(b"")
+    ctl = CreditCtl(home=tmp_path, issuer_url=url)
+    with pytest.raises(SyncError) as exc:
+        ctl.ping_issuer()
+    assert "could not load credit balance" in exc.value.message
+
+
+def test_ping_issuer_wraps_non_json_body_as_sync_error(tmp_path: Path):
+    url = _serve_bytes(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: 6\r\n\r\n<html>")
+    ctl = CreditCtl(home=tmp_path, issuer_url=url)
+    with pytest.raises(SyncError) as exc:
+        ctl.ping_issuer()
+    assert "could not load credit balance" in exc.value.message

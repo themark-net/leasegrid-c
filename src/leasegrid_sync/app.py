@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Optional
 
@@ -64,6 +65,50 @@ def _qt_api():
     from PyQt5 import QtCore, QtGui, QtWidgets
 
     return QtCore, QtGui, QtWidgets
+
+
+UI_LOG_NAME = "sync-ui.log"
+UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
+
+
+def log_exception(home: Path, where: str, exc: BaseException) -> Path:
+    """Append a traceback to <home>/logs/sync-ui.log; never raises."""
+    path = Path(home) / "logs" / UI_LOG_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), where))
+            f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+            f.write("\n")
+    except OSError:
+        pass
+    return path
+
+
+def unexpected_error(exc: BaseException, what: str) -> SyncError:
+    """Wrap a non-SyncError so it can be shown as a FAIL banner instead of aborting."""
+    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+    msg = "%s Unexpected error: %s%s" % (what, type(exc).__name__, (" — " + detail) if detail else "")
+    return SyncError(msg, UNEXPECTED_NEXT)
+
+
+def install_excepthook(ui: "MainWindow") -> None:
+    """Keep the window alive on an uncaught exception in a Qt slot.
+
+    With the default sys.excepthook, PyQt5 turns any Python exception that
+    reaches a slot boundary into qFatal(): the app aborts with no UI. This hook
+    logs the traceback and shows one REVIEW box instead.
+    """
+
+    def hook(exc_type, exc, tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc, tb)
+            return
+        path = log_exception(ui.home, "uncaught", exc)
+        sys.__excepthook__(exc_type, exc, tb)
+        ui.show_unexpected(exc, path)
+
+    sys.excepthook = hook
 
 
 class TopUpDialog:
@@ -757,6 +802,29 @@ class MainWindow:
     def show_join_error(self, err: SyncError) -> None:
         self.join_error.setText(err.banner())
 
+    def show_unexpected(self, exc: BaseException, log_path: Optional[Path] = None) -> None:
+        """One non-modal REVIEW box for an exception no place-specific handler caught."""
+        QtWidgets = self.QtWidgets
+        err = unexpected_error(exc, "Leasegrid Sync kept running, but the last action failed.")
+        self.status_chip.setText("REVIEW  " + err.message.split(" Unexpected error: ")[-1])
+        box = getattr(self, "_unexpected_box", None)
+        if box is not None and box.isVisible():
+            box.setInformativeText(err.banner())
+            return
+        box = QtWidgets.QMessageBox(self.win)
+        box.setObjectName("unexpectedReview")
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setWindowTitle("REVIEW")
+        box.setText(REVIEW_HEAD.split(" — ")[0] + " — something went wrong")
+        text = err.banner()
+        if log_path is not None:
+            text += "\nLog: %s" % log_path
+        box.setInformativeText(text)
+        box.addButton("Close", QtWidgets.QMessageBox.AcceptRole)
+        box.setModal(False)
+        box.show()
+        self._unexpected_box = box
+
     def show_folder_error(self, err: SyncError, open_credit: bool = False) -> None:
         self.folder_error.setText(err.banner())
         self.open_credit_btn.setVisible(open_credit)
@@ -947,12 +1015,23 @@ class MainWindow:
         try:
             snap = self.credit.load_balance()
         except SyncError as exc:
-            self.credit_loading.hide()
-            self.credit_error.setText(exc.banner())
-            self.credit_error.show()
-            self.credit_retry_btn.show()
+            self._show_credit_error(exc)
+            return
+        except Exception as exc:  # a slot must never let this reach Qt (PyQt5 aborts)
+            self._log_exception("load_credit", exc)
+            self._show_credit_error(unexpected_error(exc, "could not load credit balance."))
             return
         self.apply_credit_snapshot(snap)
+
+    def _show_credit_error(self, exc: SyncError) -> None:
+        self.credit_loading.hide()
+        self.credit_body.hide()
+        self.credit_error.setText(exc.banner())
+        self.credit_error.show()
+        self.credit_retry_btn.show()
+
+    def _log_exception(self, where: str, exc: BaseException) -> Path:
+        return log_exception(self.home, where, exc)
 
     def apply_credit_snapshot(self, snap: CreditSnapshot, success_note: str = "") -> None:
         self._credit_loaded = True
@@ -1041,6 +1120,7 @@ def run_app(
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
+    install_excepthook(ui)
     ui.show()
     ui.QtWidgets.QApplication.processEvents()
     try:

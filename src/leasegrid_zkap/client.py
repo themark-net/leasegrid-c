@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -39,9 +40,16 @@ def http_json(url: str, method: str = "GET", body: dict | None = None, timeout: 
         raise ClientError("%s %s -> %s %s" % (method, url, e.code, err_body)) from e
     except URLError as e:
         raise ClientError("unreachable %s: %s" % (url, e.reason)) from e
+    except (OSError, HTTPException) as e:
+        # Not URLError: read timeouts, resets, a non-HTTP service on the port
+        # (RemoteDisconnected), truncated bodies. Callers see one error type.
+        raise ClientError("%s %s failed: %s: %s" % (method, url, type(e).__name__, e)) from e
     if not payload:
         return {}
-    return json.loads(payload.decode("utf-8"))
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        raise ClientError("%s %s returned non-JSON: %s" % (method, url, e)) from e
 
 
 def faucet_mint(issuer_url: str, count: int = 8) -> dict:

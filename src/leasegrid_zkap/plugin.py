@@ -84,6 +84,14 @@ class LeasegridZKAPPlugin:
 
         key = load_signing_key(key_file)
         gate = LeaseGate(key, nodeid=nodeid, spent=SpentSet(spent_path) if spent_path else SpentSet())
+        issuer_url = _cfg(configuration, "issuer-url") or _cfg(configuration, "issuer_url")
+        if issuer_url:
+            try:
+                from .client import http_json
+
+                gate.pull_keys(http_json(str(issuer_url).rstrip("/") + "/v0/keys"), signing_keys={0: key})
+            except Exception as exc:
+                print("leasegrid-zkap: key pull from %s failed: %s" % (issuer_url, exc))
         install_on_storage_server(ss, gate)
         if listen:
             url, _httpd = start_storage_http(gate, listen)

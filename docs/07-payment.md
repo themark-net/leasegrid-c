@@ -1,6 +1,6 @@
 # 07 — Payment design: XMR → `vid` → ZKAP → settlement
 
-**Status:** Proposed design, 2026-09-20. **Implemented against `FakeChain`:** S0–S2, S5 (three-OS installer CI green 2026-09-20: quote → `/v0/fake/pay` → Credit collects → paid upload → recovery-key re-collect), S6 U5 UI (Top up quotes XMR, Pending list, recovery-key credit-seed copy). **S3 adapter (CI, no monerod):** `WalletRpcChain` + SQLite backup/restore. **Not started:** S3 live stagenet smoke, S7 live gate 0c, S8 epochs, S9 `rsa-bssa-v1`. Covers gate 0c ([`08-lab.md`](08-lab.md)), U5 ([`09-ui-track.md`](09-ui-track.md)), and three roadmap flags: *issuer trust / key rotation / compromise*, *multi-issuer / settlement*, *pricing & denomination UX* ([`03-roadmap.md`](03-roadmap.md)). Companion ADR: [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md). Owner decisions in §14 are still open.
+**Status:** Proposed design, 2026-09-20. **Implemented against `FakeChain`:** S0–S2, S5 (three-OS installer CI green 2026-09-20: quote → `/v0/fake/pay` → Credit collects → paid upload → recovery-key re-collect), S6 U5 UI (Top up quotes XMR, Pending list, recovery-key credit-seed copy). **S3 adapter (CI, no monerod):** `WalletRpcChain` + SQLite backup/restore. **S8:** epoch rotate / burn + `POST /v0/exchange` + node `pull_keys`. **Not started:** S3 live stagenet smoke, S7 live gate 0c, S9 `rsa-bssa-v1`. Covers gate 0c ([`08-lab.md`](08-lab.md)), U5 ([`09-ui-track.md`](09-ui-track.md)), and three roadmap flags: *issuer trust / key rotation / compromise*, *multi-issuer / settlement*, *pricing & denomination UX* ([`03-roadmap.md`](03-roadmap.md)). Companion ADR: [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md). Owner decisions in §14 are still open.
 
 Constraints inherited, not re-argued: corner C ([`00-decision.md`](00-decision.md)), roles and rails ([`01-architecture.md`](01-architecture.md)), wire objects ([`02-objects.md`](02-objects.md)). Where this doc deviates from `02-objects.md` it says so and the ADR carries the decision.
 
@@ -352,7 +352,7 @@ Written so a devbot can take one row at a time; every row names its test and its
 | S5 | ✅ dev-grid `--chain fake`; exit-test payment steps | `scripts/dev-grid.sh`, `packaging/exit-test.sh` | three-OS installers workflow green 2026-09-20 |
 | S6 | ✅ U5 UI: Top up quote → pay → poll; Pending list; recovery-key credit-seed copy | `leasegrid_sync/app.py`, `credit.py` | `tests/test_sync_ui.py` (Continue/pay/issued/underpaid/pending/export); faucet path kept for unpaid grids |
 | S7 | **Gate 0c live** on stagenet | — | dated PASS row in `08-lab.md` |
-| S8 | Epoch rotation + `/v0/exchange` + node key pull | `crypto.py`, `plugin.py` | burn-epoch integration test |
+| S8 | ✅ Epoch rotation + `/v0/exchange` + node key pull | `issuer.py`, `payment/store.py`, `gate.py`, `plugin.py` | `tests/test_zkap_payment_epochs.py` (rotate, 410, burn+exchange, pull drops burnt) |
 | S9 | `rsa-bssa-v1` scheme (RFC 9474 via `cryptography`), `pk_tok` spend binding, node verifies with public key only | `crypto.py`, `plugin.py`, `client.py` | **Gate 0e** dated PASS; then and only then a second paid operator |
 
 S0–S2 and S4–S6 need no Monero at all. S3 and S7 need a stagenet wallet and an afternoon of block time.

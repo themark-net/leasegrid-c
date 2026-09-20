@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from http.server import ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import quote as urlquote
@@ -17,7 +18,7 @@ from urllib.parse import quote as urlquote
 from challenge_bypass_ristretto import SigningKey
 
 from .constants import DENOMINATION, TOKEN_EPOCH_V0
-from .crypto import CryptoError, issuer_info, sign_blinded
+from .crypto import CryptoError, generate_signing_key, issuer_info, sign_blinded
 from .httpjson import make_handler, parse_listen, serve_background
 from .payment import ChainWatcher, FakeChain, PricePolicy, VoucherStore
 from .payment.chain_walletrpc import WalletRpcChain
@@ -65,6 +66,8 @@ class IssuerState:
         self.store = store or VoucherStore()
         self.faucet = faucet
         self.listen = ""
+        self._epoch_keys: dict[int, SigningKey] = {}
+        self._seed_epochs()
 
     @property
     def chain_kind(self) -> str:
@@ -91,19 +94,55 @@ class IssuerState:
                 "price_piconero": self.policy.price_piconero,
             }
 
+    def _key_b64(self, key: SigningKey) -> str:
+        v = key.encode_base64()
+        return v.decode("ascii") if isinstance(v, bytes) else str(v)
+
+    def _seed_epochs(self) -> None:
+        rows = self.store.list_epochs()
+        if not rows:
+            info = issuer_info(self.key)
+            self.store.seed_epoch(
+                TOKEN_EPOCH_V0,
+                scheme=SCHEME_V0,
+                public_key=info["public-key"],
+                issuer_pubkey_id=info["issuer-pubkey-id"],
+                signing_key=self._key_b64(self.key),
+            )
+            self._epoch_keys[TOKEN_EPOCH_V0] = self.key
+            return
+        for row in rows:
+            raw = row.get("signing_key")
+            if raw:
+                from challenge_bypass_ristretto import SigningKey as SK
+
+                blob = raw.encode("ascii") if isinstance(raw, str) else raw
+                self._epoch_keys[int(row["epoch"])] = SK.decode_base64(blob)
+        if TOKEN_EPOCH_V0 not in self._epoch_keys:
+            self._epoch_keys[TOKEN_EPOCH_V0] = self.key
+
+    def epoch_keys(self) -> dict[int, SigningKey]:
+        return dict(self._epoch_keys)
+
     def keys(self) -> dict:
-        return {
-            "current": TOKEN_EPOCH_V0,
-            "epochs": [
+        now = time.time()
+        cur = self.store.current_issuing(now)
+        epochs = []
+        for e in self.store.list_epochs():
+            epochs.append(
                 {
-                    "epoch": TOKEN_EPOCH_V0,
-                    "scheme": SCHEME_V0,
-                    "public-key": self.info["public-key"],
-                    "issuer-pubkey-id": self.info["issuer-pubkey-id"],
-                    "issue_until": None,
-                    "accept_until": None,
+                    "epoch": int(e["epoch"]),
+                    "scheme": e["scheme"],
+                    "public-key": e["public_key"],
+                    "issuer-pubkey-id": e["issuer_pubkey_id"],
+                    "valid_from": e.get("valid_from"),
+                    "issue_until": e.get("issue_until"),
+                    "accept_until": e.get("accept_until"),
                 }
-            ],
+            )
+        return {
+            "current": int(cur["epoch"]) if cur else TOKEN_EPOCH_V0,
+            "epochs": epochs,
             "denomination": DENOMINATION,
             "price_piconero": self.policy.price_piconero,
             "quote_ttl": self.policy.quote_ttl,
@@ -112,8 +151,51 @@ class IssuerState:
             "chain": self.chain_kind,
         }
 
-    def sign(self, blinded: list[str]) -> dict:
-        out = sign_blinded(self.key, blinded)
+    def rotate(self, now: Optional[float] = None) -> dict:
+        """Close the current issue window and open the next epoch with a new key."""
+        now = time.time() if now is None else now
+        cur = self.store.current_issuing(now)
+        if cur is not None:
+            self.store.close_issue(int(cur["epoch"]), now)
+            next_id = int(cur["epoch"]) + 1
+        else:
+            have = [int(e["epoch"]) for e in self.store.list_epochs()]
+            next_id = (max(have) + 1) if have else 1
+        new_key = generate_signing_key()
+        info = issuer_info(new_key)
+        row = self.store.insert_epoch(
+            next_id,
+            scheme=SCHEME_V0,
+            public_key=info["public-key"],
+            issuer_pubkey_id=info["issuer-pubkey-id"],
+            signing_key=self._key_b64(new_key),
+            valid_from=now,
+            issue_until=None,
+            accept_until=now + 490 * 24 * 3600,
+        )
+        self._epoch_keys[next_id] = new_key
+        return row
+
+    def burn(self, epoch: int, now: Optional[float] = None) -> dict:
+        """Compromise: stop accepting the epoch and open a new one if needed."""
+        now = time.time() if now is None else now
+        self.store.close_issue(int(epoch), now)
+        self.store.set_accept_until(int(epoch), now)
+        if self.store.current_issuing(now) is None:
+            self.rotate(now)
+        row = self.store.get_epoch(int(epoch))
+        if row is None:
+            raise ValueError("unknown epoch %s" % epoch)
+        return row
+
+    def sign(self, blinded: list[str], epoch: Optional[int] = None) -> dict:
+        now = time.time()
+        if epoch is None:
+            cur = self.store.current_issuing(now)
+            epoch = int(cur["epoch"]) if cur else TOKEN_EPOCH_V0
+        key = self._epoch_keys.get(int(epoch), self.key)
+        out = sign_blinded(key, blinded)
+        out["token-epoch"] = int(epoch)
         with self.lock:
             self.issue_count += 1
         return out
@@ -217,13 +299,16 @@ def build_issuer_handler(state: IssuerState):
             return 400, {"error": "vid must be 16 hex chars"}
         if len(state.store.open_vouchers()) >= MAX_OPEN_QUOTES:
             return 429, {"error": "too many open quotes; try again later"}
+        issuing = state.store.current_issuing()
+        if issuing is None:
+            return 410, {"error": "no epoch is open for issuing"}
         try:
             v = state.store.create_quote(
                 vid=vid,
                 tokens=tokens,
                 policy=state.policy,
                 chain=state.chain,
-                epoch=TOKEN_EPOCH_V0,
+                epoch=int(issuing["epoch"]),
                 scheme=scheme,
             )
         except DuplicateVid:
@@ -256,10 +341,81 @@ def build_issuer_handler(state: IssuerState):
         if blinded is None:
             return 400, {"error": "blinded-tokens must be a non-empty list of strings"}
         state.refresh(vid)
+        v = state.store.get(vid)
+        epoch = int(v.epoch) if v is not None else TOKEN_EPOCH_V0
         try:
-            return state.store.redeem(vid, blinded, state.sign)
+            return state.store.redeem(
+                vid,
+                blinded,
+                lambda b: state.sign(b, epoch),
+                issuing_open=state.store.is_issuing(epoch),
+            )
         except (CryptoError, Exception) as e:
             return 400, {"error": "sign failed", "class": type(e).__name__}
+
+    def exchange(body, headers):
+        if not body:
+            return 400, {"error": "JSON object required"}
+        epoch_old = body.get("epoch_old")
+        if not isinstance(epoch_old, int) or isinstance(epoch_old, bool):
+            return 400, {"error": "epoch_old (int) required"}
+        tokens = body.get("tokens")
+        blinded = body.get("blinded-tokens") or body.get("blinded_new")
+        if not isinstance(tokens, list) or not isinstance(blinded, list):
+            return 400, {"error": "tokens and blinded-tokens must be lists"}
+        if not tokens or len(tokens) != len(blinded):
+            return 400, {"error": "tokens and blinded-tokens must be the same non-empty length"}
+        for b in blinded:
+            if not isinstance(b, str):
+                return 400, {"error": "blinded-tokens must be strings"}
+        now = time.time()
+        ep = state.store.get_epoch(epoch_old)
+        if ep is None:
+            return 404, {"error": "unknown epoch"}
+        until = ep.get("accept_until")
+        if until is None or float(until) > now:
+            return 409, {"error": "epoch is not burnt; exchange is only for a burnt epoch"}
+        old_key = state._epoch_keys.get(int(epoch_old))
+        ts: list[str] = []
+        from challenge_bypass_ristretto import TokenPreimage
+
+        for rec in tokens:
+            if not isinstance(rec, dict) or not isinstance(rec.get("t"), str):
+                return 400, {"error": "each token needs t"}
+            t = rec["t"]
+            if state.store.is_settled(t):
+                return 409, {"error": "token already settled"}
+            if state.store.is_exchanged(t):
+                return 409, {"error": "token already exchanged"}
+            if old_key is not None:
+                try:
+                    pre = TokenPreimage.decode_base64(
+                        t.encode("ascii") if isinstance(t, str) else t
+                    )
+                    unb = old_key.rederive_unblinded_token(pre)
+                    if rec.get("W"):
+                        w = unb.encode_base64()
+                        w = w.decode("ascii") if isinstance(w, bytes) else str(w)
+                        if w != rec["W"]:
+                            return 400, {"error": "W does not match t"}
+                except Exception:
+                    return 400, {"error": "token did not rederive under the burnt epoch"}
+            ts.append(t)
+        led = state.store.ledger()
+        row = led["epochs"].get(str(epoch_old), {})
+        remaining = (
+            int(row.get("tokens_issued") or 0)
+            - int(row.get("tokens_settled") or 0)
+            - int(row.get("tokens_exchanged") or 0)
+        )
+        if len(ts) > remaining:
+            return 409, {"error": "exchange exceeds remaining issuance"}
+        cur = state.store.current_issuing(now)
+        if cur is None:
+            return 503, {"error": "no issuing epoch"}
+        signed = state.sign(blinded, int(cur["epoch"]))
+        state.store.record_exchanges(ts, epoch_old, int(cur["epoch"]), now)
+        return 200, signed
 
     def ledger(body, headers):
         return 200, state.store.ledger()
@@ -347,6 +503,7 @@ def build_issuer_handler(state: IssuerState):
         ("POST", "/v0/quote"): quote,
         ("GET", "/v0/voucher/"): voucher,
         ("POST", "/v0/redeem"): redeem,
+        ("POST", "/v0/exchange"): exchange,
         ("GET", "/v0/ledger"): ledger,
         ("POST", "/v0/fake/pay"): fake_pay,
         ("POST", "/v0/fake/mine"): fake_mine,

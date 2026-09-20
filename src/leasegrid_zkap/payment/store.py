@@ -206,6 +206,22 @@ CREATE TABLE IF NOT EXISTS conflict (
   first_nodeid TEXT NOT NULL,
   at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS epoch (
+  epoch INTEGER PRIMARY KEY,
+  scheme TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  issuer_pubkey_id TEXT NOT NULL,
+  valid_from REAL NOT NULL,
+  issue_until REAL,
+  accept_until REAL,
+  signing_key TEXT
+);
+CREATE TABLE IF NOT EXISTS exchanged (
+  t TEXT PRIMARY KEY,
+  epoch_old INTEGER NOT NULL,
+  epoch_new INTEGER NOT NULL,
+  at REAL NOT NULL
+);
 """
 
 _COLS = [
@@ -460,13 +476,134 @@ class VoucherStore:
                     "tokens_quoted": int(r["quoted"] or 0),
                     "tokens_issued": int(r["issued"] or 0),
                     "tokens_settled": 0,
+                    "tokens_exchanged": 0,
                 }
             for r in self._db.execute(
                 "SELECT epoch, COUNT(*) AS n FROM settlement GROUP BY epoch"
             ).fetchall():
                 out.setdefault(str(r["epoch"]), _empty_epoch())["tokens_settled"] = r["n"]
+            for r in self._db.execute(
+                "SELECT epoch_old AS epoch, COUNT(*) AS n FROM exchanged GROUP BY epoch_old"
+            ).fetchall():
+                out.setdefault(str(r["epoch"]), _empty_epoch())["tokens_exchanged"] = r["n"]
             conflicts = self._db.execute("SELECT COUNT(*) AS n FROM conflict").fetchone()["n"]
             return {"epochs": out, "settlement_conflicts": int(conflicts)}
+
+    # -- epochs ------------------------------------------------------------
+
+    def list_epochs(self) -> list[dict]:
+        with self._lock:
+            rows = self._db.execute("SELECT * FROM epoch ORDER BY epoch").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_epoch(self, epoch: int) -> Optional[dict]:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM epoch WHERE epoch = ?", (int(epoch),)).fetchone()
+            return dict(row) if row else None
+
+    def seed_epoch(
+        self,
+        epoch: int,
+        *,
+        scheme: str,
+        public_key: str,
+        issuer_pubkey_id: str,
+        signing_key: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> dict:
+        now = time.time() if now is None else now
+        with self._lock:
+            if self.get_epoch(epoch) is not None:
+                return self.get_epoch(epoch)  # type: ignore[return-value]
+            self._db.execute(
+                "INSERT INTO epoch (epoch, scheme, public_key, issuer_pubkey_id, "
+                "valid_from, issue_until, accept_until, signing_key) VALUES (?,?,?,?,?,?,?,?)",
+                (int(epoch), scheme, public_key, issuer_pubkey_id, now, None, None, signing_key),
+            )
+            return self.get_epoch(epoch)  # type: ignore[return-value]
+
+    def insert_epoch(
+        self,
+        epoch: int,
+        *,
+        scheme: str,
+        public_key: str,
+        issuer_pubkey_id: str,
+        signing_key: Optional[str] = None,
+        valid_from: Optional[float] = None,
+        issue_until: Optional[float] = None,
+        accept_until: Optional[float] = None,
+    ) -> dict:
+        now = time.time() if valid_from is None else valid_from
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO epoch (epoch, scheme, public_key, issuer_pubkey_id, "
+                "valid_from, issue_until, accept_until, signing_key) VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    int(epoch),
+                    scheme,
+                    public_key,
+                    issuer_pubkey_id,
+                    now,
+                    issue_until,
+                    accept_until,
+                    signing_key,
+                ),
+            )
+            return self.get_epoch(epoch)  # type: ignore[return-value]
+
+    def current_issuing(self, now: Optional[float] = None) -> Optional[dict]:
+        now = time.time() if now is None else now
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM epoch WHERE issue_until IS NULL OR issue_until > ? "
+                "ORDER BY epoch DESC LIMIT 1",
+                (now,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def is_issuing(self, epoch: int, now: Optional[float] = None) -> bool:
+        now = time.time() if now is None else now
+        e = self.get_epoch(int(epoch))
+        if e is None:
+            return False
+        until = e.get("issue_until")
+        return until is None or float(until) > now
+
+    def close_issue(self, epoch: int, now: Optional[float] = None) -> None:
+        now = time.time() if now is None else now
+        with self._lock:
+            self._db.execute(
+                "UPDATE epoch SET issue_until = ? WHERE epoch = ? AND "
+                "(issue_until IS NULL OR issue_until > ?)",
+                (now, int(epoch), now),
+            )
+
+    def set_accept_until(self, epoch: int, until: float) -> None:
+        with self._lock:
+            self._db.execute(
+                "UPDATE epoch SET accept_until = ? WHERE epoch = ?",
+                (float(until), int(epoch)),
+            )
+
+    def is_settled(self, t: str) -> bool:
+        with self._lock:
+            row = self._db.execute("SELECT 1 FROM settlement WHERE t = ?", (t,)).fetchone()
+            return row is not None
+
+    def is_exchanged(self, t: str) -> bool:
+        with self._lock:
+            row = self._db.execute("SELECT 1 FROM exchanged WHERE t = ?", (t,)).fetchone()
+            return row is not None
+
+    def record_exchanges(self, ts: list[str], epoch_old: int, epoch_new: int, now: Optional[float] = None) -> None:
+        now = time.time() if now is None else now
+        with self._lock:
+            for t in ts:
+                self._db.execute(
+                    "INSERT INTO exchanged (t, epoch_old, epoch_new, at) VALUES (?,?,?,?)",
+                    (t, int(epoch_old), int(epoch_new), now),
+                )
 
 
 def _empty_epoch() -> dict:
@@ -476,4 +613,5 @@ def _empty_epoch() -> dict:
         "tokens_quoted": 0,
         "tokens_issued": 0,
         "tokens_settled": 0,
+        "tokens_exchanged": 0,
     }

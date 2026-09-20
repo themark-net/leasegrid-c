@@ -106,6 +106,59 @@ class LeaseGate:
         self._accepted = accepted
         return {"accepted": sorted(accepted)}
 
+    def accept_rsa_epoch(self, epoch: int, rsa_public, issuer_pubkey_id: str) -> None:
+        self._accepted[int(epoch)] = {
+            "scheme": "rsa-bssa-v1",
+            "rsa_public": rsa_public,
+            "issuer-pubkey-id": issuer_pubkey_id,
+        }
+
+    def spend_rsa(self, t, pk_tok: bytes, sigma: bytes, r: bytes, sig_r: bytes) -> dict:
+        from .rsa_bssa import BssaError, verify_spend
+
+        try:
+            fields = decode_r(r)
+        except RError as e:
+            raise SpendError("bad R: %s" % e) from e
+        if fields["domain"] != DOMAIN:
+            raise SpendError("R.domain is not %s" % DOMAIN)
+        if fields["nodeid"] != self.nodeid:
+            raise SpendError("R.nodeid does not match this storage node")
+        acc = self._accepted.get(int(fields["token_epoch"]))
+        if acc is None or acc.get("scheme") != "rsa-bssa-v1":
+            raise SpendError("epoch %s is not an accepted rsa-bssa epoch" % fields["token_epoch"])
+        if fields["issuer_pubkey_id"] != acc["issuer-pubkey-id"]:
+            raise SpendError("R.issuer_pubkey_id does not match this issuer key")
+        t_bytes = t if isinstance(t, (bytes, bytearray)) else t.encode("ascii")
+        try:
+            verify_spend(acc["rsa_public"], bytes(t_bytes), pk_tok, sigma, r, sig_r)
+        except BssaError as e:
+            raise SpendError(str(e)) from e
+        from base64 import b64encode
+
+        t_s = t if isinstance(t, str) else b64encode(t_bytes).decode("ascii")
+        rec = SpentRecord(
+            t=t_s,
+            r_b64=_b64s(r),
+            storage_index_hex=fields["storage_index"].hex(),
+            lease_seconds=fields["lease_seconds"],
+            share_bytes=fields["share_bytes"],
+            token_epoch=fields["token_epoch"],
+            issuer_pubkey_id=fields["issuer_pubkey_id"],
+            nodeid=fields["nodeid"],
+        )
+        try:
+            stored = self.spent.remember(rec)
+        except ReplayError as e:
+            raise SpendError(str(e)) from e
+        return {
+            "ok": True,
+            "idempotent": stored is not rec and stored.r_b64 == rec.r_b64,
+            "storage_index": rec.storage_index_hex,
+            "issuer_pubkey_id": rec.issuer_pubkey_id,
+            "scheme": "rsa-bssa-v1",
+        }
+
     def _find_grant(self, storage_index: bytes, op: str) -> SpentRecord:
         want = storage_index.hex()
         for t in self.spent.preimages():

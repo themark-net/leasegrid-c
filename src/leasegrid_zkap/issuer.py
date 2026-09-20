@@ -25,6 +25,7 @@ from .payment.chain_walletrpc import WalletRpcChain
 from .payment.store import DuplicateVid, StoreError
 
 SCHEME_V0 = "ristretto-v0"
+SCHEME_RSA = "rsa-bssa-v1"
 DEFAULT_PRICE_PICONERO = 6 * 10**9  # 0.006 XMR per GiB-share-month; operator-set
 MAX_OPEN_QUOTES = 10_000
 
@@ -53,6 +54,7 @@ class IssuerState:
         policy: Optional[PricePolicy] = None,
         store: Optional[VoucherStore] = None,
         faucet: bool = True,
+        rsa_key=None,
     ):
         self.key = signing_key
         self.info = issuer_info(signing_key)
@@ -66,6 +68,7 @@ class IssuerState:
         self.store = store or VoucherStore()
         self.faucet = faucet
         self.listen = ""
+        self.rsa_key = rsa_key
         self._epoch_keys: dict[int, SigningKey] = {}
         self._seed_epochs()
 
@@ -188,17 +191,41 @@ class IssuerState:
             raise ValueError("unknown epoch %s" % epoch)
         return row
 
-    def sign(self, blinded: list[str], epoch: Optional[int] = None) -> dict:
+    def sign(self, blinded: list[str], epoch: Optional[int] = None, scheme: str = SCHEME_V0) -> dict:
         now = time.time()
         if epoch is None:
             cur = self.store.current_issuing(now)
             epoch = int(cur["epoch"]) if cur else TOKEN_EPOCH_V0
         key = self._epoch_keys.get(int(epoch), self.key)
-        out = sign_blinded(key, blinded)
-        out["token-epoch"] = int(epoch)
+        if scheme == SCHEME_RSA:
+            out = self._sign_rsa(blinded, int(epoch))
+        else:
+            out = sign_blinded(key, blinded)
+            out["token-epoch"] = int(epoch)
         with self.lock:
             self.issue_count += 1
         return out
+
+    def _sign_rsa(self, blinded_b64: list[str], epoch: int) -> dict:
+        if self.rsa_key is None:
+            raise CryptoError("rsa-bssa-v1 issuer key is not configured")
+        from base64 import b64decode, b64encode
+
+        from .rsa_bssa import blind_sign, rsa_pubkey_id, rsa_public_spki_b64
+
+        pk = self.rsa_key.public_key()
+        sigs = []
+        for b in blinded_b64:
+            raw = b64decode(b)
+            sigs.append(b64encode(blind_sign(self.rsa_key, raw)).decode("ascii"))
+        return {
+            "signed-tokens": sigs,
+            "public-key": rsa_public_spki_b64(pk),
+            "issuer-pubkey-id": rsa_pubkey_id(pk),
+            "token-epoch": int(epoch),
+            "scheme": SCHEME_RSA,
+            "denomination": DENOMINATION,
+        }
 
     def refresh(self, vid: str):
         """Pull this voucher's transfers from the chain now (no waiting on the poller)."""
@@ -290,8 +317,12 @@ def build_issuer_handler(state: IssuerState):
         if tokens < 1 or tokens > state.policy.max_tokens_per_quote:
             return 400, {"error": "tokens must be 1..%d" % state.policy.max_tokens_per_quote}
         scheme = body.get("scheme", SCHEME_V0)
-        if scheme != SCHEME_V0:
-            return 400, {"error": "unsupported scheme", "supported": [SCHEME_V0]}
+        if scheme == SCHEME_RSA:
+            if state.rsa_key is None:
+                return 400, {"error": "unsupported scheme", "supported": [SCHEME_V0]}
+        elif scheme != SCHEME_V0:
+            supported = [SCHEME_V0] + ([SCHEME_RSA] if state.rsa_key is not None else [])
+            return 400, {"error": "unsupported scheme", "supported": supported}
         vid = body.get("vid")
         if vid is None:
             vid = os.urandom(8).hex()
@@ -343,11 +374,12 @@ def build_issuer_handler(state: IssuerState):
         state.refresh(vid)
         v = state.store.get(vid)
         epoch = int(v.epoch) if v is not None else TOKEN_EPOCH_V0
+        scheme = v.scheme if v is not None else SCHEME_V0
         try:
             return state.store.redeem(
                 vid,
                 blinded,
-                lambda b: state.sign(b, epoch),
+                lambda b: state.sign(b, epoch, scheme),
                 issuing_open=state.store.is_issuing(epoch),
             )
         except (CryptoError, Exception) as e:
@@ -521,9 +553,12 @@ def start_issuer(
     store: Optional[VoucherStore] = None,
     faucet: bool = True,
     poll_interval: float = 0.0,
+    rsa_key=None,
 ) -> tuple[IssuerState, ThreadingHTTPServer]:
     host, port = parse_listen(listen)
-    state = IssuerState(signing_key, chain=chain, policy=policy, store=store, faucet=faucet)
+    state = IssuerState(
+        signing_key, chain=chain, policy=policy, store=store, faucet=faucet, rsa_key=rsa_key
+    )
     handler = build_issuer_handler(state)
     httpd, _ = serve_background(host, port, handler)
     state.listen = "http://%s:%d" % (host, httpd.server_address[1])

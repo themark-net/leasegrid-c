@@ -72,6 +72,22 @@ jobs:
             curl -fsS "http://127.0.0.1:$p/v0/info" | grep -q '"spent": [1-9]'
           done
           grep -q "Lease on" /tmp/ci-home/credit-recent.json
+          # Short invite code: a second device joins through the grid's local
+          # wormhole relay using only the bundled tahoe (wormhole client inside).
+          RELAY="$(grep -o 'ws://127.0.0.1:[0-9]*/v1' /tmp/ci-grid.out | head -1)"
+          test -n "$RELAY"
+          PATH="$PWD/.venv/bin:$PATH" scripts/dev-grid.sh --invite ci-code > /tmp/ci-invite.out 2>&1 &
+          for _ in $(seq 1 60); do grep -q "Invite Code" /tmp/ci-invite.out && break; sleep 1; done
+          CODE="$(grep -o 'Invite Code for client: .*' /tmp/ci-invite.out | awk '{print $NF}')"
+          test -n "$CODE" || { cat /tmp/ci-invite.out; exit 1; }
+          mkdir -p /tmp/ci-home2
+          env -i HOME=/tmp/ci-home2 PATH=/usr/bin:/bin USER=ci QT_QPA_PLATFORM=offscreen \
+            LEASEGRID_SYNC_HOME=/tmp/ci-home2 LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 \
+            LEASEGRID_WORMHOLE_SERVER="$RELAY" \
+            timeout 180 "$APP" --appimage-extract-and-run --join "$CODE" | tee /tmp/ci-join2.out
+          grep -q "^Connected" /tmp/ci-join2.out
+          grep -q "^nickname = ci-code" /tmp/ci-home2/tahoe/tahoe.cfg
+          grep -q "^shares.needed = 2" /tmp/ci-home2/tahoe/tahoe.cfg
       - uses: actions/upload-artifact@v4
         with:
           name: Leasegrid_Sync-x86_64.AppImage

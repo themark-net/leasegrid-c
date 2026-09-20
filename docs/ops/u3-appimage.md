@@ -63,10 +63,22 @@ twistd 26.4.0 (/tmp/.mount_LeasegCEGnii/usr/bin/leasegrid-sync/leasegrid-sync 3.
 
 The last line is the proof that the *bundled* Tahoe ran, not a system one.
 
+Short invite code, second device, bundled wormhole client through the grid's local relay:
+
+```
+$ scripts/dev-grid.sh --invite ci-code          # Invite Code for client: 7-stupendous-pupil
+$ env -i … LEASEGRID_WORMHOLE_SERVER=ws://127.0.0.1:45040/v1 …AppImage --join 7-stupendous-pupil
+Connected	introducer up · 3 storage	/tmp/ci-home2/tahoe
+$ grep -E '^(nickname|shares.needed)' /tmp/ci-home2/tahoe/tahoe.cfg
+nickname = ci-code
+shares.needed = 2
+```
+
 ## CI
 
 `.github/workflows/appimage.yml`: builds on ubuntu-22.04, runs the exit test above against a
-`scripts/dev-grid.sh` grid with the client side restricted to `PATH=/usr/bin:/bin`, uploads the
+gated `scripts/dev-grid.sh` grid with the client side restricted to `PATH=/usr/bin:/bin`
+(furl join, paid upload spends on every node, second home joins via short code), uploads the
 AppImage as an artifact, and attaches it to the GitHub Release on `v*` tags.
 
 ## Not done

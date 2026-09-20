@@ -69,8 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--join",
         metavar="INVITE",
         default=None,
-        help="Headless: join the friendnet from a pb:// invite (creates and starts the Tahoe "
-        "client if needed), print the connection line, stop the daemons, exit. Combine with "
+        help="Headless: join the friendnet from an invite -- a short `tahoe invite` code "
+        "(7-word-word; set LEASEGRID_WORMHOLE_SERVER to match a private relay) or a pb:// "
+        "introducer furl. Creates and starts the Tahoe client if needed, prints the "
+        "connection line, stops the daemons, exits. Combine with "
         "--dogfood-folder / --credit-dogfood to continue into the window flows.",
     )
     p.add_argument(

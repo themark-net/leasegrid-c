@@ -18,6 +18,7 @@ from .backend import (
     SyncError,
     TahoeClient,
     default_home,
+    is_wormhole_code,
     write_probe_file,
     wait_for_file_status,
 )
@@ -423,9 +424,9 @@ class MainWindow:
         threat.setWordWrap(True)
         threat.setObjectName("threatCopy")
         v.addWidget(threat)
-        v.addWidget(QtWidgets.QLabel("Invite (introducer furl)"))
+        v.addWidget(QtWidgets.QLabel("Invite (short code from your inviter, or introducer furl)"))
         self.invite_edit = QtWidgets.QLineEdit()
-        self.invite_edit.setPlaceholderText("paste pb:// introducer furl…")
+        self.invite_edit.setPlaceholderText("paste invite: 7-word-word  or  pb://…")
         self.invite_edit.setObjectName("inviteEdit")
         self.invite_edit.returnPressed.connect(self.on_join_invite)
         v.addWidget(self.invite_edit)
@@ -801,6 +802,11 @@ class MainWindow:
         )
         if self.tahoe.has_nodedir():
             progress = "Connecting to the existing Tahoe client…"
+        elif is_wormhole_code(invite):
+            progress = (
+                "Joining… collecting the friendnet settings behind code %s from your "
+                "inviter, then starting the Tahoe client." % invite.strip().lower()
+            )
         self._join_busy(True, progress)
         try:
             status = self.tahoe.join_invite(invite)

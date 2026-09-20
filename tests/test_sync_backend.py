@@ -13,8 +13,11 @@ from leasegrid_sync.backend import (
     SyncError,
     TahoeClient,
     endpoint_to_url,
+    fix_joined_shares,
+    is_wormhole_code,
     redact_furl,
     validate_introducer_furl,
+    validate_invite,
 )
 
 
@@ -91,7 +94,20 @@ FAKE_TAHOE = """#!/usr/bin/env python3
 import pathlib, sys, time
 args = sys.argv[1:]
 nodedir = pathlib.Path(args[-1])
-if args[0] == "create-client":
+sub = "create-client" if "create-client" in args else args[0]
+join = [a for a in args if a.startswith("--join=")]
+if sub == "create-client" and join:
+    # tahoe 1.20 --join: basedir exists before the wormhole handshake; the
+    # invited encoding is written as bytes reprs; a dead code fails non-zero.
+    nodedir.mkdir(parents=True)
+    if join[0] == "--join=0-dead-code":
+        sys.stderr.write("wormhole.errors.LonelyError\\n")
+        sys.exit(1)
+    (nodedir / "tahoe.cfg").write_text(
+        "# argv: " + " ".join(args) + "\\n[node]\\nnickname = alice\\n[client]\\n"
+        "introducer.furl =\\nshares.needed = b'2'\\nshares.happy = b'3'\\n"
+        "shares.total = b'3'\\n", encoding="utf-8")
+elif sub == "create-client":
     nodedir.mkdir(parents=True)
     (nodedir / "tahoe.cfg").write_text("\\n".join(args), encoding="utf-8")
 elif args[0] == "run":
@@ -143,6 +159,79 @@ def test_join_invite_creates_client_and_starts_it(tmp_path: Path, monkeypatch):
     finally:
         client.stop()
     assert not client.owns_process()
+
+
+@pytest.mark.parametrize(
+    "text, ok",
+    [
+        ("7-guitarist-revenge", True),
+        ("  2-Tradition-Dreadful ", True),  # `tahoe invite` codes are case-insensitive words
+        ("123-a-b-c", True),
+        ("7-guitarist", False),  # one word: too short to be a wormhole code
+        ("guitarist-revenge", False),  # no nameplate
+        ("pb://x@127.0.0.1:1/y", False),
+        ("", False),
+    ],
+)
+def test_is_wormhole_code(text: str, ok: bool):
+    assert is_wormhole_code(text) is ok
+
+
+def test_validate_invite_accepts_code_or_furl():
+    assert validate_invite(" 7-Guitarist-Revenge ") == "7-guitarist-revenge"
+    assert validate_invite(GOOD_FURL) == GOOD_FURL
+    with pytest.raises(SyncError) as exc:
+        validate_invite("7-guitarist")
+    assert "short code like 7-word-word" in exc.value.next_hint
+
+
+def test_fix_joined_shares_rewrites_tahoe_120_bytes_repr(tmp_path: Path):
+    cfg = tmp_path / "tahoe.cfg"
+    cfg.write_text(
+        "[client]\nshares.needed = b'2'\nshares.happy = b'3'\nshares.total = 3\n"
+        "nickname = b'keep'\n",
+        encoding="utf-8",
+    )
+    assert fix_joined_shares(cfg) is True
+    text = cfg.read_text(encoding="utf-8")
+    assert "shares.needed = 2\nshares.happy = 3\nshares.total = 3\n" in text
+    assert "nickname = b'keep'" in text  # only share counts are touched
+    assert fix_joined_shares(cfg) is False
+    assert fix_joined_shares(tmp_path / "missing.cfg") is False
+
+
+def test_join_wormhole_code_creates_client_via_join(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_WORMHOLE_SERVER", "ws://127.0.0.1:45040/v1")
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite(" 7-Guitarist-Revenge ")
+        assert st.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        argv = cfg.splitlines()[0]
+        assert "--join=7-guitarist-revenge" in argv
+        assert "--wormhole-server ws://127.0.0.1:45040/v1 create-client" in argv
+        assert "--introducer" not in argv and "--shares-needed" not in argv
+        # the inviter chooses the encoding; 1.20's b'N' output is repaired
+        assert "shares.needed = 2\nshares.happy = 3\nshares.total = 3\n" in cfg
+        assert "b'" not in cfg.split("[client]")[1]
+        assert "storage.plugins = leasegrid-zkap-v0" in cfg
+    finally:
+        client.stop()
+
+
+def test_join_wormhole_dead_code_fails_clean_and_leaves_no_nodedir(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    with pytest.raises(SyncError) as exc:
+        client.join_invite("0-dead-code")
+    assert "Invite code 0-dead-code was not accepted" in exc.value.message
+    assert "fresh one" in exc.value.next_hint
+    # a half-made basedir would make the next Join say "client already exists"
+    assert not nodedir.exists()
+    assert not client.has_nodedir()
 
 
 def test_join_existing_starts_stopped_node(tmp_path: Path):

@@ -32,6 +32,8 @@ tahoe = [
   "pyOpenSSL<25",
   "cryptography<45",
   "service-identity<25",
+  # local magic-wormhole relay for dev-grid `--invite` (short codes offline)
+  "magic-wormhole-mailbox-server>=0.5",
 ]
 
 [tool.setuptools]

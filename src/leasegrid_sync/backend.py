@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -28,6 +29,9 @@ CREDIT_PLUGIN_NAME = "leasegrid-zkap-v0"
 CREDIT_PLUGIN_SECTION = "[storageclient.plugins.%s]" % CREDIT_PLUGIN_NAME
 TAHOE_START_TIMEOUT = 30.0
 STORAGE_SETTLE_SECONDS = 6.0
+# `tahoe invite` prints a code only once the inviter is parked on the relay, so a
+# code join normally completes in seconds; this bounds a dead code / relay.
+WORMHOLE_JOIN_TIMEOUT = 120.0
 TAHOE_CONNECT_TIMEOUT = 30.0
 
 
@@ -116,23 +120,61 @@ def redact_furl(value: str) -> str:
     return text
 
 
+# magic-wormhole code as printed by `tahoe invite`: "7-guitarist-revenge"
+WORMHOLE_CODE_RE = re.compile(r"^[0-9]{1,3}(-[a-z0-9]+){2,}$")
+
+
+def is_wormhole_code(text: str) -> bool:
+    return bool(WORMHOLE_CODE_RE.match((text or "").strip().lower()))
+
+
+# Tahoe 1.20 `create-client --join` writes the invited encoding as bytes reprs
+# ("shares.needed = b'3'"), which `tahoe run` then rejects with ValueError.
+JOINED_BYTES_RE = re.compile(r"^(\s*shares\.(?:needed|happy|total)\s*=\s*)b'([0-9]+)'\s*$")
+
+
+def fix_joined_shares(cfg_path: Path) -> bool:
+    """Rewrite b'N' share counts left by `--join`. Returns True if changed."""
+    if not cfg_path.is_file():
+        return False
+    changed = False
+    out: list[str] = []
+    for line in cfg_path.read_text(encoding="utf-8").splitlines():
+        m = JOINED_BYTES_RE.match(line)
+        if m:
+            line = "%s%s" % (m.group(1), m.group(2))
+            changed = True
+        out.append(line)
+    if changed:
+        cfg_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return changed
+
+
+def validate_invite(raw: str) -> str:
+    """Accept either a pb:// introducer furl or a short `tahoe invite` code."""
+    text = (raw or "").strip()
+    if is_wormhole_code(text):
+        return text.lower()
+    return validate_introducer_furl(text)
+
+
 def validate_introducer_furl(raw: str) -> str:
     text = (raw or "").strip()
     if not text:
         raise SyncError(
             "could not join this friendnet. Invite is empty.",
-            "paste an introducer furl (starts with pb://) or use the existing Tahoe node.",
+            "paste the invite from your inviter (a short code like 7-word-word, or a pb:// furl).",
         )
     low = text.lower()
     if low.startswith("http://") or low.startswith("https://"):
         raise SyncError(
             "could not join this friendnet. That looks like a web URL.",
-            "Leasegrid Sync does not use the Tahoe web UI. Paste a pb:// introducer furl.",
+            "Leasegrid Sync does not use the Tahoe web UI. Paste the invite code or pb:// furl.",
         )
     if not text.startswith("pb://"):
         raise SyncError(
             "could not join this friendnet. Invite code invalid.",
-            "ask your inviter for a fresh introducer furl (starts with pb://); Retry.",
+            "ask your inviter for a fresh invite (short code like 7-word-word, or pb://…); Retry.",
         )
     rest = text[5:]
     if "/" not in rest or len(rest) < 12:
@@ -193,8 +235,13 @@ class TahoeClient:
         except SyncError:
             return False
 
-    def create_client(self, furl: str, shares: Optional[tuple[int, int, int]] = None) -> None:
-        """`tahoe create-client` into self.nodedir, bound to the invite's introducer."""
+    def create_client(self, invite: str, shares: Optional[tuple[int, int, int]] = None) -> None:
+        """`tahoe create-client` into self.nodedir.
+
+        `invite` is a pb:// introducer furl (we pick the encoding) or a short
+        `tahoe invite` code (the inviter's introducer + encoding arrive through
+        magic-wormhole; that handshake can take a while and needs the relay).
+        """
         if self.has_nodedir():
             return
         if self.nodedir.exists() and any(self.nodedir.iterdir()):
@@ -203,32 +250,67 @@ class TahoeClient:
                 % self.nodedir,
                 "move that directory aside or set LEASEGRID_TAHOE_NODEDIR; Retry.",
             )
-        needed, happy, total = shares or shares_config()
-        cmd = [
-            self.require_bin(),
+        cmd = [self.require_bin()]
+        relay = os.environ.get("LEASEGRID_WORMHOLE_SERVER")
+        if relay:
+            cmd += ["--wormhole-server", relay]
+        cmd += [
             "create-client",
-            "--introducer=%s" % furl,
             "--nickname=%s" % (os.environ.get("LEASEGRID_NICKNAME") or "leasegrid-sync"),
             "--webport=tcp:0:interface=127.0.0.1",
-            "--shares-needed=%d" % needed,
-            "--shares-happy=%d" % happy,
-            "--shares-total=%d" % total,
-            str(self.nodedir),
         ]
+        code = is_wormhole_code(invite)
+        if code:
+            cmd.append("--join=%s" % invite.strip().lower())
+            timeout = WORMHOLE_JOIN_TIMEOUT
+        else:
+            needed, happy, total = shares or shares_config()
+            cmd += [
+                "--introducer=%s" % invite,
+                "--shares-needed=%d" % needed,
+                "--shares-happy=%d" % happy,
+                "--shares-total=%d" % total,
+            ]
+            timeout = 120
+        cmd.append(str(self.nodedir))
         self.nodedir.parent.mkdir(parents=True, exist_ok=True)
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout, check=False
+            )
+        except subprocess.TimeoutExpired as exc:
+            shutil.rmtree(self.nodedir, ignore_errors=True)
+            if code:
+                raise SyncError(
+                    "could not join this friendnet. Nobody answered invite code %s in %ds."
+                    % (invite, int(timeout)),
+                    "your inviter must keep `tahoe invite` running until you join; "
+                    "get a fresh code; Retry.",
+                ) from exc
+            raise SyncError(
+                "could not join this friendnet. tahoe create-client did not run: %s" % exc,
+                "check that tahoe is installed; Retry.",
+            ) from exc
+        except OSError as exc:
             raise SyncError(
                 "could not join this friendnet. tahoe create-client did not run: %s" % exc,
                 "check that tahoe is installed; Retry.",
             ) from exc
         if proc.returncode != 0:
+            shutil.rmtree(self.nodedir, ignore_errors=True)
             err = (proc.stderr or proc.stdout or "create-client failed").strip().split("\n")[-1]
+            if code:
+                raise SyncError(
+                    "could not join this friendnet. Invite code %s was not accepted: %s"
+                    % (invite, err),
+                    "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
+                )
             raise SyncError(
                 "could not join this friendnet. Tahoe could not create a client: %s" % err,
                 "check the invite code with your inviter; Retry.",
             )
+        if code:
+            fix_joined_shares(self.nodedir / "tahoe.cfg")
         self.ensure_credit_plugin()
 
     def ensure_credit_plugin(self) -> bool:
@@ -502,13 +584,13 @@ class TahoeClient:
         return self._bring_up()
 
     def join_invite(self, invite: str) -> ConnectionStatus:
-        """Join from a pb:// introducer furl.
+        """Join from a pb:// introducer furl or a short `tahoe invite` code.
 
-        No node yet: create a Tahoe client bound to that introducer, start it,
-        wait for the introducer to connect. Node already present: reuse it
-        (start it if needed) and confirm it reaches an introducer.
+        No node yet: create a Tahoe client for that friendnet, start it, wait
+        for the introducer to connect. Node already present: reuse it (start it
+        if needed) and confirm it reaches an introducer.
         """
-        furl = validate_introducer_furl(invite)
+        furl = validate_invite(invite)
         if self.has_nodedir():
             try:
                 return self._bring_up()

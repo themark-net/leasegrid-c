@@ -40,7 +40,7 @@ export LEASEGRID_ISSUER_URL="http://127.0.0.1:8700"
 leasegrid-sync
 ```
 
-1. Paste the furl from shell 1 into **Invite** → **Join friendnet**.
+1. Paste the furl from shell 1 (or a short code, below) into **Invite** → **Join friendnet**.
    Sync runs `tahoe create-client` into `~/.local/share/leasegrid-sync/tahoe`,
    starts `tahoe run`, and waits for the introducer. Chip:
    **Connected · introducer up · 3 storage**.
@@ -51,6 +51,30 @@ leasegrid-sync
 5. **Recovery → Export recovery key…**, then on a second `LEASEGRID_SYNC_HOME`
    use **Import recovery key instead…** on the join page. See
    [`u4-recovery.md`](u4-recovery.md).
+
+### Short invite codes instead of a furl
+
+A furl is ~90 characters. `tahoe invite` hands the same settings over
+magic-wormhole as a one-time code (`7-guitarist-revenge`). With the grid up:
+
+```bash
+scripts/dev-grid.sh --invite alice        # shell 3: prints "Invite Code for client: 7-…"
+```
+
+Paste the code into **Invite** → **Join friendnet** (or `leasegrid-sync --join 7-…`).
+The inviter sits on the relay until exactly one joiner uses the code, then exits;
+the joiner gets the introducer, the encoding (`LEASEGRID_SHARES`, default 2/3/3)
+and the nickname from the invite, and Sync fixes the `b'2'` share counts Tahoe
+1.20 writes on `--join` before starting the client.
+
+dev-grid runs its own mailbox relay on `ws://127.0.0.1:45040/v1` (offline,
+deterministic) when `magic-wormhole-mailbox-server` is installed (it is in the
+`[tahoe]` extra); the client must be pointed at it:
+`export LEASEGRID_WORMHOLE_SERVER="ws://127.0.0.1:45040/v1"`. Without that env the
+client uses Tahoe's public relay, which is also what a real cross-machine invite
+uses (`LEASEGRID_DEVGRID_WORMHOLE=public` makes dev-grid do the same). Codes are
+single-use; a dead code fails in-window with "Invite code … was not accepted;
+ask your inviter for a fresh one".
 
 Headless equivalents (CI / no display):
 
@@ -83,7 +107,9 @@ owns the process until Quit. Encoding for a Sync-created client is
 | `LEASEGRID_ISSUER_URL` | issuer for the Credit place (dev-grid: `http://127.0.0.1:8700`) |
 | `LEASEGRID_SYNC_HOME` | Sync data: Tahoe client, Magic Folder config, wallet, logs |
 | `LEASEGRID_TAHOE_NODEDIR` | force a specific Tahoe client dir |
-| `LEASEGRID_SHARES` | `needed,happy,total` for a Sync-created client (default `2,3,3`) |
+| `LEASEGRID_SHARES` | `needed,happy,total` for a Sync-created client and for `dev-grid --invite` (default `2,3,3`) |
+| `LEASEGRID_WORMHOLE_SERVER` | relay for short invite codes (client; unset = Tahoe's public relay) |
+| `LEASEGRID_DEVGRID_WORMHOLE` / `_PORT` | dev-grid relay: `auto` (local if installed), `local`, `public`; port 45040 |
 | `LEASEGRID_TAHOE_BIN` / `LEASEGRID_MAGIC_FOLDER_BIN` | explicit executables |
 
 ## FAIL (in-window)
@@ -105,5 +131,5 @@ go back).
 
 ## Not in this slice
 
-XMR top-up (U5), invite codes shorter than a furl, macOS / Windows. The Linux
+XMR top-up (U5), macOS / Windows. The Linux
 AppImage (U3) is in [`u3-appimage.md`](u3-appimage.md).

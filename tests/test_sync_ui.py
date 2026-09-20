@@ -244,6 +244,27 @@ def test_join_page_explains_what_join_does(ui: MainWindow):
     blob = " ".join(w.text() for w in labels)
     assert "creates a Tahoe client" in blob
     assert "Nothing is uploaded until you add a folder" in blob
+    assert "short code" in blob
+    assert "7-word-word" in ui.invite_edit.placeholderText()
+
+
+def test_join_with_short_code_shows_code_progress(ui: MainWindow):
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    seen = {}
+
+    def fake_join(invite):
+        seen["progress"] = ui.join_progress.text()
+        return st
+
+    ui.invite_edit.setText(" 7-Guitarist-Revenge ")
+    with patch.object(ui.tahoe, "has_nodedir", return_value=False):
+        with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
+            with patch.object(ui.tahoe, "connection_status", return_value=st):
+                with patch.object(ui.mf, "list_folders", return_value=[]):
+                    ui.on_join_invite()
+    assert "code 7-guitarist-revenge" in seen["progress"]
+    assert "inviter" in seen["progress"]
+    assert ui.stack.currentWidget() is ui.main_page
 
 
 def test_no_wui_cta_widgets(ui: MainWindow):

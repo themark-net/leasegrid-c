@@ -11,7 +11,6 @@ import binascii
 import pytest
 
 from leasegrid_zkap.crypto import generate_signing_key
-from leasegrid_zkap.errors import SpendError
 from leasegrid_zkap.gate import LeaseGate
 from leasegrid_zkap.r_bind import encode_r
 from leasegrid_zkap.spentset import SpentSet
@@ -285,7 +284,7 @@ def test_gate_rsa_spend_and_settlement_is_t_only(tmp_path):
 
 
 def test_issuer_quote_redeem_rsa_bssa():
-    from leasegrid_zkap.client import ClientError, http_json
+    from leasegrid_zkap.client import http_json
     from leasegrid_zkap.issuer import start_issuer
     from leasegrid_zkap.payment import FakeChain, PricePolicy, VoucherStore
     from leasegrid_zkap.rsa_bssa import (

@@ -98,6 +98,24 @@ Secrets (furls, keys, wallet files) stay **off git**.
 
 **Record:** which node ejected, repair method, before/after connected storage count, PASS/FAIL.
 
+### Gate 0e — Publicly verifiable tokens (`rsa-bssa-v1`)
+
+**Intent:** a second paid operator cannot mint and cannot re-bind a token it received. Lab (0b/0c) stays on `ristretto-v0`. This gate is required before operator #2 joins a paid grid ([`07-payment.md`](07-payment.md) §9, [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md)).
+
+| Step | Action | PASS if |
+|---|---|---|
+| 0e.1 | Issuer opens an `rsa-bssa-v1` epoch; client quotes/redeems that scheme | Tokens verify with the RSA **public** key only |
+| 0e.2 | Storage node accepts a spend `(t, pk_tok, σ, R, Sign_sk_tok(R))` | Lease granted; node holds no issuer signing secret |
+| 0e.3 | Fabricated `σ` / unknown `t` | Node refuses; issuer settlement of that `t` is rejected or unpaid |
+| 0e.4 | Node that saw a valid spend retries the same `t` at a second node with a new `R` | Second spend refused (`pk_tok` did not sign `R'`) |
+| 0e.5 | Settlement body is spent `t` only | Issuer rejects any body that includes `R` |
+
+**FAIL if:** the node can mint, or can re-bind a received token, or 0b `ristretto-v0` regresses.
+
+**Implementation (code, not a PASS):** `src/leasegrid_zkap/rsa_bssa.py` + issuer quote/redeem + `LeaseGate.spend_rsa` covered by `tests/test_zkap_rsa_bssa.py` (RFC 9474 A.3). Dated live PASS is not started.
+
+**Record:** issuer pubkey id, scheme, commit/SHA, PASS/FAIL. No secrets in git.
+
 ## Phase 0 exit
 
 | Required | Status |

@@ -31,7 +31,7 @@ Both were right for the one-operator lab. Neither survives the product shape the
 - `docs/02-objects.md` §2.1 and §2.3 need amending once accepted (handle = subaddress index; token forms per scheme). Until then `07-payment.md` is authoritative for the deviation.
 - `R` is unchanged. Settlement invariant (spent `t` only, never `R`) is unchanged.
 - With `rsa-bssa-v1` the storage host holds **no secret**, which also simplifies the operator package (Phase 2).
-- Gate 0e is added to `08-lab.md` when S9 in `07-payment.md` §13 is scheduled.
+- Gate 0e is specified in `08-lab.md`. S9 CI (`rsa-bssa-v1` + `pk_tok`) is implemented; the dated live PASS is not started.
 
 ## References
 

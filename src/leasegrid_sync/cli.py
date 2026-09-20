@@ -65,6 +65,21 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("small", "medium", "large"),
         help="Faucet amount tier for --credit-dogfood (default: medium).",
     )
+    p.add_argument(
+        "--export-recovery",
+        metavar="PATH",
+        default=None,
+        help="Write a recovery key for the joined friendnet to PATH and exit (no window). "
+        "Passphrase from LEASEGRID_RECOVERY_PASSPHRASE (empty = plaintext).",
+    )
+    p.add_argument(
+        "--restore-recovery",
+        metavar="PATH",
+        default=None,
+        help="Restore folders from a recovery key on this device and exit (no window). "
+        "Passphrase from LEASEGRID_RECOVERY_PASSPHRASE. Folders land in "
+        "LEASEGRID_RESTORE_ROOT (default ~/Leasegrid).",
+    )
     return p
 
 
@@ -87,6 +102,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("%d\t%s" % (snap.balance.tokens, format_remaining(snap.balance.tokens).split("\n")[0]))
         return 0
+    if args.export_recovery or args.restore_recovery:
+        return _recovery_headless(args, nodedir)
     try:
         from .app import run_app
     except ImportError as exc:
@@ -106,6 +123,60 @@ def main(argv: list[str] | None = None) -> int:
         credit_dogfood=args.credit_dogfood,
         credit_tier=args.credit_tier,
     )
+
+
+def _recovery_headless(args, nodedir: Path) -> int:
+    from .backend import MagicFolderCtl, default_home
+    from .recovery import RecoveryCtl
+
+    home = default_home()
+    tahoe = TahoeClient(nodedir=nodedir, home=home)
+    mf = MagicFolderCtl(config_dir=home / "magic-folder", nodedir=tahoe.nodedir)
+    credit = CreditCtl(home=home, issuer_url=args.issuer)
+    root = os.environ.get("LEASEGRID_RESTORE_ROOT")
+    ctl = RecoveryCtl(home, tahoe, mf, credit, folder_root=Path(root).expanduser() if root else None)
+    passphrase = os.environ.get("LEASEGRID_RECOVERY_PASSPHRASE", "")
+    try:
+        if args.export_recovery:
+            bundle = ctl.export(Path(args.export_recovery).expanduser(), passphrase)
+            print(
+                "recovery-export path=%s folders=%d wallet=%s encrypted=%s"
+                % (
+                    args.export_recovery,
+                    len(bundle.folders),
+                    "yes" if bundle.wallet else "no",
+                    "yes" if passphrase else "NO",
+                )
+            )
+            return 0
+        result = ctl.restore(
+            Path(args.restore_recovery).expanduser(),
+            passphrase,
+            progress=lambda text: print(text, file=sys.stderr),
+        )
+        print(
+            "recovery-restore folders=%s skipped=%s wallet=%s author=%s grid=%s"
+            % (
+                ",".join(result.folders) or "-",
+                ",".join(result.skipped) or "-",
+                "restored" if result.wallet_restored else "kept",
+                result.author_name,
+                result.grid,
+            )
+        )
+        # Leave the daemons running long enough for a first download pass when asked.
+        linger = float(os.environ.get("LEASEGRID_RESTORE_LINGER", "0") or 0)
+        if linger > 0:
+            import time
+
+            time.sleep(linger)
+        return 0
+    except SyncError as exc:
+        print(exc.banner(), file=sys.stderr)
+        return 1
+    finally:
+        mf.stop()
+        tahoe.stop()
 
 
 if __name__ == "__main__":

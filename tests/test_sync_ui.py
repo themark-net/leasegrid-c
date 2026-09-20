@@ -135,6 +135,106 @@ def test_join_invite_success_enters_main(ui: MainWindow):
     assert ui.join_error.text() == ""
 
 
+def test_recovery_place_has_scary_copy_and_both_actions(ui: MainWindow):
+    labels = ui.recovery_tab.findChildren(PyQt5.QtWidgets.QLabel)
+    buttons = ui.recovery_tab.findChildren(PyQt5.QtWidgets.QPushButton)
+    blob = " ".join(w.text() for w in labels)
+    assert "TOTAL LOSS" in blob
+    assert "Last export: never" in blob
+    names = [b.text() for b in buttons]
+    assert "Export recovery key…" in names
+    assert "Import recovery key…" in names
+    assert "not in this build" not in blob
+
+
+def test_join_page_offers_import_recovery(ui: MainWindow):
+    buttons = ui.join_page.findChildren(PyQt5.QtWidgets.QPushButton)
+    assert any("Import recovery key" in b.text() for b in buttons)
+
+
+def test_export_dialog_gate_requires_both_acks_and_matching_passphrase(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ExportRecoveryDialog
+
+    dlg = ExportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, default_dir=tmp_path)
+    assert not dlg.write_btn.isEnabled()
+    dlg.ack_loss.setChecked(True)
+    assert not dlg.write_btn.isEnabled()
+    dlg.ack_store.setChecked(True)
+    assert dlg.write_btn.isEnabled()  # no passphrase is allowed (plaintext, with a note)
+    assert not dlg.pass_note.isHidden()
+    dlg.pass_edit.setText("abc")
+    assert not dlg.write_btn.isEnabled()  # confirm mismatch
+    dlg.confirm_edit.setText("abc")
+    assert dlg.write_btn.isEnabled()
+    assert dlg.path_edit.text().endswith(".leasegrid-recovery")
+
+
+def test_export_dialog_fail_in_window(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ExportRecoveryDialog
+
+    dlg = ExportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, default_dir=tmp_path)
+    dlg.ack_loss.setChecked(True)
+    dlg.ack_store.setChecked(True)
+    with patch.object(
+        ui.recovery, "export", side_effect=SyncError("recovery key was not written.", "Retry.")
+    ):
+        dlg.on_write()
+    assert "FAIL" in dlg.status.text()
+    assert dlg.write_btn.text() == "Retry export"
+    assert dlg.write_btn.isEnabled()
+    assert dlg.written is None
+
+
+def test_export_dialog_success(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ExportRecoveryDialog
+    from leasegrid_sync.recovery import RecoveryBundle
+
+    dlg = ExportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, default_dir=tmp_path)
+    dlg.ack_loss.setChecked(True)
+    dlg.ack_store.setChecked(True)
+    bundle = RecoveryBundle(introducer_furl="pb://x@h:1/s", shares=(2, 3, 3))
+    with patch.object(ui.recovery, "export", return_value=bundle) as exp:
+        dlg.on_write()
+    assert exp.called
+    assert dlg.written == Path(dlg.path_edit.text())
+
+
+def test_import_dialog_missing_file_and_fail(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=tmp_path / "nope")
+    dlg.on_import()
+    assert "File not found" in dlg.status.text()
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    dlg.path_edit.setText(str(key))
+    with patch.object(
+        ui.recovery,
+        "restore",
+        side_effect=SyncError("could not import this recovery key.", "check passphrase."),
+    ):
+        dlg.on_import()
+    assert "FAIL" in dlg.status.text()
+    assert dlg.import_btn.text() == "Retry import"
+
+
+def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
+    from leasegrid_sync.recovery import RestoreResult
+
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    res = RestoreResult(
+        folders=["Photos"], skipped=[], wallet_restored=True, author_name="me@box-ab12",
+        grid="introducer up · 3 storage",
+    )
+    with patch.object(ui.tahoe, "connection_status", return_value=st):
+        with patch.object(ui.mf, "list_folders", return_value=[]):
+            ui.apply_restore_result(res)
+    assert ui.stack.currentWidget() is ui.main_page
+    assert ui.tabs.currentWidget() is ui.folders_tab
+    assert "Restored 1 folder(s): Photos" in ui.folder_error.text()
+    assert "Credit wallet restored" in ui.folder_error.text()
+
+
 def test_join_page_explains_what_join_does(ui: MainWindow):
     labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
     blob = " ".join(w.text() for w in labels)

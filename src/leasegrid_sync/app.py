@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -34,14 +35,27 @@ from .credit import (
     credit_gate,
     format_remaining,
 )
+from .recovery import (
+    ACK_LOSS,
+    ACK_STORE,
+    EXPORT_STOP,
+    EXPORT_WARN,
+    NO_PASSPHRASE_NOTE,
+    RECOVERY_INTRO,
+    RECOVERY_SUFFIX,
+    SCARY_LOSS,
+    RecoveryCtl,
+    RestoreResult,
+)
 
 THREAT_COPY = (
     "You are joining a paid friendnet you trust — not Dropbox-the-company and not Filecoin.\n"
     "1. Issuer trust — credit is minted by this friendnet's issuer after payment.\n"
     "2. No storage proofs — dead or unpaid nodes are dropped and shares moved, not slashed.\n"
     "3. Tor vs sync — full privacy often wants Tor; folder sync may use LAN/WAN. "
-    "Transport policy is a visible setting (U4 polish).\n"
-    "4. Recovery — lose the recovery key and this device and access can be gone (U4)."
+    "Transport policy is a visible setting.\n"
+    "4. Recovery — lose the recovery key and this device and access can be gone forever. "
+    "Export one from the Recovery place after you join."
 )
 
 
@@ -130,6 +144,210 @@ class TopUpDialog:
         self.dlg.accept()
 
 
+class ExportRecoveryDialog:
+    """Wireframe 4b: scary gate, two ACKs, optional passphrase, path, write."""
+
+    def __init__(self, parent, recovery: RecoveryCtl, qt, default_dir: Optional[Path] = None) -> None:
+        QtWidgets = qt
+        self.QtWidgets = QtWidgets
+        self.recovery = recovery
+        self.written: Optional[Path] = None
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Export recovery key")
+        self.dlg.setObjectName("exportRecoveryDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        stop = QtWidgets.QLabel(EXPORT_STOP)
+        font = stop.font()
+        font.setBold(True)
+        stop.setFont(font)
+        v.addWidget(stop)
+        warn = QtWidgets.QLabel(EXPORT_WARN)
+        warn.setWordWrap(True)
+        warn.setObjectName("exportWarn")
+        v.addWidget(warn)
+        self.ack_loss = QtWidgets.QCheckBox(ACK_LOSS)
+        self.ack_loss.setObjectName("ackLoss")
+        self.ack_store = QtWidgets.QCheckBox(ACK_STORE)
+        self.ack_store.setObjectName("ackStore")
+        v.addWidget(self.ack_loss)
+        v.addWidget(self.ack_store)
+        v.addWidget(QtWidgets.QLabel("Passphrase (recommended)"))
+        row = QtWidgets.QHBoxLayout()
+        self.pass_edit = QtWidgets.QLineEdit()
+        self.pass_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.pass_edit.setObjectName("passEdit")
+        self.confirm_edit = QtWidgets.QLineEdit()
+        self.confirm_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.confirm_edit.setPlaceholderText("confirm")
+        self.confirm_edit.setObjectName("confirmEdit")
+        row.addWidget(self.pass_edit)
+        row.addWidget(self.confirm_edit)
+        v.addLayout(row)
+        self.pass_note = QtWidgets.QLabel(NO_PASSPHRASE_NOTE)
+        self.pass_note.setWordWrap(True)
+        self.pass_note.setObjectName("passNote")
+        v.addWidget(self.pass_note)
+        v.addWidget(QtWidgets.QLabel("Save to"))
+        prow = QtWidgets.QHBoxLayout()
+        self.path_edit = QtWidgets.QLineEdit()
+        self.path_edit.setObjectName("pathEdit")
+        base = Path(default_dir) if default_dir else Path.home()
+        self.path_edit.setText(str(base / ("leasegrid-recovery" + RECOVERY_SUFFIX)))
+        browse = QtWidgets.QPushButton("Browse…")
+        browse.setObjectName("browseButton")
+        browse.clicked.connect(self.on_browse)
+        prow.addWidget(self.path_edit)
+        prow.addWidget(browse)
+        v.addLayout(prow)
+        self.status = QtWidgets.QLabel("")
+        self.status.setObjectName("exportStatus")
+        self.status.setWordWrap(True)
+        v.addWidget(self.status)
+        brow = QtWidgets.QHBoxLayout()
+        self.write_btn = QtWidgets.QPushButton("Write recovery key")
+        self.write_btn.setObjectName("writeButton")
+        self.write_btn.setEnabled(False)
+        self.write_btn.clicked.connect(self.on_write)
+        cancel = QtWidgets.QPushButton("Cancel")
+        cancel.setObjectName("exportCancel")
+        cancel.clicked.connect(self.dlg.reject)
+        brow.addWidget(self.write_btn)
+        brow.addWidget(cancel)
+        brow.addStretch(1)
+        v.addLayout(brow)
+        for w in (self.ack_loss, self.ack_store):
+            w.toggled.connect(self._update_gate)
+        for w in (self.pass_edit, self.confirm_edit, self.path_edit):
+            w.textChanged.connect(self._update_gate)
+        self._update_gate()
+
+    def _update_gate(self, *_args) -> None:
+        ok = self.ack_loss.isChecked() and self.ack_store.isChecked()
+        ok = ok and bool(self.path_edit.text().strip())
+        ok = ok and self.pass_edit.text() == self.confirm_edit.text()
+        self.write_btn.setEnabled(ok)
+        self.pass_note.setVisible(not self.pass_edit.text())
+
+    def on_browse(self) -> None:
+        path, _ = self.QtWidgets.QFileDialog.getSaveFileName(
+            self.dlg,
+            "Save recovery key",
+            self.path_edit.text(),
+            "Leasegrid recovery key (*%s)" % RECOVERY_SUFFIX,
+        )
+        if path:
+            if not path.endswith(RECOVERY_SUFFIX):
+                path += RECOVERY_SUFFIX
+            self.path_edit.setText(path)
+
+    def on_write(self) -> None:
+        self.status.setStyleSheet("")
+        self.status.setText("Writing recovery key…")
+        self.write_btn.setEnabled(False)
+        self.QtWidgets.QApplication.processEvents()
+        path = Path(self.path_edit.text().strip()).expanduser()
+        try:
+            self.recovery.export(path, self.pass_edit.text())
+        except SyncError as exc:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(exc.banner())
+            self.write_btn.setText("Retry export")
+            self.write_btn.setEnabled(True)
+            return
+        self.written = path
+        self.dlg.accept()
+
+
+class ImportRecoveryDialog:
+    """Wireframe 4e: pick file, passphrase, restore with progress + in-window FAIL."""
+
+    def __init__(self, parent, recovery: RecoveryCtl, qt, path: Optional[Path] = None) -> None:
+        QtWidgets = qt
+        self.QtWidgets = QtWidgets
+        self.recovery = recovery
+        self.result: Optional[RestoreResult] = None
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Import recovery key")
+        self.dlg.setObjectName("importRecoveryDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        intro = QtWidgets.QLabel(
+            "Restores your folders on this device. This device joins each folder as a new "
+            "participant; files download from the friendnet into ~/Leasegrid/<folder>."
+        )
+        intro.setWordWrap(True)
+        v.addWidget(intro)
+        v.addWidget(QtWidgets.QLabel("Recovery key file"))
+        prow = QtWidgets.QHBoxLayout()
+        self.path_edit = QtWidgets.QLineEdit(str(path) if path else "")
+        self.path_edit.setObjectName("importPathEdit")
+        browse = QtWidgets.QPushButton("Browse…")
+        browse.setObjectName("importBrowseButton")
+        browse.clicked.connect(self.on_browse)
+        prow.addWidget(self.path_edit)
+        prow.addWidget(browse)
+        v.addLayout(prow)
+        v.addWidget(QtWidgets.QLabel("Passphrase (leave empty if none was set)"))
+        self.pass_edit = QtWidgets.QLineEdit()
+        self.pass_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.pass_edit.setObjectName("importPassEdit")
+        v.addWidget(self.pass_edit)
+        self.status = QtWidgets.QLabel("")
+        self.status.setObjectName("importStatus")
+        self.status.setWordWrap(True)
+        v.addWidget(self.status)
+        brow = QtWidgets.QHBoxLayout()
+        self.import_btn = QtWidgets.QPushButton("Import recovery key")
+        self.import_btn.setObjectName("importButton")
+        self.import_btn.clicked.connect(self.on_import)
+        cancel = QtWidgets.QPushButton("Cancel")
+        cancel.setObjectName("importCancel")
+        cancel.clicked.connect(self.dlg.reject)
+        brow.addWidget(self.import_btn)
+        brow.addWidget(cancel)
+        brow.addStretch(1)
+        v.addLayout(brow)
+
+    def on_browse(self) -> None:
+        path, _ = self.QtWidgets.QFileDialog.getOpenFileName(
+            self.dlg,
+            "Open recovery key",
+            str(Path.home()),
+            "Leasegrid recovery key (*%s);;All files (*)" % RECOVERY_SUFFIX,
+        )
+        if path:
+            self.path_edit.setText(path)
+
+    def _progress(self, text: str) -> None:
+        self.status.setStyleSheet("")
+        self.status.setText(text)
+        self.QtWidgets.QApplication.processEvents()
+
+    def on_import(self) -> None:
+        path = Path(self.path_edit.text().strip()).expanduser()
+        if not path.is_file():
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(
+                SyncError(
+                    "could not import this recovery key. File not found.",
+                    "pick the file from your backup; Retry.",
+                ).banner()
+            )
+            return
+        self.import_btn.setEnabled(False)
+        self._progress("Importing recovery key…")
+        try:
+            self.result = self.recovery.restore(path, self.pass_edit.text(), progress=self._progress)
+        except SyncError as exc:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(exc.banner())
+            self.import_btn.setText("Retry import")
+            self.import_btn.setEnabled(True)
+            return
+        self.dlg.accept()
+
+
 class MainWindow:
     """Thin wrapper so tests can construct the window without exec_."""
 
@@ -150,6 +368,7 @@ class MainWindow:
         self.tahoe = TahoeClient(nodedir=nodedir, home=self.home)
         self.mf = MagicFolderCtl(config_dir=self.home / "magic-folder", nodedir=self.tahoe.nodedir)
         self.credit = credit or CreditCtl(home=self.home, issuer_url=issuer_url)
+        self.recovery = RecoveryCtl(self.home, self.tahoe, self.mf, self.credit)
         self._joined = False
         self._credit_loaded = False
 
@@ -226,6 +445,10 @@ class MainWindow:
         self.existing_btn.clicked.connect(self.on_join_existing)
         row.addWidget(self.join_btn)
         row.addWidget(self.existing_btn)
+        self.import_key_btn = QtWidgets.QPushButton("Import recovery key instead…")
+        self.import_key_btn.setObjectName("importKeyButton")
+        self.import_key_btn.clicked.connect(self.on_import_recovery)
+        row.addWidget(self.import_key_btn)
         row.addStretch(1)
         v.addLayout(row)
         self.join_progress = QtWidgets.QLabel("")
@@ -381,15 +604,79 @@ class MainWindow:
     def _build_recovery_tab(self) -> None:
         QtWidgets = self.QtWidgets
         rl = QtWidgets.QVBoxLayout(self.recovery_tab)
-        rl.addWidget(QtWidgets.QLabel("Recovery"))
-        note = QtWidgets.QLabel(
-            "Recovery key export is not in this build (U4).\n"
-            "Lose this device and access can be gone. U4 adds the export HITL."
-        )
-        note.setWordWrap(True)
-        note.setObjectName("recoveryNote")
-        rl.addWidget(note)
+        title = QtWidgets.QLabel("Recovery")
+        font = title.font()
+        font.setBold(True)
+        title.setFont(font)
+        rl.addWidget(title)
+        intro = QtWidgets.QLabel(RECOVERY_INTRO)
+        intro.setWordWrap(True)
+        intro.setObjectName("recoveryIntro")
+        rl.addWidget(intro)
+        scary = QtWidgets.QLabel("⚠  " + SCARY_LOSS)
+        scary.setWordWrap(True)
+        scary.setObjectName("recoveryScary")
+        scary.setStyleSheet("color: #8b1a1a; font-weight: bold;")
+        rl.addWidget(scary)
+        row = QtWidgets.QHBoxLayout()
+        self.export_key_btn = QtWidgets.QPushButton("Export recovery key…")
+        self.export_key_btn.setObjectName("exportKeyButton")
+        self.export_key_btn.clicked.connect(self.on_export_recovery)
+        self.import_key_btn2 = QtWidgets.QPushButton("Import recovery key…")
+        self.import_key_btn2.setObjectName("importKeyButton2")
+        self.import_key_btn2.clicked.connect(self.on_import_recovery)
+        row.addWidget(self.export_key_btn)
+        row.addWidget(self.import_key_btn2)
+        row.addStretch(1)
+        rl.addLayout(row)
+        self.recovery_status = QtWidgets.QLabel("")
+        self.recovery_status.setObjectName("recoveryStatus")
+        self.recovery_status.setWordWrap(True)
+        rl.addWidget(self.recovery_status)
+        self.last_export_label = QtWidgets.QLabel("")
+        self.last_export_label.setObjectName("lastExportLabel")
+        rl.addWidget(self.last_export_label)
+        self._refresh_last_export()
         rl.addStretch(1)
+
+    def _refresh_last_export(self) -> None:
+        info = self.recovery.last_export()
+        if not info:
+            self.last_export_label.setText("Last export: never")
+            return
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(info["last_export"])))
+        self.last_export_label.setText("Last export: %s  →  %s" % (when, info.get("path", "")))
+
+    def on_export_recovery(self) -> None:
+        self.recovery_status.setStyleSheet("")
+        self.recovery_status.setText("")
+        dlg = ExportRecoveryDialog(self.win, self.recovery, self.QtWidgets)
+        if dlg.dlg.exec_() == self.QtWidgets.QDialog.Accepted and dlg.written is not None:
+            self.recovery_status.setText(
+                "Recovery key written to %s. Move it somewhere safe and offline." % dlg.written
+            )
+            self._refresh_last_export()
+
+    def on_import_recovery(self) -> None:
+        dlg = ImportRecoveryDialog(self.win, self.recovery, self.QtWidgets)
+        if dlg.dlg.exec_() != self.QtWidgets.QDialog.Accepted or dlg.result is None:
+            return
+        self.apply_restore_result(dlg.result)
+
+    def apply_restore_result(self, result: RestoreResult) -> None:
+        note = "Restored %d folder(s): %s." % (len(result.folders), ", ".join(result.folders) or "none")
+        if result.skipped:
+            note += " Already here: %s." % ", ".join(result.skipped)
+        if result.wallet_restored:
+            note += " Credit wallet restored."
+        note += " Files download from the friendnet as this device (%s)." % result.author_name
+        if not self._joined:
+            self._enter_main("Connected", result.grid)
+        else:
+            self.refresh()
+        self.tabs.setCurrentWidget(self.folders_tab)
+        self.folder_error.setText(note)
+        self.recovery_status.setText(note)
 
     def _build_settings_tab(self) -> None:
         QtWidgets = self.QtWidgets
@@ -400,7 +687,6 @@ class MainWindow:
             "that feels normal may use LAN/WAN. This is a visible design flag — polish in U4.\n\n"
             "Coming later\n"
             "· Linux AppImage / .deb installer — U3\n"
-            "· Recovery key export HITL — U4\n"
             "· Monero (XMR) top-up — U5 (after mint rails)\n\n"
             "About\n"
             "%s (buyer) · version %s\n"

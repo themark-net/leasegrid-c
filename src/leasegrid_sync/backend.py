@@ -190,7 +190,7 @@ class TahoeClient:
         except SyncError:
             return False
 
-    def create_client(self, furl: str) -> None:
+    def create_client(self, furl: str, shares: Optional[tuple[int, int, int]] = None) -> None:
         """`tahoe create-client` into self.nodedir, bound to the invite's introducer."""
         if self.has_nodedir():
             return
@@ -200,7 +200,7 @@ class TahoeClient:
                 % self.nodedir,
                 "move that directory aside or set LEASEGRID_TAHOE_NODEDIR; Retry.",
             )
-        needed, happy, total = shares_config()
+        needed, happy, total = shares or shares_config()
         cmd = [
             self.require_bin(),
             "create-client",
@@ -342,6 +342,25 @@ class TahoeClient:
                 "check the Tahoe client logs; Retry.",
             )
         return data
+
+    def mkdir(self, timeout: float = 60.0) -> str:
+        """Create an empty mutable directory on the grid; return its write cap."""
+        url = self.node_url() + "/uri?t=mkdir"
+        req = urllib.request.Request(url, data=b"", method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                cap = resp.read().decode("utf-8").strip()
+        except urllib.error.URLError as exc:
+            raise SyncError(
+                "could not create a folder on the friendnet. Tahoe returned an error.",
+                "check that storage nodes are connected; Retry.",
+            ) from exc
+        if not cap.startswith("URI:DIR2:"):
+            raise SyncError(
+                "could not create a folder on the friendnet. Unexpected reply from Tahoe.",
+                "check the Tahoe client log; Retry.",
+            )
+        return cap
 
     def connection_status(self) -> ConnectionStatus:
         try:
@@ -667,14 +686,14 @@ class MagicFolderCtl:
                 "see %s; Restart Sync." % self.log_path,
             ) from exc
 
-    def _http_post(self, path: str, timeout: float = 30.0) -> Any:
+    def _http_post(self, path: str, timeout: float = 30.0, body: Optional[dict] = None) -> Any:
         url = self._base_url() + path
-        req = urllib.request.Request(
-            url,
-            data=b"",
-            method="POST",
-            headers=self._auth_headers(),
-        )
+        headers = self._auth_headers()
+        data = b""
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=data, method="POST", headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
@@ -813,6 +832,18 @@ class MagicFolderCtl:
             "/v1/magic-folder/%s/recent-changes?number=%d" % (quote(name, safe=""), number)
         )
         return data if isinstance(data, list) else []
+
+    def participants(self, name: str) -> dict[str, Any]:
+        data = self._http_get("/v1/magic-folder/%s/participants" % quote(name, safe=""))
+        return data if isinstance(data, dict) else {}
+
+    def add_participant(self, name: str, author_name: str, personal_dmd_readcap: str) -> None:
+        """Register another device's personal DMD in this folder's collective."""
+        self._http_post(
+            "/v1/magic-folder/%s/participants" % quote(name, safe=""),
+            timeout=60,
+            body={"author": {"name": author_name}, "personal_dmd": personal_dmd_readcap},
+        )
 
     def snapshots(self, name: Optional[str] = None) -> dict[str, Any]:
         data = self._http_get("/v1/snapshot")

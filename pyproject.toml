@@ -10,7 +10,10 @@ readme = "deploy/zkap-lab/README.md"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Leasegrid" }]
-dependencies = ["python-challenge-bypass-ristretto>=2022.6.30"]
+dependencies = [
+  "python-challenge-bypass-ristretto>=2022.6.30",
+  "cryptography>=41",  # recovery key file (Fernet); [tahoe] caps it at <45
+]
 
 [project.scripts]
 leasegrid-zkap = "leasegrid_zkap.cli:main"

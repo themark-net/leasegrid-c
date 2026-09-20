@@ -48,6 +48,9 @@ leasegrid-sync
 3. **Folders** → **Add folder**. Drop a file in; the row goes **Up to date**.
 4. Tray **Quit** stops Magic Folder and the Tahoe client Sync started.
    Relaunching `leasegrid-sync` restarts them and lands on Folders.
+5. **Recovery → Export recovery key…**, then on a second `LEASEGRID_SYNC_HOME`
+   use **Import recovery key instead…** on the join page. See
+   [`u4-recovery.md`](u4-recovery.md).
 
 Headless equivalents (CI / no display):
 
@@ -94,5 +97,5 @@ owns the process until Quit. Encoding for a Sync-created client is
 
 ## Not in this slice
 
-Installer (U3), recovery key export (U4), XMR top-up (U5), ZKAP-gated storage
-in dev-grid, invite codes shorter than a furl, macOS / Windows.
+Installer (U3), XMR top-up (U5), ZKAP-gated storage in dev-grid, invite codes
+shorter than a furl, macOS / Windows.

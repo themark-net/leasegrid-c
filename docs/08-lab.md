@@ -66,7 +66,7 @@ Secrets (furls, keys, wallet files) stay **off git**.
 
 ### Gate 0c — XMR → `vid` → ZKAP
 
-**Intent:** Real Monero payment (testnet, stagenet, or tiny mainnet) drives issuance.
+**Intent:** Real Monero payment (testnet, stagenet, or tiny mainnet) drives issuance. Design: [`07-payment.md`](07-payment.md) (quote / voucher / redeem protocol, confirmation policy, build order S0–S7).
 
 | Step | Action | PASS if |
 |---|---|---|

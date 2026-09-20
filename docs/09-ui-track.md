@@ -56,7 +56,7 @@ Do **not** wait for 0c/0d PASS to start UI.
 | **U2** | Credit panel wired to lab issuer/faucet (no mainnet XMR required) | Balance visible after faucet |
 | **U3** | Linux installer (AppImage and/or .deb) that installs Sync without a shell tutorial | Fresh VM / second user install PASS |
 | **U4** | Recovery key export + first-run threat copy | Non-expert walkthrough PASS |
-| **U5** | Swap faucet for XMR top-up when gate 0c PASS | Phase 1 exit with rails |
+| **U5** | Swap faucet for XMR top-up when gate 0c PASS — design: [`07-payment.md`](07-payment.md) §11 | Phase 1 exit with rails |
 
 Rails owners keep 0c/0d. UI owners own U0–U5. Phase 1 exit still requires Phase 0 rails for real XMR; UI dogfood uses faucet until then.
 

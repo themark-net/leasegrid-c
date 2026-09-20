@@ -43,9 +43,10 @@ Join accepts a furl or a `tahoe invite` code and creates and runs a Tahoe client
 4. [`docs/design/`](docs/design/) — U0 wireframes (10–14) + U2 Credit handoff (15–19)
 5. [`docs/01-architecture.md`](docs/01-architecture.md) — roles and rails
 6. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
-7. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
-8. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
-9. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet
+7. [`docs/07-payment.md`](docs/07-payment.md) — XMR → `vid` → ZKAP → settlement design (gate 0c / U5; proposed)
+8. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
+9. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
+10. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet
 
 ## Two rails
 

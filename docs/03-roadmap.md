@@ -16,7 +16,7 @@ Closest substitute today is PrivateStorage + ProxyStore (same Tahoe/ZKAP family,
 
 **Goal:** The documented loop works on real machines. Not a market release.
 
-- [ ] XMR faucet (or tiny spend) → `vid` → ZKAP batch from issuer
+- [ ] XMR faucet (or tiny spend) → `vid` → ZKAP batch from issuer — design: [`07-payment.md`](07-payment.md)
 - [x] Spend ZKAP on allocate / add_lease / renew against a storage node (gate 0b faucet; no XMR)
 - [ ] Kill or eject a node; client (or repair agent) moves shares; stop paying the dead node
 - [x] Document as [`08-lab.md`](08-lab.md); no slogan-only criterion
@@ -75,11 +75,11 @@ These are roadmap items that **must not** be hacked in as afterthoughts. They ne
 | Flag | Why it is heavy | Earliest phase it blocks |
 |---|---|---|
 | **Abuse prevention & free reads (v0)** | Free protocol reads + multi-op + no KYC invites adversarial load and egress burn. Needs rate limits, authz at read path or metering, AUP, and operator kill switches without becoming KYC-Filecoin. | Blocks serious Phase 2 supply and any public invite grid |
-| **Issuer trust, key rotation, compromise** | Mint sees XMR amounts/timing/`vid`. Epoch rotation, spent-set, and “issuer died” recovery need a written model. | Blocks Phase 0 exit for anything beyond a toy faucet |
-| **Multi-issuer / settlement** | Friendnet economics fail if every grid is secretly one mint. How nodes get XMR from ZKAP spends (out-of-band → explicit) needs a design. | Blocks Phase 2 “get paid” honesty |
+| **Issuer trust, key rotation, compromise** | Mint sees XMR amounts/timing/`vid`. Epoch rotation, spent-set, and “issuer died” recovery need a written model. **Designed:** [`07-payment.md`](07-payment.md) §8. | Blocks Phase 0 exit for anything beyond a toy faucet |
+| **Multi-issuer / settlement** | Friendnet economics fail if every grid is secretly one mint. How nodes get XMR from ZKAP spends (out-of-band → explicit) needs a design. **Designed:** [`07-payment.md`](07-payment.md) §9, [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md). | Blocks Phase 2 “get paid” honesty |
 | **Tor-mandatory UX vs sync performance** | Full privacy claim wants Tor; Magic Folder users expect LAN/WAN sync that feels normal. Policy for lab vs production transports. | Blocks Phase 1 “normal person” on the privacy claim |
 | **Operator legal / AUP / liability** | Multi-op paid storage attracts CSAM and takedown risk. Templates and defaults without pretending to be a lawyer product. | Blocks Phase 3 public invites |
-| **Pricing & denomination UX** | Share-byte-months and expansion confuse normals. UI must translate without lying about cost. | Blocks Phase 1 conversion |
+| **Pricing & denomination UX** | Share-byte-months and expansion confuse normals. UI must translate without lying about cost. **Designed:** [`07-payment.md`](07-payment.md) §4, §11. | Blocks Phase 1 conversion |
 | **Silent-eject vs paid SLA expectations** | Paying customers expect availability stories. Document social/friendnet trust; do not fake PoRep. Optional B-lite is separate and later. | Blocks pitching as general cloud |
 
 When one of these is opened, add a design doc (e.g. `docs/06-abuse.md`, `docs/07-issuer.md`) and link it here. Do not implement from a one-line ticket.
@@ -111,7 +111,7 @@ Unchanged from the architecture decision:
 | Paid rails (issuer, plugin, eject) | 0b lab PASS (faucet ZKAP, no XMR); 0c–0d open — [`08-lab.md`](08-lab.md) |
 | Magic Folder / normal-person client | **UI track locked 2026-09-19** — native + installer; see [`09-ui-track.md`](09-ui-track.md); U0–U5 |
 | Operator package | Not started (local stock-Tahoe bootstrap only) |
-| Abuse / settlement / issuer-compromise designs | **Flagged; not designed** |
+| Abuse / settlement / issuer-compromise designs | Payment, settlement, issuer-compromise: **designed** ([`07-payment.md`](07-payment.md), proposed). Abuse / free reads: flagged; not designed |
 
 ## Research / distribution layer (MictlanX)
 

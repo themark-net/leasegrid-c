@@ -25,14 +25,28 @@ def build_storage_handler(gate: LeaseGate):
         if not body:
             return 400, {"error": "JSON object required"}
         t = body.get("t")
-        mac = body.get("mac")
-        if not t or not mac:
-            return 400, {"error": "t and mac required"}
+        if not t:
+            return 400, {"error": "t required"}
         try:
             r = parse_r_input(body)
-            out = gate.spend(t, r, mac)
+            if body.get("scheme") == "rsa-bssa-v1" or body.get("sigma"):
+                from base64 import b64decode
+
+                pk_tok = body.get("pk_tok")
+                sigma = body.get("sigma")
+                sig_r = body.get("sig_r")
+                if not pk_tok or not sigma or not sig_r:
+                    return 400, {"error": "pk_tok, sigma, and sig_r required"}
+                out = gate.spend_rsa(t, b64decode(pk_tok), b64decode(sigma), r, b64decode(sig_r))
+            else:
+                mac = body.get("mac")
+                if not mac:
+                    return 400, {"error": "t and mac required"}
+                out = gate.spend(t, r, mac)
         except SpendError as e:
             return 403, {"error": str(e)}
+        except (ValueError, TypeError) as e:
+            return 400, {"error": str(e)}
         return 200, out
 
     def _si(body):

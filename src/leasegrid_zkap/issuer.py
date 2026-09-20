@@ -84,7 +84,7 @@ class IssuerState:
 
     def stats(self) -> dict:
         with self.lock:
-            return {
+            out = {
                 **self.info,
                 "issued-batches": self.issue_count,
                 "settled-preimages": len(self.settled_t),
@@ -94,8 +94,16 @@ class IssuerState:
                 "faucet": self.faucet,
                 "chain": self.chain_kind,
                 "scheme": SCHEME_V0,
+                "supported-schemes": [SCHEME_V0] + ([SCHEME_RSA] if self.rsa_key is not None else []),
                 "price_piconero": self.policy.price_piconero,
             }
+        if self.rsa_key is not None:
+            from .rsa_bssa import rsa_pubkey_id, rsa_public_spki_b64
+
+            pk = self.rsa_key.public_key()
+            out["rsa-public-key"] = rsa_public_spki_b64(pk)
+            out["rsa-issuer-pubkey-id"] = rsa_pubkey_id(pk)
+        return out
 
     def _key_b64(self, key: SigningKey) -> str:
         v = key.encode_base64()
@@ -351,6 +359,12 @@ def build_issuer_handler(state: IssuerState):
         out["amount_xmr"] = PricePolicy.format_xmr(v.amount_due)
         out["pay_uri"] = pay_uri(v.address, v.amount_due, v.vid)
         out["denomination"] = DENOMINATION
+        if scheme == SCHEME_RSA and state.rsa_key is not None:
+            from .rsa_bssa import rsa_pubkey_id, rsa_public_spki_b64
+
+            pk = state.rsa_key.public_key()
+            out["public-key"] = rsa_public_spki_b64(pk)
+            out["issuer-pubkey-id"] = rsa_pubkey_id(pk)
         return 200, out
 
     def voucher(body, headers):

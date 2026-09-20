@@ -100,6 +100,12 @@ def cmd_issuer(args) -> int:
         confirmations_large=int(args.confirmations_large),
     )
     store = VoucherStore(os.path.expanduser(args.db)) if args.db else VoucherStore()
+    rsa_key = None
+    rsa_path = getattr(args, "rsa_key", "") or ""
+    if rsa_path:
+        from .rsa_bssa import load_or_create_rsa_pem
+
+        rsa_key = load_or_create_rsa_pem(rsa_path)
     state, httpd = start_issuer(
         key,
         args.listen,
@@ -108,12 +114,19 @@ def cmd_issuer(args) -> int:
         store=store,
         faucet=bool(args.faucet),
         poll_interval=float(args.poll_interval),
+        rsa_key=rsa_key,
     )
     print("issuer listening %s" % state.listen, flush=True)
     print("issuer-pubkey-id %s" % state.info["issuer-pubkey-id"], flush=True)
     print(
-        "chain %s  faucet %s  price %s XMR/token  db %s"
-        % (state.chain_kind, "on" if state.faucet else "off", args.price_xmr, args.db or "memory"),
+        "chain %s  faucet %s  price %s XMR/token  db %s  rsa-bssa-v1 %s"
+        % (
+            state.chain_kind,
+            "on" if state.faucet else "off",
+            args.price_xmr,
+            args.db or "memory",
+            "on" if rsa_key is not None else "off",
+        ),
         flush=True,
     )
     print("invariant: settlement sends spent t only; R is rejected", flush=True)
@@ -347,6 +360,11 @@ def build_parser() -> argparse.ArgumentParser:
     iss.add_argument("--confirmations-large", default="10")
     iss.add_argument("--db", default="", help="SQLite voucher store (default: in-memory)")
     iss.add_argument("--poll-interval", default="5", help="seconds between chain polls")
+    iss.add_argument(
+        "--rsa-key",
+        default="",
+        help="PEM RSA key enabling rsa-bssa-v1 quotes (created if the path does not exist)",
+    )
     iss.set_defaults(func=cmd_issuer)
 
     sg = sub.add_parser("storage-gate", help="run storage spend HTTP (optional Tahoe wrap)")

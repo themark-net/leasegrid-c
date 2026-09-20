@@ -73,6 +73,41 @@ def rsa_public_spki_b64(pk: rsa.RSAPublicKey) -> str:
     return b64encode(der).decode("ascii")
 
 
+def save_rsa_private_pem(path: str | os.PathLike, sk: rsa.RSAPrivateKey) -> None:
+    from pathlib import Path
+
+    dest = Path(path).expanduser()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(
+        sk.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    dest.chmod(0o600)
+
+
+def load_rsa_private_pem(path: str | os.PathLike) -> rsa.RSAPrivateKey:
+    from pathlib import Path
+
+    key = serialization.load_pem_private_key(Path(path).expanduser().read_bytes(), password=None)
+    if not isinstance(key, rsa.RSAPrivateKey):
+        raise BssaError("not an RSA private key")
+    return key
+
+
+def load_or_create_rsa_pem(path: str | os.PathLike) -> rsa.RSAPrivateKey:
+    from pathlib import Path
+
+    dest = Path(path).expanduser()
+    if dest.is_file():
+        return load_rsa_private_pem(dest)
+    sk, _ = generate_issuer_rsa()
+    save_rsa_private_pem(dest, sk)
+    return sk
+
+
 def load_rsa_public_spki(b64: str) -> rsa.RSAPublicKey:
     from base64 import b64decode
 

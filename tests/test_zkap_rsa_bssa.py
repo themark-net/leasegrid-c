@@ -337,3 +337,100 @@ def test_issuer_quote_redeem_rsa_bssa():
         assert q0["scheme"] == "ristretto-v0"
     finally:
         httpd.shutdown()
+
+
+def test_topup_collects_rsa_and_storage_spend_refuses_rebind(tmp_path):
+    from base64 import b64decode
+
+    from leasegrid_zkap.client import http_json, load_wallet
+    from leasegrid_zkap.issuer import start_issuer
+    from leasegrid_zkap.payment import FakeChain, PricePolicy, VoucherStore
+    from leasegrid_zkap.payment.topup import TopUpClient
+    from leasegrid_zkap.r_bind import encode_r
+    from leasegrid_zkap.rsa_bssa import generate_issuer_rsa, sign_r
+    from leasegrid_zkap.storage_http import start_storage_http
+
+    rsa_sk, rsa_pk = generate_issuer_rsa()
+    key = generate_signing_key()
+    state, httpd = start_issuer(
+        key,
+        "127.0.0.1:0",
+        chain=FakeChain(),
+        policy=PricePolicy(price_piconero=6 * 10**9),
+        store=VoucherStore(),
+        faucet=False,
+        rsa_key=rsa_sk,
+    )
+    gate = LeaseGate(key, nodeid="node-a", spent=SpentSet(str(tmp_path / "s.json")))
+    storage_url, storage_httpd = start_storage_http(gate, "127.0.0.1:0")
+    try:
+        client = TopUpClient(state.listen, tmp_path / "credit-wallet.json")
+        q = client.quote(1, scheme="rsa-bssa-v1")
+        assert q["scheme"] == "rsa-bssa-v1"
+        http_json(
+            state.listen + "/v0/fake/pay",
+            "POST",
+            {"vid": q["vid"], "amount_piconero": 6 * 10**9, "mine": 2},
+        )
+        out = client.redeem(q["vid"])
+        assert out["tokens_added"] == 1
+        wallet = load_wallet(tmp_path / "credit-wallet.json")
+        rec = wallet["tokens"][0]
+        assert rec["scheme"] == "rsa-bssa-v1"
+        gate.accept_rsa_epoch(int(wallet["token-epoch"]), rsa_pk, wallet["issuer-pubkey-id"])
+        r = encode_r(
+            nodeid="node-a",
+            storage_index=b"\x77" * 16,
+            lease_seconds=100,
+            share_bytes=64,
+            token_epoch=int(wallet["token-epoch"]),
+            issuer_pubkey_id=wallet["issuer-pubkey-id"],
+        )
+        from leasegrid_zkap.rsa_bssa import derive_tok_keypair
+
+        tok_sk, _ = derive_tok_keypair(client.state.seed, q["vid"], 0)
+        from base64 import b64encode
+
+        spent = http_json(
+            storage_url + "/v0/spend",
+            "POST",
+            {
+                "scheme": "rsa-bssa-v1",
+                "t": rec["t"],
+                "pk_tok": rec["pk_tok"],
+                "sigma": rec["sigma"],
+                "R": b64encode(r).decode("ascii"),
+                "sig_r": b64encode(sign_r(tok_sk, r)).decode("ascii"),
+            },
+        )
+        assert spent["ok"] is True
+        r2 = encode_r(
+            nodeid="node-b",
+            storage_index=b"\x88" * 16,
+            lease_seconds=100,
+            share_bytes=64,
+            token_epoch=int(wallet["token-epoch"]),
+            issuer_pubkey_id=wallet["issuer-pubkey-id"],
+        )
+        from leasegrid_zkap.client import ClientError
+
+        with pytest.raises(ClientError):
+            http_json(
+                storage_url + "/v0/spend",
+                "POST",
+                {
+                    "scheme": "rsa-bssa-v1",
+                    "t": rec["t"],
+                    "pk_tok": rec["pk_tok"],
+                    "sigma": rec["sigma"],
+                    "R": b64encode(r2).decode("ascii"),
+                    "sig_r": b64encode(sign_r(tok_sk, r)).decode("ascii"),
+                },
+            )
+        assert gate.settlement_preimages() == [rec["t"]]
+        assert rec["t"] != b64decode(rec["sigma"]).hex()
+        q0 = client.quote(1)
+        assert q0["scheme"] == "ristretto-v0"
+    finally:
+        storage_httpd.shutdown()
+        httpd.shutdown()

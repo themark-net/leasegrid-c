@@ -46,6 +46,16 @@ class TopUpError(Exception):
     pass
 
 
+class _RedeemNotReady(Exception):
+    def __init__(self, body: dict) -> None:
+        self.body = body
+
+
+class _RedeemResize(Exception):
+    def __init__(self, count: int) -> None:
+        self.count = count
+
+
 # -- derivation ----------------------------------------------------------------------
 
 
@@ -207,7 +217,7 @@ class TopUpClient:
 
     # -- quote --
 
-    def quote(self, tokens: int) -> dict:
+    def quote(self, tokens: int, scheme: Optional[str] = None) -> dict:
         """Ask for a quote under the next seed-derived vid. Persist before asking."""
         if tokens < 1:
             raise TopUpError("tokens must be ≥ 1")
@@ -219,10 +229,15 @@ class TopUpClient:
             "state": "quoting",
             "created": time.time(),
         }
+        if scheme:
+            self.state.pending[vid]["scheme"] = scheme
         self.state.counter = n + 1
         self.state.save()
+        body: dict[str, Any] = {"tokens": int(tokens), "vid": vid}
+        if scheme:
+            body["scheme"] = scheme
         try:
-            q = self._http(self.issuer_url + "/v0/quote", "POST", {"tokens": int(tokens), "vid": vid})
+            q = self._http(self.issuer_url + "/v0/quote", "POST", body)
         except ClientError as exc:
             if _http_status(exc) == 409:
                 # A previous run got this far and lost the reply: adopt the issuer's row.
@@ -235,6 +250,7 @@ class TopUpClient:
         rec.update(
             {
                 "state": q.get("state", "quoted"),
+                "scheme": q.get("scheme", scheme),
                 "address": q.get("address"),
                 "amount_piconero": q.get("amount_due") or q.get("amount_piconero"),
                 "amount_xmr": q.get("amount_xmr"),
@@ -242,6 +258,8 @@ class TopUpClient:
                 "quote_expires": q.get("quote_expires"),
                 "grace_until": q.get("grace_until"),
                 "confirmations_required": q.get("confirmations_required"),
+                "public-key": q.get("public-key"),
+                "issuer-pubkey-id": q.get("issuer-pubkey-id"),
             }
         )
         self.state.save()
@@ -269,36 +287,20 @@ class TopUpClient:
         count = int(v["tokens_issued"] if state == "issued" else v["tokens_owed"])
         if count < 1:
             raise TopUpError("voucher %s owes no tokens" % vid)
-        for _attempt in range(2):
-            tokens = derive_tokens(self.state.seed, vid, count)
-            blinded = [t.blind() for t in tokens]
-            blinded_b64 = [_b64(b) for b in blinded]
-            try:
-                issued = self._http(
-                    self.issuer_url + "/v0/redeem", "POST", {"vid": vid, "blinded-tokens": blinded_b64}
-                )
-                break
-            except ClientError as exc:
-                code = _http_status(exc)
-                body = _http_body(exc)
-                if code == 402:
-                    return {"vid": vid, "state": body.get("state", "unknown"), "tokens_added": 0, "voucher": body}
-                if code == 409:
-                    raise TopUpError(
-                        "issuer already issued a different batch for %s; this seed cannot reproduce it" % vid
-                    ) from exc
-                if code == 400 and isinstance(body.get("tokens_owed"), int) and body["tokens_owed"] != count:
-                    # more confirmations landed between our GET and POST; size the batch to match
-                    count = int(body["tokens_owed"])
-                    continue
-                raise
-        else:
-            raise TopUpError("voucher %s: batch size kept changing" % vid)
+        scheme = v.get("scheme") or (self.state.pending.get(vid) or {}).get("scheme")
         try:
-            unblinded = unblind_batch(tokens, blinded, issued["signed-tokens"], issued["proof"], issued["public-key"])
-        except (CryptoError, KeyError) as exc:
-            raise TopUpError("issuer batch for %s did not verify: %s" % (vid, exc)) from exc
-        recs = [wallet_record(u) for u in unblinded]
+            if scheme == "rsa-bssa-v1":
+                issued, recs = self._redeem_rsa(vid, v, count)
+            else:
+                issued, recs = self._redeem_ristretto(vid, count)
+        except _RedeemNotReady as exc:
+            return {
+                "vid": vid,
+                "state": exc.body.get("state", "unknown"),
+                "tokens_added": 0,
+                "voucher": exc.body,
+            }
+        count = len(recs)
         if unverified:
             for r in recs:
                 r["unverified"] = True
@@ -316,6 +318,101 @@ class TopUpClient:
             "cached": bool(issued.get("cached")),
             "issuer-pubkey-id": issued.get("issuer-pubkey-id"),
         }
+
+    def _post_redeem(self, vid: str, blinded_b64: list[str], count: int) -> dict:
+        try:
+            return self._http(
+                self.issuer_url + "/v0/redeem", "POST", {"vid": vid, "blinded-tokens": blinded_b64}
+            )
+        except ClientError as exc:
+            code = _http_status(exc)
+            body = _http_body(exc)
+            if code == 402:
+                raise _RedeemNotReady(body)
+            if code == 409:
+                raise TopUpError(
+                    "issuer already issued a different batch for %s; this seed cannot reproduce it" % vid
+                ) from exc
+            if code == 400 and isinstance(body.get("tokens_owed"), int) and body["tokens_owed"] != count:
+                raise _RedeemResize(int(body["tokens_owed"])) from exc
+            raise
+
+    def _redeem_ristretto(self, vid: str, count: int) -> tuple[dict, list[dict]]:
+        for _attempt in range(2):
+            tokens = derive_tokens(self.state.seed, vid, count)
+            blinded = [t.blind() for t in tokens]
+            blinded_b64 = [_b64(b) for b in blinded]
+            try:
+                issued = self._post_redeem(vid, blinded_b64, count)
+                break
+            except _RedeemResize as exc:
+                count = exc.count
+                continue
+        else:
+            raise TopUpError("voucher %s: batch size kept changing" % vid)
+        try:
+            unblinded = unblind_batch(
+                tokens, blinded, issued["signed-tokens"], issued["proof"], issued["public-key"]
+            )
+        except (CryptoError, KeyError) as exc:
+            raise TopUpError("issuer batch for %s did not verify: %s" % (vid, exc)) from exc
+        return issued, [wallet_record(u) for u in unblinded]
+
+    def _redeem_rsa(self, vid: str, voucher: dict, count: int) -> tuple[dict, list[dict]]:
+        from base64 import b64decode, b64encode
+
+        from ..rsa_bssa import (
+            BssaError,
+            blind,
+            derive_tok_keypair,
+            finalize,
+            load_rsa_public_spki,
+            token_id,
+            token_message,
+        )
+
+        pk_b64 = (
+            voucher.get("public-key")
+            or (self.state.pending.get(vid) or {}).get("public-key")
+            or self._http(self.issuer_url + "/v0/info").get("rsa-public-key")
+        )
+        if not pk_b64:
+            raise TopUpError("issuer did not publish an rsa-bssa-v1 public key")
+        pk = load_rsa_public_spki(str(pk_b64))
+        for _attempt in range(2):
+            prepared = []
+            blinded_b64 = []
+            for i in range(count):
+                t = token_id(self.state.seed, vid, i)
+                _tok_sk, tok_pk = derive_tok_keypair(self.state.seed, vid, i)
+                msg = token_message(t, tok_pk)
+                blinded, inv = blind(pk, msg)
+                prepared.append((t, tok_pk, msg, inv))
+                blinded_b64.append(b64encode(blinded).decode("ascii"))
+            try:
+                issued = self._post_redeem(vid, blinded_b64, count)
+                break
+            except _RedeemResize as exc:
+                count = exc.count
+                continue
+        else:
+            raise TopUpError("voucher %s: batch size kept changing" % vid)
+        try:
+            issued_pk = load_rsa_public_spki(issued["public-key"])
+            recs = []
+            for i, (t, tok_pk, msg, inv) in enumerate(prepared):
+                sigma = finalize(issued_pk, msg, b64decode(issued["signed-tokens"][i]), inv)
+                recs.append(
+                    {
+                        "scheme": "rsa-bssa-v1",
+                        "t": b64encode(t).decode("ascii"),
+                        "pk_tok": b64encode(tok_pk).decode("ascii"),
+                        "sigma": b64encode(sigma).decode("ascii"),
+                    }
+                )
+        except (BssaError, KeyError, ValueError, IndexError) as exc:
+            raise TopUpError("issuer rsa batch for %s did not verify: %s" % (vid, exc)) from exc
+        return issued, recs
 
     def _merge_into_wallet(self, recs: list[dict], issued: dict) -> int:
         with wallet_lock(self.wallet_path):

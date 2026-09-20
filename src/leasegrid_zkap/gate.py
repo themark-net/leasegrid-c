@@ -129,14 +129,19 @@ class LeaseGate:
             raise SpendError("epoch %s is not an accepted rsa-bssa epoch" % fields["token_epoch"])
         if fields["issuer_pubkey_id"] != acc["issuer-pubkey-id"]:
             raise SpendError("R.issuer_pubkey_id does not match this issuer key")
-        t_bytes = t if isinstance(t, (bytes, bytearray)) else t.encode("ascii")
+        if isinstance(t, (bytes, bytearray)):
+            t_bytes = bytes(t)
+            t_s = b64encode(t_bytes).decode("ascii")
+        else:
+            t_s = str(t)
+            try:
+                t_bytes = b64decode(t_s)
+            except Exception as e:
+                raise SpendError("t must be standard base64") from e
         try:
-            verify_spend(acc["rsa_public"], bytes(t_bytes), pk_tok, sigma, r, sig_r)
+            verify_spend(acc["rsa_public"], t_bytes, pk_tok, sigma, r, sig_r)
         except BssaError as e:
             raise SpendError(str(e)) from e
-        from base64 import b64encode
-
-        t_s = t if isinstance(t, str) else b64encode(t_bytes).decode("ascii")
         rec = SpentRecord(
             t=t_s,
             r_b64=_b64s(r),

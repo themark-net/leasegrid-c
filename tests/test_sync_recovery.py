@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -214,6 +215,7 @@ def test_export_records_last_export(tmp_path: Path, mf_config: Path):
     bundle = ctl.export(out, "pw")
     assert bundle.introducer_furl == FURL
     assert out.is_file()
-    assert (out.stat().st_mode & 0o777) == 0o600
+    if os.name != "nt":  # NTFS has no POSIX mode bits
+        assert (out.stat().st_mode & 0o777) == 0o600
     assert ctl.last_export()["path"] == str(out)
     assert decode_recovery_file(out.read_bytes(), "pw").nickname == "nimo"

@@ -94,9 +94,12 @@ case "$OS" in
       if "$PYTHON" -c "from PIL import Image; Image.open(r'$ICON_PNG').save(r'$ICON_ICO', sizes=[(256,256),(64,64),(32,32),(16,16)])" 2>/dev/null; then
         ICON_ARGS=("/DIcon=$(cygpath -w "$ICON_ICO")")
       fi
-      "$ISCC" "/DAppVersion=$VERSION" "/DSourceDir=$(cygpath -w "$ONEDIR")" \
+      # MSYS_NO_PATHCONV: Git Bash would rewrite "/DAppVersion=..." into a D:\ path.
+      MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+        "$ISCC" "/DAppVersion=$VERSION" "/DSourceDir=$(cygpath -w "$ONEDIR")" \
         "/DOutDir=$(cygpath -w "$ROOT/dist")" ${ICON_ARGS[@]+"${ICON_ARGS[@]}"} \
         "$(cygpath -w "$ROOT/packaging/windows-installer.iss")" >/dev/null
+      test -f "$SETUP"
       echo "==> built $SETUP"
     else
       echo "build-desktop: Inno Setup not found; zip only (choco install innosetup for a setup.exe)"

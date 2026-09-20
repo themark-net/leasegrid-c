@@ -318,7 +318,8 @@ def test_which_bin_prefers_frozen_sibling_over_path(tmp_path: Path, monkeypatch)
     monkeypatch.setenv("PATH", str(system))
     # not frozen: PATH wins
     monkeypatch.setattr(backend_mod.sys, "frozen", False, raising=False)
-    assert which_bin("tahoe", "LEASEGRID_TAHOE_BIN") == str(sys_tahoe)
+    # Windows' shutil.which returns the PATHEXT spelling (tahoe.EXE)
+    assert which_bin("tahoe", "LEASEGRID_TAHOE_BIN").lower() == str(sys_tahoe).lower()
     # frozen: the sibling (with or without .exe) wins
     monkeypatch.setattr(backend_mod.sys, "frozen", True, raising=False)
     monkeypatch.setattr(backend_mod.sys, "executable", str(bundle / "leasegrid-sync"))

@@ -76,25 +76,46 @@ def faucet_mint(issuer_url: str, count: int = 8) -> dict:
 def wallet_lock(path: str | os.PathLike):
     """Cross-process exclusive lock on a wallet file (Sync tops up while Tahoe spends).
 
-    Uses an flock on ``<wallet>.lock`` beside the wallet so the wallet itself can be
-    replaced atomically. Falls back to no locking where fcntl is unavailable.
+    Uses a lock on ``<wallet>.lock`` beside the wallet so the wallet itself can be
+    replaced atomically: flock on POSIX, msvcrt byte-range locking on Windows.
     """
     lock_path = Path(path).expanduser().with_name(Path(path).name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import fcntl
-    except ImportError:  # pragma: no cover - non-POSIX
-        yield
-        return
     fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        _lock_fd(fd)
         yield
     finally:
         try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            _unlock_fd(fd)
         finally:
             os.close(fd)
+
+
+if os.name == "nt":  # pragma: no cover - exercised on the Windows CI runner
+    import msvcrt
+
+    def _lock_fd(fd: int) -> None:
+        # LK_LOCK retries for ~10 s then raises; spin so a long faucet redeem
+        # on the other side does not turn into an error here.
+        while True:
+            try:
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                continue
+
+    def _unlock_fd(fd: int) -> None:
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock_fd(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+    def _unlock_fd(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 def save_wallet(path: str | os.PathLike, wallet: dict) -> None:

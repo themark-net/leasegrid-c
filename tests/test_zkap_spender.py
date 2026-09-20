@@ -267,3 +267,28 @@ def test_plugin_server_announces_spend_url_and_nodeid(tmp_path: Path):
     ann = result.announcement
     assert ann["spend-url"].startswith("http://127.0.0.1:")
     assert ann["nodeid"] and ann["issuer-pubkey-id"] == issuer_info(key)["issuer-pubkey-id"]
+
+
+def test_wallet_lock_excludes_a_second_process(tmp_path: Path):
+    """flock on POSIX, msvcrt on Windows: a second holder must wait for the first."""
+    import subprocess
+    import sys
+    import time
+
+    from leasegrid_zkap.client import wallet_lock
+
+    wallet = tmp_path / "wallet.json"
+    marker = tmp_path / "second-got-lock"
+    child = (
+        "import sys, pathlib; from leasegrid_zkap.client import wallet_lock\n"
+        "with wallet_lock(sys.argv[1]):\n"
+        "    pathlib.Path(sys.argv[2]).write_text('x')\n"
+    )
+    with wallet_lock(wallet):
+        proc = subprocess.Popen([sys.executable, "-c", child, str(wallet), str(marker)])
+        time.sleep(1.5)
+        assert proc.poll() is None, "second process got the lock while the first held it"
+        assert not marker.exists()
+    assert proc.wait(timeout=20) == 0
+    assert marker.exists()
+    assert (tmp_path / "wallet.json.lock").exists()

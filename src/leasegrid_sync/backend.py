@@ -8,6 +8,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -67,10 +68,22 @@ class FolderRow:
     detail: str = ""
 
 
-def default_home() -> Path:
+def default_home(platform: Optional[str] = None) -> Path:
+    """Sync's data dir: Tahoe client, Magic Folder config, wallet, logs.
+
+    LEASEGRID_SYNC_HOME wins. Otherwise the OS convention: %LOCALAPPDATA% on
+    Windows, ~/Library/Application Support on macOS, $XDG_DATA_HOME or
+    ~/.local/share elsewhere.
+    """
     override = os.environ.get("LEASEGRID_SYNC_HOME")
     if override:
         return Path(override).expanduser()
+    plat = platform or sys.platform
+    if plat.startswith("win"):
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        return (Path(base) if base else Path.home() / "AppData" / "Local") / APP_ID
+    if plat == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_ID
     xdg = os.environ.get("XDG_DATA_HOME")
     if xdg:
         return Path(xdg) / APP_ID
@@ -103,12 +116,31 @@ def shares_config() -> tuple[int, int, int]:
     return DEFAULT_SHARES
 
 
+def frozen_sibling(name: str) -> Optional[str]:
+    """In a PyInstaller bundle the daemons sit next to this executable.
+
+    The bundle ships `tahoe` / `magic-folder` (`.exe` on Windows) beside
+    `leasegrid-sync`; those must win over anything on the user's PATH so the
+    versions we tested together are the ones that run.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    here = Path(sys.executable).parent
+    for candidate in (here / name, here / (name + ".exe")):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def which_bin(name: str, env_key: str) -> Optional[str]:
     env = os.environ.get(env_key)
     if env:
         p = Path(env).expanduser()
         if p.is_file() and os.access(p, os.X_OK):
             return str(p)
+    sibling = frozen_sibling(name)
+    if sibling:
+        return sibling
     found = shutil.which(name)
     return found
 

@@ -37,7 +37,18 @@ SHARES="${LEASEGRID_SHARES:-2,3,3}"
 
 if [[ -x "$ROOT/.venv/bin/tahoe" ]]; then
   export PATH="$ROOT/.venv/bin:$PATH"
+elif [[ -x "$ROOT/.venv/Scripts/tahoe.exe" ]]; then
+  export PATH="$ROOT/.venv/Scripts:$PATH"
 fi
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash: hand Python C:/-style paths and stop MSYS rewriting furls/endpoints.
+    mkdir -p "$DIR"
+    DIR="$(cygpath -m "$DIR")"
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+    ;;
+esac
+PY=python; command -v python >/dev/null 2>&1 || PY=python3
 
 FURL_FILE="$DIR/intro/private/introducer.furl"
 RELAY_FILE="$DIR/private/wormhole.url"   # present only while a local relay runs
@@ -84,6 +95,16 @@ if [[ "${1:-}" == "--reset" ]]; then
   rm -rf "$DIR"
 fi
 mkdir -p "$DIR/logs" "$DIR/private"
+
+# A stale grid (or anything else) on our ports would make this one look up while
+# the client actually talks to the other issuer/relay. Refuse instead of guessing.
+port_busy() { "$PY" -c 'import socket,sys; s=socket.socket(); s.settimeout(0.3); sys.exit(0 if s.connect_ex(("127.0.0.1",int(sys.argv[1])))==0 else 1)' "$1"; }
+for p in "$INTRO_PORT" "${ISSUER_LISTEN##*:}" "$WORMHOLE_PORT" "$((STORAGE_PORT_BASE + 1))"; do
+  if port_busy "$p"; then
+    echo "dev-grid: 127.0.0.1:$p is already in use (another dev-grid still running?). Stop it or change LEASEGRID_DEVGRID_*_PORT." >&2
+    exit 1
+  fi
+done
 
 PIDS=()
 cleanup() {
@@ -134,15 +155,21 @@ gate_storage_cfg() { # nodedir, spend-port
   # `[storage]` exists in Tahoe's template; plugin lines go right after it.
   # force_foolscap: Tahoe 1.20 clients take GBS/HTTP whenever it is announced and
   # HTTP never consults storage plugins, so a gated node must not offer it.
-  sed -i 's/^\[storage\]$/[storage]\nplugins = leasegrid-zkap-v0\nforce_foolscap = true/' "$cfg"
-  {
-    echo
-    echo "[storageserver.plugins.leasegrid-zkap-v0]"
-    echo "issuer-signing-key-file = $KEY"
-    echo "spend-listen = tcp:$sport:interface=127.0.0.1"
-    echo "spend-url = http://127.0.0.1:$sport"
-    echo "spent-set-path = $nodedir/private/spent-set.json"
-  } >> "$cfg"
+  # (Python, not sed -i: BSD sed on macOS has no \n in replacements.)
+  "$PY" - "$cfg" "$KEY" "$sport" "$nodedir" <<'PY'
+import sys
+cfg, key, sport, nodedir = sys.argv[1:]
+text = open(cfg, encoding="utf-8").read()
+text = text.replace("[storage]\n", "[storage]\nplugins = leasegrid-zkap-v0\nforce_foolscap = true\n", 1)
+text += (
+    "\n[storageserver.plugins.leasegrid-zkap-v0]\n"
+    f"issuer-signing-key-file = {key}\n"
+    f"spend-listen = tcp:{sport}:interface=127.0.0.1\n"
+    f"spend-url = http://127.0.0.1:{sport}\n"
+    f"spent-set-path = {nodedir}/private/spent-set.json\n"
+)
+open(cfg, "w", encoding="utf-8").write(text)
+PY
 }
 for n in $(seq 1 "$STORAGE_COUNT"); do
   port=$((STORAGE_PORT_BASE + n))
@@ -176,13 +203,13 @@ done
 rm -f "$RELAY_FILE"
 RELAY_NOTE="public relay (Tahoe's); LEASEGRID_DEVGRID_WORMHOLE=local needs magic-wormhole-mailbox-server"
 if [[ "$WORMHOLE_MODE" != "public" ]]; then
-  if python -c "import wormhole_mailbox_server" >/dev/null 2>&1; then
+  if "$PY" -c "import wormhole_mailbox_server" >/dev/null 2>&1; then
     RELAY="ws://127.0.0.1:$WORMHOLE_PORT/v1"
     run_bg wormhole twist wormhole-mailbox \
       --port "tcp:$WORMHOLE_PORT:interface=127.0.0.1" \
       --channel-db "$DIR/private/wormhole-relay.sqlite"
     for _ in $(seq 1 20); do
-      python - "$WORMHOLE_PORT" <<'PY' && break
+      "$PY" - "$WORMHOLE_PORT" <<'PY' && break
 import socket, sys
 s = socket.socket(); s.settimeout(0.5)
 sys.exit(0 if s.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0 else 1)

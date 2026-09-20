@@ -1,7 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec: Leasegrid Sync + Tahoe 1.20 + Magic Folder 24.3 in one onedir bundle.
 
-Build with packaging/build-appimage.sh (which then wraps the result as an AppImage).
+One Analysis, several executables sharing `_internal`: `leasegrid-sync` (the
+window), `tahoe` and `magic-folder` (the daemons Sync spawns; it finds them as
+siblings of its own executable), and on Windows `leasegrid-sync-cli` because a
+windowed exe there has no stdout for --status / --join. On macOS the COLLECT is
+wrapped into `Leasegrid Sync.app`.
+
+Build with packaging/build-desktop.sh (Linux: build-appimage.sh wraps that).
 """
 
 import os
@@ -31,7 +37,8 @@ import challenge_bypass_ristretto as _cbr  # noqa: E402
 
 binaries = [
     (str(p), "challenge_bypass_ristretto")
-    for p in Path(_cbr.__file__).parent.glob("_native__lib*.so")
+    for p in Path(_cbr.__file__).parent.glob("_native__lib*")
+    if p.suffix in (".so", ".dylib", ".dll", ".pyd")
 ]
 # autobahn.nvx compiles its cffi UTF-8 validator from a .c file at import time.
 datas += collect_data_files("autobahn")
@@ -76,23 +83,61 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name="leasegrid-sync",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    console=True,  # tahoe / magic-folder are CLIs sharing this binary
-)
+WINDOWS = sys.platform.startswith("win")
+MACOS = sys.platform == "darwin"
+# Optional: a PNG the build script generated with make_icon.py (Pillow converts).
+ICON = os.environ.get("LEASEGRID_ICON") or None
+
+
+def program(name, console):
+    return EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name=name,
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=console,
+        icon=ICON,
+        # macOS: Sync forks daemons and opens sockets; no hardened-runtime entitlements needed.
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+
+
+# The window: no console on Windows (else a black box sits behind the GUI).
+programs = [program("leasegrid-sync", console=not WINDOWS)]
+if WINDOWS:
+    programs.append(program("leasegrid-sync-cli", console=True))
+programs += [program("tahoe", console=True), program("magic-folder", console=True)]
+
 coll = COLLECT(
-    exe,
+    *programs,
     a.binaries,
     a.datas,
     strip=False,
     upx=False,
     name="leasegrid-sync",
 )
+
+if MACOS:
+    from leasegrid_sync import __version__  # noqa: E402
+
+    app = BUNDLE(
+        coll,
+        name="Leasegrid Sync.app",
+        icon=ICON,
+        bundle_identifier="net.themark.leasegrid-sync",
+        version=__version__,
+        info_plist={
+            "CFBundleDisplayName": "Leasegrid Sync",
+            "CFBundleShortVersionString": __version__,
+            "NSHighResolutionCapable": True,
+            # Sync is a menu-bar/tray style app; do not steal focus at launch.
+            "LSUIElement": False,
+        },
+    )

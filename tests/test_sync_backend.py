@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from leasegrid_sync import backend as backend_mod
 from leasegrid_sync.backend import (
     MagicFolderCtl,
     SyncError,
     TahoeClient,
+    default_home,
     endpoint_to_url,
     fix_joined_shares,
     is_wormhole_code,
     redact_furl,
     validate_introducer_furl,
     validate_invite,
+    which_bin,
 )
 
 
@@ -121,6 +126,13 @@ GOOD_FURL = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
 
 def _fake_tahoe(tmp_path: Path) -> str:
     (tmp_path / "bin").mkdir(exist_ok=True)
+    script = tmp_path / "bin" / "tahoe.py"
+    script.write_text(FAKE_TAHOE, encoding="utf-8")
+    if os.name == "nt":
+        # No shebang execution on Windows: a .bat that runs the script with this Python.
+        bin_ = tmp_path / "bin" / "tahoe.bat"
+        bin_.write_text('@"%s" "%s" %%*\n' % (sys.executable, script), encoding="utf-8")
+        return str(bin_)
     bin_ = tmp_path / "bin" / "tahoe"
     bin_.write_text(FAKE_TAHOE, encoding="utf-8")
     bin_.chmod(0o755)
@@ -269,6 +281,53 @@ def test_join_invite_refuses_non_tahoe_dir(tmp_path: Path):
     with pytest.raises(SyncError) as exc:
         client.join_invite(GOOD_FURL)
     assert "not a Tahoe node" in exc.value.message
+
+
+def test_default_home_follows_os_conventions(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("LEASEGRID_SYNC_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    assert default_home("linux") == tmp_path / ".local" / "share" / "leasegrid-sync"
+    assert default_home("darwin") == (
+        tmp_path / "Library" / "Application Support" / "leasegrid-sync"
+    )
+    assert default_home("win32") == tmp_path / "AppData" / "Local" / "leasegrid-sync"
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    assert default_home("linux") == tmp_path / "xdg" / "leasegrid-sync"
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "explicit"))
+    for plat in ("linux", "darwin", "win32"):
+        assert default_home(plat) == tmp_path / "explicit"
+
+
+def test_which_bin_prefers_frozen_sibling_over_path(tmp_path: Path, monkeypatch):
+    """In a bundle the daemons next to our exe win over a system tahoe on PATH."""
+    monkeypatch.delenv("LEASEGRID_TAHOE_BIN", raising=False)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    for name in ("leasegrid-sync", "tahoe.exe"):
+        (bundle / name).write_text("#!/bin/sh\n", encoding="utf-8")
+        (bundle / name).chmod(0o755)
+    system = tmp_path / "usr-bin"
+    system.mkdir()
+    # shutil.which on Windows only finds PATHEXT names
+    sys_tahoe = system / ("tahoe.exe" if os.name == "nt" else "tahoe")
+    sys_tahoe.write_text("#!/bin/sh\n", encoding="utf-8")
+    sys_tahoe.chmod(0o755)
+    monkeypatch.setenv("PATH", str(system))
+    # not frozen: PATH wins
+    monkeypatch.setattr(backend_mod.sys, "frozen", False, raising=False)
+    assert which_bin("tahoe", "LEASEGRID_TAHOE_BIN") == str(sys_tahoe)
+    # frozen: the sibling (with or without .exe) wins
+    monkeypatch.setattr(backend_mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(backend_mod.sys, "executable", str(bundle / "leasegrid-sync"))
+    assert which_bin("tahoe", "LEASEGRID_TAHOE_BIN") == str(bundle / "tahoe.exe")
+    # frozen but no sibling: fall back to PATH rather than fail
+    assert which_bin("magic-folder", "LEASEGRID_MAGIC_FOLDER_BIN") is None
+    # explicit env still beats everything
+    monkeypatch.setenv("LEASEGRID_TAHOE_BIN", str(sys_tahoe))
+    assert which_bin("tahoe", "LEASEGRID_TAHOE_BIN") == str(sys_tahoe)
 
 
 def test_default_nodedir_order(tmp_path: Path, monkeypatch):

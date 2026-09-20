@@ -174,7 +174,6 @@ class WalletSpender:
                 self._note_refusal("Upload refused: out of credit")
                 raise NoCredit("leasegrid-zkap-v0: wallet empty; top up in the Credit place")
 
-            rec = tokens.pop(0)
             r = encode_r(
                 nodeid=nodeid,
                 storage_index=storage_index,
@@ -183,27 +182,38 @@ class WalletSpender:
                 token_epoch=int(wallet.get("token-epoch", TOKEN_EPOCH_V0)),
                 issuer_pubkey_id=issuer_pubkey_id,
             )
-            mac = mac_k_r(load_unblinded(rec), r)
             from base64 import b64encode
 
-            body = {
-                "t": rec["t"],
-                "R": b64encode(r).decode("ascii"),
-                "mac": mac.decode("ascii") if isinstance(mac, bytes) else str(mac),
-            }
-            try:
-                out = self._http(spend_url.rstrip("/") + "/v0/spend", "POST", body)
-            except ClientError as exc:
-                text = str(exc)
-                if " 403 " in text:
+            dropped = 0
+            while True:
+                rec = tokens.pop(0)
+                mac = mac_k_r(load_unblinded(rec), r)
+                body = {
+                    "t": rec["t"],
+                    "R": b64encode(r).decode("ascii"),
+                    "mac": mac.decode("ascii") if isinstance(mac, bytes) else str(mac),
+                }
+                try:
+                    out = self._http(spend_url.rstrip("/") + "/v0/spend", "POST", body)
+                    break
+                except ClientError as exc:
+                    text = str(exc)
+                    if " 403 " not in text:
+                        tokens.insert(0, rec)  # network trouble: the token is still ours
+                        raise
                     # The node will never accept this pass; park it instead of retrying forever.
                     wallet.setdefault("rejected", []).append({"t": rec["t"], "why": text[-200:]})
+                    if rec.get("unverified") and tokens:
+                        # Recovered from a seed: the lost device may have spent it. Expected;
+                        # this is how recovery converges (07-payment.md §6). Try the next one.
+                        dropped += 1
+                        continue
                     save_wallet(self.wallet_path, wallet)
                     self._append_recent("Pass rejected by %s" % _short(nodeid), -1)
                     raise SpendRefused(text) from exc
-                tokens.insert(0, rec)  # network trouble: the token is still ours
-                raise
             save_wallet(self.wallet_path, wallet)
+            if dropped:
+                self._append_recent("Recovered credit already spent elsewhere", -dropped)
             grant = {
                 "t": rec["t"],
                 "share_bytes": self.share_bytes,

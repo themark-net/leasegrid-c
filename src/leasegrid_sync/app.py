@@ -715,6 +715,10 @@ class MainWindow:
             note += " Already here: %s." % ", ".join(result.skipped)
         if result.wallet_restored:
             note += " Credit wallet restored."
+        if result.credit_recovered:
+            note += " %d credits re-collected from the issuer (confirmed as you sync)." % result.credit_recovered
+        if result.credit_recover_error:
+            note += " Credit could not be re-collected yet (%s); Credit → Retry later." % result.credit_recover_error
         note += " Files download from the friendnet as this device (%s)." % result.author_name
         if not self._joined:
             self._enter_main("Connected", result.grid)

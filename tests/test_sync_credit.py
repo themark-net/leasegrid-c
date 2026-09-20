@@ -237,3 +237,29 @@ def test_ping_issuer_wraps_non_json_body_as_sync_error(tmp_path: Path):
     with pytest.raises(SyncError) as exc:
         ctl.ping_issuer()
     assert "could not load credit balance" in exc.value.message
+
+
+def test_load_balance_collects_pending_xmr_topups(tmp_path: Path):
+    """Crash after paying → open Credit → the confirmed voucher is collected (07-payment.md §5.2)."""
+    from leasegrid_zkap.client import http_json
+    from leasegrid_zkap.issuer import start_issuer as start_pay_issuer
+    from leasegrid_zkap.payment import FakeChain, PricePolicy
+    from leasegrid_zkap.payment.topup import TopUpClient
+
+    PRICE = 6 * 10**9
+    state, httpd = start_pay_issuer(
+        generate_signing_key(), "127.0.0.1:0", chain=FakeChain(), policy=PricePolicy(price_piconero=PRICE), faucet=False
+    )
+    try:
+        ctl = CreditCtl(home=tmp_path, issuer_url=state.listen)
+        assert ctl.load_balance().balance.tokens == 0  # no state file yet: nothing to do
+        tc = TopUpClient(state.listen, ctl.wallet_path, ctl.topup_state_path)
+        q = tc.quote(3)
+        assert ctl.load_balance().balance.tokens == 0  # quoted, unpaid
+        http_json(state.listen + "/v0/fake/pay", "POST", {"vid": q["vid"], "amount_piconero": 3 * PRICE, "mine": 2})
+        snap = ctl.load_balance()
+        assert snap.balance.tokens == 3
+        assert snap.recent and snap.recent[0].title == "XMR top-up" and snap.recent[0].delta == "+3 GiB·mo"
+        assert ctl.load_balance().balance.tokens == 3  # idempotent
+    finally:
+        httpd.shutdown()

@@ -219,3 +219,90 @@ def test_export_records_last_export(tmp_path: Path, mf_config: Path):
         assert (out.stat().st_mode & 0o777) == 0o600
     assert ctl.last_export()["path"] == str(out)
     assert decode_recovery_file(out.read_bytes(), "pw").nickname == "nimo"
+
+
+def test_bundle_carries_credit_seed_and_drops_malformed():
+    b = _bundle()
+    b.credit_seed = "ab" * 32
+    b.quote_counter = 7
+    back = RecoveryBundle.from_json(b.to_json())
+    assert back.credit_seed == "ab" * 32 and back.quote_counter == 7
+    b.credit_seed = "not-hex"
+    assert RecoveryBundle.from_json(b.to_json()).credit_seed == ""
+    old = RecoveryBundle.from_json(_bundle().to_json())  # pre-S2 keys: still imports
+    assert old.credit_seed == "" and old.quote_counter == 0
+
+
+def test_export_includes_seed_and_restore_recollects_credit(mf_config: Path, tmp_path: Path):
+    """Seed in the key → restore walks the issuer and rebuilds the wallet (07-payment.md §6)."""
+    from leasegrid_zkap.client import http_json, load_wallet
+    from leasegrid_zkap.crypto import generate_signing_key
+    from leasegrid_zkap.issuer import start_issuer
+    from leasegrid_zkap.payment import FakeChain, PricePolicy
+    from leasegrid_zkap.payment.topup import TopUpClient
+
+    PRICE = 6 * 10**9
+    istate, ihttpd = start_issuer(
+        generate_signing_key(), "127.0.0.1:0", chain=FakeChain(), policy=PricePolicy(price_piconero=PRICE), faucet=False
+    )
+    try:
+        # device A buys 4 credits, then exports a recovery key
+        home_a = tmp_path / "a"
+        home_a.mkdir()
+        credit_a = CreditCtl(home=home_a, issuer_url=istate.listen)
+        tc = TopUpClient(istate.listen, credit_a.wallet_path)
+        q = tc.quote(4)
+        http_json(istate.listen + "/v0/fake/pay", "POST", {"vid": q["vid"], "amount_piconero": 4 * PRICE, "mine": 2})
+        assert tc.redeem(q["vid"])["tokens_added"] == 4
+        nodedir_a = tmp_path / "tahoe-a"
+        nodedir_a.mkdir()
+        (nodedir_a / "tahoe.cfg").write_text(
+            "[node]\nnickname = a\n[client]\nintroducer.furl = %s\nshares.needed = 2\nshares.happy = 3\nshares.total = 3\n" % FURL
+        )
+        tahoe_a = TahoeClient(nodedir=nodedir_a, tahoe_bin="/bin/true", home=home_a)
+        mf_a = MagicFolderCtl(config_dir=tmp_path / "mf-a", nodedir=nodedir_a, mf_bin="/bin/true")
+        (tmp_path / "mf-a").mkdir()
+        ctl_a = RecoveryCtl(home_a, tahoe_a, mf_a, credit_a, folder_root=tmp_path / "LG-a")
+        bundle = ctl_a.collect()
+        assert bundle.credit_seed == tc.state.seed.hex() and bundle.quote_counter == 1
+        key = tmp_path / "key.leasegrid-recovery"
+        key.write_bytes(encode_recovery_file(bundle, "pw"))
+
+        # device B restores with nothing but the key; wallet snapshot is deliberately dropped
+        bundle_nowallet = RecoveryBundle.from_json(bundle.to_json())
+        bundle_nowallet.wallet = None
+        key.write_bytes(encode_recovery_file(bundle_nowallet, "pw"))
+        home_b = tmp_path / "b"
+        home_b.mkdir()
+        credit_b = CreditCtl(home=home_b, issuer_url=istate.listen)
+        tahoe_b = TahoeClient(nodedir=tmp_path / "tahoe-b", tahoe_bin="/bin/true", home=home_b)
+        mf_b = MagicFolderCtl(config_dir=mf_config, nodedir=tmp_path / "tahoe-b", mf_bin="/bin/true")
+        ctl_b = RecoveryCtl(home_b, tahoe_b, mf_b, credit_b, folder_root=tmp_path / "LG-b")
+        st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+        with patch.object(tahoe_b, "create_client", return_value=None), \
+             patch.object(tahoe_b, "join_invite", return_value=st), \
+             patch.object(mf_b, "ensure_init", return_value=None):
+            result = ctl_b.restore(key, "pw", progress=lambda t: None)
+        assert result.wallet_restored is False
+        assert result.credit_recovered == 4 and result.credit_recover_error == ""
+        w = load_wallet(credit_b.wallet_path)
+        assert len(w["tokens"]) == 4 and all(t.get("unverified") for t in w["tokens"])
+        assert credit_b.topup_state_path.is_file()
+        assert istate.issue_count == 1  # cached batch, not a second issuance
+
+        # issuer unreachable: restore still succeeds, credit reports the error for a later retry
+        home_c = tmp_path / "c"
+        home_c.mkdir()
+        credit_c = CreditCtl(home=home_c, issuer_url="http://127.0.0.1:1")
+        tahoe_c = TahoeClient(nodedir=tmp_path / "tahoe-c", tahoe_bin="/bin/true", home=home_c)
+        mf_c = MagicFolderCtl(config_dir=tmp_path / "mf-c", nodedir=tmp_path / "tahoe-c", mf_bin="/bin/true")
+        (tmp_path / "mf-c").mkdir()
+        ctl_c = RecoveryCtl(home_c, tahoe_c, mf_c, credit_c, folder_root=tmp_path / "LG-c")
+        with patch.object(tahoe_c, "create_client", return_value=None), \
+             patch.object(tahoe_c, "join_invite", return_value=st), \
+             patch.object(mf_c, "ensure_init", return_value=None):
+            result = ctl_c.restore(key, "pw", progress=lambda t: None)
+        assert result.credit_recovered == 0 and "ClientError" in result.credit_recover_error
+        assert credit_c.topup_state_path.is_file()  # seed is on disk; Credit → Retry can finish later
+    finally:
+        ihttpd.shutdown()

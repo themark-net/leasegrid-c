@@ -1,4 +1,4 @@
-"""leasegrid-zkap CLI: issuer, storage-gate, faucet, spend, settle, check-0b."""
+"""leasegrid-zkap CLI: issuer, storage-gate, faucet, topup/resume/recover, spend, settle, check-0b."""
 
 from __future__ import annotations
 
@@ -142,6 +142,87 @@ def cmd_faucet(args) -> int:
     return 0
 
 
+def _topup_client(args):
+    from .payment.topup import TopUpClient
+
+    return TopUpClient(args.issuer, args.wallet, args.state or None)
+
+
+def cmd_topup(args) -> int:
+    """Quote → print how to pay → (optionally) wait for confirmation and collect the batch."""
+    import time
+
+    tc = _topup_client(args)
+    q = tc.quote(int(args.tokens))
+    print("vid            %s" % q["vid"])
+    print("pay exactly    %s XMR  (%d piconero)" % (q["amount_xmr"], q["amount_piconero"]))
+    print("to address     %s" % q["address"])
+    print("uri            %s" % q["pay_uri"])
+    print("price window   until %s (quoted price honoured %ds more after that)"
+          % (time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(q["quote_expires"])),
+             int(q["grace_until"] - q["quote_expires"])))
+    print("confirmations  %d" % q["confirmations_required"])
+    print("denomination   %s" % q.get("denomination", DENOMINATION), flush=True)
+    if not args.wait:
+        print("then:          leasegrid-zkap resume --issuer %s --wallet %s" % (args.issuer, args.wallet))
+        return 0
+    deadline = time.time() + float(args.wait)
+    last = ""
+    while time.time() < deadline:
+        r = tc.redeem(q["vid"])
+        if r["state"] == "issued":
+            print("issued         +%d tokens into %s%s"
+                  % (r["tokens_added"], args.wallet, " (cached batch)" if r.get("cached") else ""))
+            return 0
+        v = r.get("voucher") or {}
+        line = "waiting        state=%s seen=%s confirmations=%s/%s" % (
+            r["state"], v.get("amount_seen"), v.get("confirmations"), v.get("confirmations_required"))
+        if line != last:
+            print(line, flush=True)
+            last = line
+        time.sleep(float(args.poll))
+    print("timed out waiting; the voucher is saved. Run `leasegrid-zkap resume` later.", file=sys.stderr)
+    return 3
+
+
+def cmd_resume(args) -> int:
+    tc = _topup_client(args)
+    results = tc.resume()
+    if not results:
+        print("nothing pending")
+        return 0
+    for r in results:
+        print("%s  %-14s +%d%s" % (r["vid"], r["state"], r.get("tokens_added", 0),
+                                   ("  " + r["error"]) if r.get("error") else ""))
+    return 0
+
+
+def cmd_recover(args) -> int:
+    from .payment.topup import TopUpState
+
+    if args.seed:
+        TopUpState.from_seed(args.state or Path(args.wallet).expanduser().with_name("credit-topup.json"),
+                             bytes.fromhex(args.seed))
+    tc = _topup_client(args)
+    out = tc.recover(gap=int(args.gap))
+    print("vouchers found %d" % out["vouchers_found"])
+    print("tokens added   %d (unverified until first spend)" % out["tokens_added"])
+    print("next counter   %d" % out["next_counter"])
+    for r in out["results"]:
+        print("  %s  %-14s +%d" % (r["vid"], r["state"], r.get("tokens_added", 0)))
+    return 0
+
+
+def cmd_voucher(args) -> int:
+    tc = _topup_client(args)
+    v = tc.status(args.vid)
+    if v is None:
+        print("issuer does not know vid %s" % args.vid, file=sys.stderr)
+        return 1
+    print(json.dumps(v, indent=2, sort_keys=True))
+    return 0
+
+
 def cmd_spend(args) -> int:
     from .client import load_wallet, save_wallet, spend_token
 
@@ -242,6 +323,33 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lease-seconds", type=int, default=DEFAULT_LEASE_SECONDS)
     s.add_argument("--share-bytes", type=int, default=DEFAULT_SHARE_BYTES)
     s.set_defaults(func=cmd_spend)
+
+    def _topup_args(sp):
+        sp.add_argument("--issuer", required=True)
+        sp.add_argument("--wallet", default=DEFAULT_WALLET)
+        sp.add_argument("--state", default="", help="credit-topup.json (default: next to the wallet)")
+
+    tu = sub.add_parser("topup", help="buy credit with XMR: quote, pay, collect")
+    _topup_args(tu)
+    tu.add_argument("--tokens", type=int, required=True, help="GiB-share-months to buy")
+    tu.add_argument("--wait", default="", help="seconds to wait for payment + confirmations, then collect")
+    tu.add_argument("--poll", default="2", help="seconds between checks while waiting")
+    tu.set_defaults(func=cmd_topup)
+
+    ru = sub.add_parser("resume", help="finish pending top-ups (after a crash or a slow payment)")
+    _topup_args(ru)
+    ru.set_defaults(func=cmd_resume)
+
+    rc = sub.add_parser("recover", help="re-collect every batch this credit seed ever bought")
+    _topup_args(rc)
+    rc.add_argument("--seed", default="", help="32-byte credit seed as hex (from a recovery key) if no state file")
+    rc.add_argument("--gap", default="20", help="stop after this many consecutive unknown vids")
+    rc.set_defaults(func=cmd_recover)
+
+    vo = sub.add_parser("voucher", help="show one voucher as the issuer sees it")
+    _topup_args(vo)
+    vo.add_argument("--vid", required=True)
+    vo.set_defaults(func=cmd_voucher)
 
     t = sub.add_parser("settle", help="send spent t only to issuer")
     t.add_argument("--issuer", required=True)

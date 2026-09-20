@@ -85,6 +85,8 @@ class RecoveryBundle:
     issuer_url: str = ""
     folders: list[FolderRecord] = field(default_factory=list)
     wallet: Optional[dict] = None
+    credit_seed: str = ""  # hex; regenerates every credit batch at the issuer (07-payment.md §6)
+    quote_counter: int = 0
     created: float = field(default_factory=time.time)
     version: int = RECOVERY_VERSION
 
@@ -118,6 +120,9 @@ class RecoveryBundle:
         wallet = data.get("wallet")
         if wallet is not None and not is_leasegrid_wallet(wallet):
             wallet = None
+        seed = str(data.get("credit_seed") or "")
+        if seed and (len(seed) != 64 or any(c not in "0123456789abcdef" for c in seed.lower())):
+            seed = ""
         return cls(
             introducer_furl=furl,
             shares=(int(shares[0]), int(shares[1]), int(shares[2])),
@@ -125,6 +130,8 @@ class RecoveryBundle:
             issuer_url=str(data.get("issuer_url") or ""),
             folders=folders,
             wallet=wallet,
+            credit_seed=seed.lower(),
+            quote_counter=int(data.get("quote_counter") or 0),
             created=float(data.get("created") or 0),
         )
 
@@ -329,6 +336,8 @@ class RestoreResult:
     wallet_restored: bool
     author_name: str
     grid: str
+    credit_recovered: int = 0  # tokens re-collected from the issuer via the credit seed
+    credit_recover_error: str = ""
 
 
 def restored_author_name() -> str:
@@ -367,6 +376,16 @@ class RecoveryCtl:
             wallet = self.credit._read_wallet()
         except SyncError:
             wallet = None
+        seed, counter = "", 0
+        topup_state = self.credit.topup_state_path
+        if topup_state.is_file():
+            try:
+                from leasegrid_zkap.payment.topup import TopUpState
+
+                st = TopUpState(topup_state)
+                seed, counter = st.seed.hex(), st.counter
+            except Exception:
+                seed, counter = "", 0
         return RecoveryBundle(
             introducer_furl=read_introducer_furl(nodedir),
             shares=read_shares(nodedir),
@@ -374,6 +393,8 @@ class RecoveryCtl:
             issuer_url=self.credit.issuer_url,
             folders=read_folder_records(self.mf.config_dir),
             wallet=wallet,
+            credit_seed=seed,
+            quote_counter=counter,
         )
 
     def export(self, path: Path, passphrase: str) -> RecoveryBundle:
@@ -391,6 +412,16 @@ class RecoveryCtl:
             raise SyncError(EXPORT_FAIL_MSG, EXPORT_FAIL_NEXT) from exc
         self._record_export(path)
         return bundle
+
+    def _recover_credit(self, bundle: RecoveryBundle) -> int:
+        """Seed → state file (if none) → walk the issuer for every batch this seed bought."""
+        from leasegrid_zkap.payment.topup import TopUpClient, TopUpState
+
+        state_path = self.credit.topup_state_path
+        if not state_path.is_file():
+            TopUpState.from_seed(state_path, bytes.fromhex(bundle.credit_seed), bundle.quote_counter)
+        tc = TopUpClient(self.credit.issuer_url, self.credit.wallet_path, state_path)
+        return int(tc.recover()["tokens_added"])
 
     def _record_export(self, path: Path) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -472,10 +503,21 @@ class RecoveryCtl:
             save_wallet(self.credit.wallet_path, bundle.wallet)
             wallet_restored = True
 
+        credit_recovered = 0
+        credit_error = ""
+        if bundle.credit_seed:
+            say("Re-collecting credit from the issuer…")
+            try:
+                credit_recovered = self._recover_credit(bundle)
+            except Exception as exc:  # the rest of the restore stands; credit can be retried later
+                credit_error = "%s: %s" % (type(exc).__name__, str(exc).splitlines()[0] if str(exc) else "")
+
         return RestoreResult(
             folders=restored,
             skipped=skipped,
             wallet_restored=wallet_restored,
             author_name=author,
             grid=status.detail,
+            credit_recovered=credit_recovered,
+            credit_recover_error=credit_error,
         )

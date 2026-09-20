@@ -213,6 +213,7 @@ class CreditCtl:
         else:
             self.wallet_path = self.home / "credit-wallet.json"
         self.recent_path = self.home / "credit-recent.json"
+        self.topup_state_path = self.wallet_path.with_name("credit-topup.json")
         self.issuer_url = (issuer_url or default_issuer_url()).rstrip("/")
         self._mint = mint_fn or (lambda url, count: faucet_mint(url, count=count))
 
@@ -312,8 +313,34 @@ class CreditCtl:
             encoding="utf-8",
         )
 
+    def resume_pending_topups(self) -> int:
+        """Finish XMR top-ups the issuer has confirmed since we last looked. Never raises.
+
+        Pending vouchers live in credit-topup.json (07-payment.md §5.2); a crash
+        between paying and collecting, or a restore from a recovery key, leaves
+        rows there. Opening Credit is when they get collected.
+        """
+        if not self.topup_state_path.is_file():
+            return 0
+        try:
+            from leasegrid_zkap.payment.topup import TopUpClient
+
+            tc = TopUpClient(self.issuer_url, self.wallet_path, self.topup_state_path)
+            if not tc.state.pending:
+                return 0
+            added = 0
+            for r in tc.resume():
+                n = int(r.get("tokens_added") or 0)
+                if n:
+                    added += n
+                    self._append_recent("XMR top-up", n)
+            return added
+        except Exception:
+            return 0
+
     def load_balance(self) -> CreditSnapshot:
         info = self.ping_issuer()
+        self.resume_pending_topups()
         wallet = self._read_wallet()
         pubkey = str(info.get("issuer-pubkey-id") or "")
         tokens = 0

@@ -159,9 +159,9 @@ grep -q "^nickname = ci-code" "$T/home2/tahoe/tahoe.cfg"
 grep -q "^shares.needed = 2" "$T/home2/tahoe/tahoe.cfg"
 
 echo "==> third home restores the recovery key and re-collects the XMR batch"
-PASSPHRASE=ci-exit SYNC_HOME="$T/home" OUT="$T/export.out" client --export-recovery "$T/key.leasegrid-recovery"
+PASSPHRASE=ci-exit SYNC_HOME="$T/home" OUT="$T/export.out" client --export-recovery "$T/key.leasegrid-recovery" --ack-threat --ack-loss --ack-store
 grep -q "credit-seed=yes" "$T/export.out"
-PASSPHRASE=ci-exit SYNC_HOME="$T/home3" OUT="$T/restore.out" client --restore-recovery "$T/key.leasegrid-recovery"
+PASSPHRASE=ci-exit SYNC_HOME="$T/home3" OUT="$T/restore.out" client --restore-recovery "$T/key.leasegrid-recovery" --ack-threat
 # spent tokens are missing from the snapshot; recover fills them from the seed
 grep -E -q 'credit=[1-9]' "$T/restore.out" || { echo "restore did not re-collect spent credit"; cat "$T/restore.out"; exit 1; }
 SYNC_HOME="$T/home3" OUT="$T/credit3.out" client --credit-status

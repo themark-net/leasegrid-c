@@ -55,6 +55,23 @@ EXPORT_WARN = (
 )
 ACK_LOSS = "I understand: loss can mean total loss."
 ACK_STORE = "I will store this file somewhere safe, offline."
+ACK_THREAT = (
+    "I understand: this is a friendnet I trust, not a company backup. "
+    "Lose the recovery key and this device and access can be gone forever."
+)
+EXPORT_ACK_MSG = (
+    "recovery key was not written. Threat acknowledgement and both export "
+    "acknowledgements are required. A recovery key is not a one-click dump."
+)
+EXPORT_ACK_NEXT = (
+    "pass --ack-threat, --ack-loss, and --ack-store "
+    "(or set LEASEGRID_RECOVERY_ACK_THREAT, LEASEGRID_RECOVERY_ACK_LOSS, and "
+    "LEASEGRID_RECOVERY_ACK_STORE), then Retry."
+)
+THREAT_ACK_MSG = (
+    "could not import this recovery key. Threat acknowledgement is required before restore."
+)
+THREAT_ACK_NEXT = "pass --ack-threat, or check the threat box in Recovery, then Retry."
 EXPORT_FAIL_MSG = "recovery key was not written. Disk error, permission denied, or encrypt failed."
 EXPORT_FAIL_NEXT = "pick another path; Retry. Do not assume you are safe until this succeeds."
 IMPORT_FAIL_MSG = (
@@ -425,20 +442,42 @@ class RecoveryCtl:
         tc = TopUpClient(self.credit.issuer_url, self.credit.wallet_path, state_path)
         return int(tc.recover()["tokens_added"])
 
-    def _record_export(self, path: Path) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(
-            json.dumps({"last_export": time.time(), "path": str(path)}) + "\n", encoding="utf-8"
-        )
-
-    def last_export(self) -> Optional[dict]:
+    def _read_state(self) -> dict:
         if not self.state_path.is_file():
-            return None
+            return {}
         try:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return None
-        return data if isinstance(data, dict) and data.get("last_export") else None
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _write_state(self, data: dict) -> None:
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+    def threat_acked(self) -> bool:
+        return bool(self._read_state().get("threat_ack"))
+
+    def acknowledge_threat(self) -> None:
+        data = self._read_state()
+        data["threat_ack"] = True
+        data["threat_ack_at"] = time.time()
+        self._write_state(data)
+
+    def clear_threat_ack(self) -> None:
+        data = self._read_state()
+        data["threat_ack"] = False
+        self._write_state(data)
+
+    def _record_export(self, path: Path) -> None:
+        data = self._read_state()
+        data["last_export"] = time.time()
+        data["path"] = str(path)
+        self._write_state(data)
+
+    def last_export(self) -> Optional[dict]:
+        data = self._read_state()
+        return data if data.get("last_export") else None
 
     # import
 

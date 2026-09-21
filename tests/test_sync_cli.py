@@ -88,12 +88,66 @@ def test_join_headless_rejects_bad_invite_without_tahoe(tmp_path, monkeypatch, c
 def test_recovery_flags_present_and_export_fails_closed_when_not_joined(tmp_path, monkeypatch, capsys):
     text = build_parser().format_help()
     assert "--export-recovery" in text and "--restore-recovery" in text and "--join" in text
+    assert "--ack-threat" in text and "--ack-loss" in text and "--ack-store" in text
     monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "home"))
-    code = main(["--export-recovery", str(tmp_path / "k"), "--nodedir", str(tmp_path / "tahoe")])
+    code = main(
+        [
+            "--export-recovery",
+            str(tmp_path / "k"),
+            "--ack-threat",
+            "--ack-loss",
+            "--ack-store",
+            "--nodedir",
+            str(tmp_path / "tahoe"),
+        ]
+    )
     err = capsys.readouterr().err
     assert code == 1
     assert "No friendnet joined yet" in err
     assert not (tmp_path / "k").exists()
+
+
+def test_export_without_dual_ack_writes_nothing(tmp_path, monkeypatch, capsys):
+    """No silent one-click dump. Missing threat or either export ACK FAILs before a file exists."""
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "home"))
+    key = tmp_path / "k.leasegrid-recovery"
+    code = main(["--export-recovery", str(key), "--nodedir", str(tmp_path / "tahoe")])
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "FAIL" in err
+    assert "one-click" in err or "acknowledg" in err
+    assert not key.exists()
+    code = main(
+        ["--export-recovery", str(key), "--ack-threat", "--nodedir", str(tmp_path / "tahoe")]
+    )
+    err = capsys.readouterr().err
+    assert code == 1
+    assert not key.exists()
+    assert "ack-loss" in err or "acknowledg" in err
+
+
+def test_export_acks_from_env_still_fail_closed_when_not_joined(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("LEASEGRID_RECOVERY_ACK_THREAT", "1")
+    monkeypatch.setenv("LEASEGRID_RECOVERY_ACK_LOSS", "1")
+    monkeypatch.setenv("LEASEGRID_RECOVERY_ACK_STORE", "1")
+    key = tmp_path / "k.leasegrid-recovery"
+    code = main(["--export-recovery", str(key), "--nodedir", str(tmp_path / "tahoe")])
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "No friendnet joined yet" in err
+    assert not key.exists()
+
+
+def test_restore_without_threat_ack_fails_closed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "home"))
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    code = main(["--restore-recovery", str(key), "--nodedir", str(tmp_path / "tahoe")])
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "FAIL" in err
+    assert "threat" in err.lower() or "acknowledg" in err.lower()
 
 
 def test_credit_status_fail_closed(tmp_path, monkeypatch, capsys):

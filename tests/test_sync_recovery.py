@@ -38,6 +38,27 @@ def _bundle() -> RecoveryBundle:
     )
 
 
+def test_threat_ack_persists_beside_last_export(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    tahoe = TahoeClient(nodedir=nodedir, home=home)
+    mf = MagicFolderCtl(config_dir=home / "magic-folder", nodedir=nodedir)
+    credit = CreditCtl(home=home)
+    ctl = RecoveryCtl(home, tahoe, mf, credit)
+    assert ctl.threat_acked() is False
+    ctl.acknowledge_threat()
+    assert ctl.threat_acked() is True
+    ctl._record_export(tmp_path / "k.leasegrid-recovery")
+    again = RecoveryCtl(home, tahoe, mf, credit)
+    assert again.threat_acked() is True
+    assert again.last_export() is not None
+    again.clear_threat_ack()
+    assert again.threat_acked() is False
+    assert again.last_export() is not None
+
+
 def test_roundtrip_with_passphrase():
     data = encode_recovery_file(_bundle(), "correct horse")
     assert b"URI:DIR2" not in data

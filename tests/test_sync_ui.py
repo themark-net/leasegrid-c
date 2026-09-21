@@ -186,8 +186,75 @@ def test_recovery_place_has_scary_copy_and_both_actions(ui: MainWindow):
     assert "Last export: never" in blob
     names = [b.text() for b in buttons]
     assert "Export recovery key…" in names
-    assert "Import recovery key…" in names
+    assert "Restore to Folders" in names
     assert "not in this build" not in blob
+
+
+def test_recovery_copy_requires_threat_ack_then_restore_is_primary(ui: MainWindow):
+    """Threat HITL gates the recovery-copy path. Restore to Folders is the primary CTA."""
+    ack = ui.recovery_tab.findChild(PyQt5.QtWidgets.QCheckBox, "threatAck")
+    assert ack is not None
+    assert not ack.isChecked()
+    assert not ui.recovery.threat_acked()
+    assert not ui.export_key_btn.isEnabled()
+    assert not ui.restore_to_folders_btn.isEnabled()
+    assert ui.restore_to_folders_btn.text() == "Restore to Folders"
+    assert ui.restore_to_folders_btn.isDefault()
+    threat = ui.recovery_tab.findChild(PyQt5.QtWidgets.QLabel, "threatCopy")
+    assert threat is not None
+    assert "friendnet" in threat.text().lower()
+    assert "mainnet" not in threat.text().lower()
+    ack.setChecked(True)
+    assert ui.recovery.threat_acked()
+    assert ui.export_key_btn.isEnabled()
+    assert ui.restore_to_folders_btn.isEnabled()
+    ack.setChecked(False)
+    assert not ui.recovery.threat_acked()
+    assert not ui.restore_to_folders_btn.isEnabled()
+
+
+def test_export_without_threat_ack_does_not_open_a_dump(ui: MainWindow):
+    def boom(*_a, **_k):
+        raise AssertionError("export dialog opened without threat acknowledgement")
+
+    with patch("leasegrid_sync.app.ExportRecoveryDialog", side_effect=boom):
+        ui.on_export_recovery()
+    assert "FAIL" in ui.recovery_status.text()
+    assert "acknowledg" in ui.recovery_status.text().lower()
+
+
+def test_import_after_threat_ack_lands_on_folders(ui: MainWindow):
+    from leasegrid_sync.app import ImportRecoveryDialog
+    from leasegrid_sync.recovery import RestoreResult
+
+    ui.recovery.acknowledge_threat()
+    res = RestoreResult(
+        folders=["Photos"], skipped=[], wallet_restored=False, author_name="me@box-ab12",
+        grid="introducer up · 3 storage",
+    )
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+
+    real_init = ImportRecoveryDialog.__init__
+
+    def init_with_result(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        self.result = res
+        self.dlg.exec_ = lambda: ui.QtWidgets.QDialog.Accepted
+
+    with patch.object(ImportRecoveryDialog, "__init__", init_with_result):
+        with patch.object(ui.tahoe, "connection_status", return_value=st):
+            with patch.object(ui.mf, "list_folders", return_value=[]):
+                ui.on_import_recovery()
+    assert ui.stack.currentWidget() is ui.main_page
+    assert ui.places.currentWidget() is ui.folders_tab
+    assert "Photos" in ui.folder_error.text()
+
+
+def test_folders_offers_restore_from_recovery_key(ui: MainWindow):
+    btn = ui.folders_tab.findChild(PyQt5.QtWidgets.QPushButton, "restoreFromKey")
+    assert btn is not None
+    assert "recovery key" in btn.text().lower()
+    assert ui.add_btn.isEnabled()
 
 
 def test_join_page_offers_import_recovery(ui: MainWindow):

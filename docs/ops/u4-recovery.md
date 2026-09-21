@@ -40,17 +40,18 @@ The lost device stays listed as a participant. If it comes back, both keep synci
 
 ## Dogfood
 
-Window: **Recovery → Export recovery key…** (both ACKs, passphrase, path).
-Fresh device: join page → **Import recovery key instead…**.
+Window: **More → Recovery**. Check the threat box (HITL). **Restore to Folders** is the primary button and lands on the folder list. **Export recovery key…** stays disabled until that box is checked, then still needs both export ACKs (no one-click dump). Folders also has **Restore from recovery key…**. Fresh device: join page → **Import recovery key instead…** (same threat box, then the folder list).
 
-Headless (same as the e2e run on the dev grid):
+Headless (same as the e2e run on the dev grid). Export without the three ACKs FAILs and writes nothing:
 
 ```bash
 export LEASEGRID_RECOVERY_PASSPHRASE='correct horse'
 # device A
-leasegrid-sync --export-recovery ~/leasegrid-nimo.leasegrid-recovery
+leasegrid-sync --export-recovery ~/leasegrid-nimo.leasegrid-recovery \
+  --ack-threat --ack-loss --ack-store
 # device B (empty LEASEGRID_SYNC_HOME)
-LEASEGRID_RESTORE_LINGER=45 leasegrid-sync --restore-recovery ~/leasegrid-nimo.leasegrid-recovery
+LEASEGRID_RESTORE_LINGER=45 leasegrid-sync --restore-recovery ~/leasegrid-nimo.leasegrid-recovery \
+  --ack-threat
 ls ~/Leasegrid/<folder>       # files back from the friendnet
 ```
 

@@ -48,12 +48,17 @@ from .credit import (
 from .recovery import (
     ACK_LOSS,
     ACK_STORE,
+    ACK_THREAT,
+    EXPORT_ACK_MSG,
+    EXPORT_ACK_NEXT,
     EXPORT_STOP,
     EXPORT_WARN,
     NO_PASSPHRASE_NOTE,
     RECOVERY_INTRO,
     RECOVERY_SUFFIX,
     SCARY_LOSS,
+    THREAT_ACK_MSG,
+    THREAT_ACK_NEXT,
     RecoveryCtl,
     RestoreResult,
 )
@@ -428,6 +433,53 @@ class TopUpDialog:
             self.request_btn.setEnabled(True)
             self.cancel_btn.setText("Close")
             return
+        self.dlg.accept()
+
+
+class ThreatAckDialog:
+    """HITL before a recovery-copy import from the join page (no Recovery place yet)."""
+
+    def __init__(self, parent, qt) -> None:
+        QtWidgets = qt
+        self.QtWidgets = QtWidgets
+        self.acked = False
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Before you restore")
+        self.dlg.setObjectName("threatAckDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        copy = QtWidgets.QLabel(THREAT_COPY)
+        copy.setWordWrap(True)
+        copy.setObjectName("threatCopy")
+        v.addWidget(copy)
+        self.ack = QtWidgets.QCheckBox(ACK_THREAT)
+        self.ack.setObjectName("threatAck")
+        v.addWidget(self.ack)
+        self.status = QtWidgets.QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setObjectName("threatAckStatus")
+        v.addWidget(self.status)
+        row = QtWidgets.QHBoxLayout()
+        self.continue_btn = QtWidgets.QPushButton("Continue")
+        self.continue_btn.setObjectName("threatContinue")
+        self.continue_btn.setEnabled(False)
+        self.continue_btn.clicked.connect(self.on_continue)
+        cancel = QtWidgets.QPushButton("Cancel")
+        cancel.clicked.connect(self.dlg.reject)
+        row.addWidget(self.continue_btn)
+        row.addWidget(cancel)
+        row.addStretch(1)
+        v.addLayout(row)
+        self.ack.toggled.connect(self._update_gate)
+
+    def _update_gate(self, *_args) -> None:
+        self.continue_btn.setEnabled(self.ack.isChecked())
+
+    def on_continue(self) -> None:
+        if not self.ack.isChecked():
+            self.status.setText(SyncError(THREAT_ACK_MSG, THREAT_ACK_NEXT).banner())
+            return
+        self.acked = True
         self.dlg.accept()
 
 
@@ -827,6 +879,11 @@ class MainWindow:
         self.add_btn.setObjectName("addFolderButton")
         self.add_btn.clicked.connect(self.on_add_folder)
         head.addWidget(self.add_btn)
+        self.restore_from_key_btn = QtWidgets.QPushButton("Restore from recovery key…")
+        self.restore_from_key_btn.setObjectName("restoreFromKey")
+        self.restore_from_key_btn.setFlat(True)
+        self.restore_from_key_btn.clicked.connect(self.on_import_recovery)
+        head.addWidget(self.restore_from_key_btn)
         fl.addLayout(head)
         self.empty_label = QtWidgets.QLabel(
             "No folders on this device yet.\n"
@@ -996,17 +1053,31 @@ class MainWindow:
         scary.setObjectName("recoveryScary")
         scary.setStyleSheet("color: #8b1a1a; font-weight: bold;")
         rl.addWidget(scary)
+        threat = QtWidgets.QLabel(THREAT_COPY)
+        threat.setWordWrap(True)
+        threat.setObjectName("threatCopy")
+        rl.addWidget(threat)
+        self.threat_ack = QtWidgets.QCheckBox(ACK_THREAT)
+        self.threat_ack.setObjectName("threatAck")
+        self.threat_ack.toggled.connect(self._on_threat_toggled)
+        rl.addWidget(self.threat_ack)
         row = QtWidgets.QHBoxLayout()
+        self.restore_to_folders_btn = QtWidgets.QPushButton("Restore to Folders")
+        self.restore_to_folders_btn.setObjectName("restoreToFolders")
+        self.restore_to_folders_btn.setDefault(True)
+        self.restore_to_folders_btn.clicked.connect(self.on_import_recovery)
         self.export_key_btn = QtWidgets.QPushButton("Export recovery key…")
         self.export_key_btn.setObjectName("exportKeyButton")
         self.export_key_btn.clicked.connect(self.on_export_recovery)
-        self.import_key_btn2 = QtWidgets.QPushButton("Import recovery key…")
-        self.import_key_btn2.setObjectName("importKeyButton2")
-        self.import_key_btn2.clicked.connect(self.on_import_recovery)
+        row.addWidget(self.restore_to_folders_btn)
         row.addWidget(self.export_key_btn)
-        row.addWidget(self.import_key_btn2)
         row.addStretch(1)
         rl.addLayout(row)
+        if self.recovery.threat_acked():
+            self.threat_ack.blockSignals(True)
+            self.threat_ack.setChecked(True)
+            self.threat_ack.blockSignals(False)
+        self._sync_recovery_gate()
         self.recovery_status = QtWidgets.QLabel("")
         self.recovery_status.setObjectName("recoveryStatus")
         self.recovery_status.setWordWrap(True)
@@ -1025,9 +1096,38 @@ class MainWindow:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(info["last_export"])))
         self.last_export_label.setText("Last export: %s  →  %s" % (when, info.get("path", "")))
 
+    def _sync_recovery_gate(self) -> None:
+        ok = self.threat_ack.isChecked() and self.recovery.threat_acked()
+        self.export_key_btn.setEnabled(ok)
+        self.restore_to_folders_btn.setEnabled(ok)
+
+    def _on_threat_toggled(self, checked: bool) -> None:
+        if checked:
+            self.recovery.acknowledge_threat()
+        else:
+            self.recovery.clear_threat_ack()
+        self._sync_recovery_gate()
+
+    def _ensure_threat_ack(self) -> bool:
+        if self.recovery.threat_acked():
+            return True
+        dlg = ThreatAckDialog(self.win, self.QtWidgets)
+        if dlg.dlg.exec_() != self.QtWidgets.QDialog.Accepted or not dlg.acked:
+            return False
+        self.recovery.acknowledge_threat()
+        self.threat_ack.blockSignals(True)
+        self.threat_ack.setChecked(True)
+        self.threat_ack.blockSignals(False)
+        self._sync_recovery_gate()
+        return True
+
     def on_export_recovery(self) -> None:
         self.recovery_status.setStyleSheet("")
         self.recovery_status.setText("")
+        if not self.recovery.threat_acked():
+            self.recovery_status.setStyleSheet("color: #8b1a1a;")
+            self.recovery_status.setText(SyncError(EXPORT_ACK_MSG, EXPORT_ACK_NEXT).banner())
+            return
         dlg = ExportRecoveryDialog(self.win, self.recovery, self.QtWidgets)
         if dlg.dlg.exec_() == self.QtWidgets.QDialog.Accepted and dlg.written is not None:
             self.recovery_status.setText(
@@ -1036,6 +1136,8 @@ class MainWindow:
             self._refresh_last_export()
 
     def on_import_recovery(self) -> None:
+        if not self._ensure_threat_ack():
+            return
         dlg = ImportRecoveryDialog(self.win, self.recovery, self.QtWidgets)
         if dlg.dlg.exec_() != self.QtWidgets.QDialog.Accepted or dlg.result is None:
             return

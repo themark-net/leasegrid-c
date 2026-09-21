@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import binascii
+import time
 from base64 import b64decode, b64encode
+from typing import Optional
 
 from challenge_bypass_ristretto import SigningKey
 
@@ -32,6 +34,9 @@ class LeaseGate:
         self.backend = backend
         self.info = issuer_info(signing_key)
         self.issuer_pubkey_id = self.info["issuer-pubkey-id"]
+        self._accepted: dict[int, dict] = {
+            TOKEN_EPOCH_V0: {"key": signing_key, "issuer-pubkey-id": self.issuer_pubkey_id}
+        }
 
     def spend(self, t: str, r: bytes, mac: str) -> dict:
         """
@@ -46,12 +51,13 @@ class LeaseGate:
             raise SpendError("R.domain is not %s" % DOMAIN)
         if fields["nodeid"] != self.nodeid:
             raise SpendError("R.nodeid does not match this storage node")
-        if fields["issuer_pubkey_id"] != self.issuer_pubkey_id:
+        acc = self._accepted.get(int(fields["token_epoch"]))
+        if acc is None:
+            raise SpendError("epoch %s is not accepted" % fields["token_epoch"])
+        if fields["issuer_pubkey_id"] != acc["issuer-pubkey-id"]:
             raise SpendError("R.issuer_pubkey_id does not match this issuer key")
-        if fields["token_epoch"] != TOKEN_EPOCH_V0:
-            raise SpendError("unsupported token_epoch")
         try:
-            verify_mac(self.signing_key, t, r, mac)
+            verify_mac(acc["key"], t, r, mac)
         except InvalidPass as e:
             raise SpendError(str(e)) from e
         rec = SpentRecord(
@@ -73,6 +79,89 @@ class LeaseGate:
             "idempotent": stored is not rec and stored.r_b64 == rec.r_b64,
             "storage_index": rec.storage_index_hex,
             "issuer_pubkey_id": rec.issuer_pubkey_id,
+        }
+
+    def pull_keys(
+        self,
+        keys_doc: dict,
+        signing_keys: Optional[dict[int, SigningKey]] = None,
+        now: Optional[float] = None,
+    ) -> dict:
+        """Node key pull: accept epochs whose accept_until has not passed."""
+        now = time.time() if now is None else now
+        signing_keys = signing_keys or {}
+        accepted: dict[int, dict] = {}
+        for e in keys_doc.get("epochs") or []:
+            until = e.get("accept_until")
+            if until is not None and float(until) <= now:
+                continue
+            eid = int(e["epoch"])
+            key = signing_keys.get(eid)
+            if key is None and eid == TOKEN_EPOCH_V0:
+                key = self.signing_key
+            if key is None:
+                continue
+            pk = e.get("issuer-pubkey-id") or issuer_info(key)["issuer-pubkey-id"]
+            accepted[eid] = {"key": key, "issuer-pubkey-id": pk}
+        self._accepted = accepted
+        return {"accepted": sorted(accepted)}
+
+    def accept_rsa_epoch(self, epoch: int, rsa_public, issuer_pubkey_id: str) -> None:
+        self._accepted[int(epoch)] = {
+            "scheme": "rsa-bssa-v1",
+            "rsa_public": rsa_public,
+            "issuer-pubkey-id": issuer_pubkey_id,
+        }
+
+    def spend_rsa(self, t, pk_tok: bytes, sigma: bytes, r: bytes, sig_r: bytes) -> dict:
+        from .rsa_bssa import BssaError, verify_spend
+
+        try:
+            fields = decode_r(r)
+        except RError as e:
+            raise SpendError("bad R: %s" % e) from e
+        if fields["domain"] != DOMAIN:
+            raise SpendError("R.domain is not %s" % DOMAIN)
+        if fields["nodeid"] != self.nodeid:
+            raise SpendError("R.nodeid does not match this storage node")
+        acc = self._accepted.get(int(fields["token_epoch"]))
+        if acc is None or acc.get("scheme") != "rsa-bssa-v1":
+            raise SpendError("epoch %s is not an accepted rsa-bssa epoch" % fields["token_epoch"])
+        if fields["issuer_pubkey_id"] != acc["issuer-pubkey-id"]:
+            raise SpendError("R.issuer_pubkey_id does not match this issuer key")
+        if isinstance(t, (bytes, bytearray)):
+            t_bytes = bytes(t)
+            t_s = b64encode(t_bytes).decode("ascii")
+        else:
+            t_s = str(t)
+            try:
+                t_bytes = b64decode(t_s)
+            except Exception as e:
+                raise SpendError("t must be standard base64") from e
+        try:
+            verify_spend(acc["rsa_public"], t_bytes, pk_tok, sigma, r, sig_r)
+        except BssaError as e:
+            raise SpendError(str(e)) from e
+        rec = SpentRecord(
+            t=t_s,
+            r_b64=_b64s(r),
+            storage_index_hex=fields["storage_index"].hex(),
+            lease_seconds=fields["lease_seconds"],
+            share_bytes=fields["share_bytes"],
+            token_epoch=fields["token_epoch"],
+            issuer_pubkey_id=fields["issuer_pubkey_id"],
+            nodeid=fields["nodeid"],
+        )
+        try:
+            stored = self.spent.remember(rec)
+        except ReplayError as e:
+            raise SpendError(str(e)) from e
+        return {
+            "ok": True,
+            "idempotent": stored is not rec and stored.r_b64 == rec.r_b64,
+            "storage_index": rec.storage_index_hex,
+            "issuer_pubkey_id": rec.issuer_pubkey_id,
+            "scheme": "rsa-bssa-v1",
         }
 
     def _find_grant(self, storage_index: bytes, op: str) -> SpentRecord:

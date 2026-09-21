@@ -27,9 +27,10 @@ Related: [`03-roadmap.md`](03-roadmap.md) Phase 1. Conditional Go / corner C rai
    - Platforms: **Linux AppImage + .deb first** (lab/friendnet on nimo); macOS/Windows when buyer demand says so.  
    - First-run wizard: join friendnet (invite code) → pick sync folder → see balance → recovery key export.
 
-2. **`Leasegrid Node`** (operator) — Phase 2  
-   - Installs: storage node + ZKAP gate + short status dashboard + eject logs.  
-   - Not required for buyer UI dogfood if lab friendnet already runs.
+2. **`Leasegrid Node`** (operator) — Phase 2, **paid** kit  
+   - Unpaid offering is already the Sync join path (`tahoe create-node` on the same invite).  
+   - This installer is the later paid/gated operator surface: ZKAP gate, status dashboard, eject logs, payout.  
+   - Not required to dogfood folder sync or to offer disk on an unpaid friendnet.
 
 ---
 
@@ -56,7 +57,7 @@ Do **not** wait for 0c/0d PASS to start UI.
 | **U2** | Credit panel wired to lab issuer/faucet (no mainnet XMR required) | Balance visible after faucet |
 | **U3** | Linux installer (AppImage and/or .deb) that installs Sync without a shell tutorial | Fresh VM / second user install PASS |
 | **U4** | Recovery key export + first-run threat copy | Non-expert walkthrough PASS |
-| **U5** | Swap faucet for XMR top-up when gate 0c PASS | Phase 1 exit with rails |
+| **U5** | Swap faucet for XMR top-up when gate 0c PASS — design: [`07-payment.md`](07-payment.md) §11 | Phase 1 exit with rails |
 
 Rails owners keep 0c/0d. UI owners own U0–U5. Phase 1 exit still requires Phase 0 rails for real XMR; UI dogfood uses faucet until then.
 

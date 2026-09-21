@@ -15,14 +15,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from leasegrid_zkap.client import ClientError, faucet_mint, http_json, load_wallet, save_wallet
+from leasegrid_zkap.client import (
+    ClientError,
+    faucet_mint,
+    http_json,
+    load_wallet,
+    save_wallet,
+    wallet_lock,
+)
 from leasegrid_zkap.constants import DENOMINATION, GIB
 
 from .backend import SyncError, default_home
 
 DEFAULT_ISSUER_URL = "http://127.0.0.1:8700"
 EXPAND_FACTOR = 3.2  # shares span nodes; upload size is not credit 1:1
-TIER_TOKENS = {"small": 10, "medium": 50, "large": 100}
+TIER_TOKENS = {"small": 10, "medium": 50, "large": 200}
 
 PLAIN_ZERO = (
     "Credit remaining: none.\n"
@@ -38,8 +45,8 @@ DENOMINATION_NOTE = (
 )
 
 LAB_NOTE = (
-    "Lab note: Top up uses a faucet stub until XMR mint is ready. "
-    "Opaque ZKAP wallets from other apps do not convert."
+    "Top up quotes XMR for this friendnet. A lab faucet is still in the dialog "
+    "for unpaid grids. Opaque ZKAP wallets from other apps do not convert."
 )
 
 OPAQUE_REJECT = (
@@ -48,9 +55,9 @@ OPAQUE_REJECT = (
 )
 
 XMR_LATER = (
-    "Later: Top up with Monero (XMR) when mint rails PASS. "
-    "(XMR is not available in this build.)"
+    "Pay the quoted XMR exactly. Credits appear after confirmations, never at zero-conf."
 )
+XMR_TIERS = TIER_TOKENS
 
 LOAD_FAIL_MSG = "could not load credit balance. Issuer unreachable or returned an error."
 LOAD_FAIL_NEXT = "Retry; check network; if lab is down, ask your friendnet operator."
@@ -61,6 +68,40 @@ REDEEM_FAIL_NEXT = "Retry; if lab is down, ask your operator. Balance unchanged.
 ZERO_FOLDER_MSG = "folder not added. Not enough storage credit to allocate shares."
 ZERO_FOLDER_NEXT = "Credit → Top up, then Add folder again."
 REVIEW_HEAD = "REVIEW — this folder needs more credit than the raw size."
+
+
+def format_xmr_amount(piconero: Any) -> str:
+    from leasegrid_zkap.payment.policy import PricePolicy
+
+    try:
+        n = int(piconero)
+    except (TypeError, ValueError):
+        return ""
+    return PricePolicy.format_xmr(n)
+
+
+def underpaid_copy(voucher: dict[str, Any], quoted_piconero: Any = None) -> str:
+    """Buyer line for a live /v0/voucher row (piconero ints, no amount_xmr_*)."""
+    seen = voucher.get("amount_seen")
+    if seen is None:
+        seen = voucher.get("amount_confirmed") or 0
+    due = voucher.get("amount_due")
+    if due is None:
+        due = quoted_piconero or 0
+    try:
+        seen_n = int(seen)
+    except (TypeError, ValueError):
+        seen_n = 0
+    try:
+        due_n = int(due)
+    except (TypeError, ValueError):
+        due_n = 0
+    rest = max(0, due_n - seen_n)
+    return (
+        "Underpaid. Received %s XMR; send at least %s more to the same address, "
+        "or leave it — nothing is lost."
+        % (format_xmr_amount(seen_n), format_xmr_amount(rest))
+    )
 
 
 MintFn = Callable[[str, int], dict]
@@ -101,6 +142,15 @@ def format_remaining(tokens: int) -> str:
 def format_delta(tokens: int) -> str:
     sign = "+" if tokens >= 0 else ""
     return "%s%d GiB·mo" % (sign, tokens)
+
+
+def credit_enforced() -> bool:
+    """True when this grid charges for writes (``LEASEGRID_GATED=1``).
+
+    Unpaid friendnets use the same join/offer path with no Credit required to
+    add a folder. Payment complexity stays behind this flag.
+    """
+    return os.environ.get("LEASEGRID_GATED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def credit_gate(remaining: int, need: int) -> str:
@@ -206,6 +256,7 @@ class CreditCtl:
         else:
             self.wallet_path = self.home / "credit-wallet.json"
         self.recent_path = self.home / "credit-recent.json"
+        self.topup_state_path = self.wallet_path.with_name("credit-topup.json")
         self.issuer_url = (issuer_url or default_issuer_url()).rstrip("/")
         self._mint = mint_fn or (lambda url, count: faucet_mint(url, count=count))
 
@@ -265,6 +316,30 @@ class CreditCtl:
             )
         return rows
 
+    def recent_refusal(self, within_seconds: float = 120.0) -> Optional[str]:
+        """Newest 'Upload refused…' / 'Pass rejected…' event the Tahoe-side spender wrote, if fresh.
+
+        The spender (leasegrid_zkap.spender) runs inside the Tahoe client; this file is
+        how the window learns that writes are being refused for lack of credit.
+        """
+        if not self.recent_path.is_file():
+            return None
+        try:
+            data = json.loads(self.recent_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        items = data.get("events") if isinstance(data, dict) else None
+        if not isinstance(items, list) or not items:
+            return None
+        newest = items[0] if isinstance(items[0], dict) else {}
+        title = str(newest.get("title") or "")
+        ts = float(newest.get("ts") or 0)
+        if not (title.startswith("Upload refused") or title.startswith("Pass rejected")):
+            return None
+        if time.time() - ts > within_seconds:
+            return None
+        return title
+
     def _append_recent(self, title: str, tokens: int) -> None:
         events: list[dict[str, Any]] = []
         if self.recent_path.is_file():
@@ -281,8 +356,81 @@ class CreditCtl:
             encoding="utf-8",
         )
 
+    def _topup_client(self):
+        from leasegrid_zkap.payment.topup import TopUpClient
+
+        return TopUpClient(self.issuer_url, self.wallet_path, self.topup_state_path)
+
+    def quote_topup(self, tokens: int) -> dict:
+        try:
+            return self._topup_client().quote(int(tokens))
+        except SyncError:
+            raise
+        except Exception as exc:
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not answer. Payments already sent are safe; retry later.",
+                "Retry later. Do not send more XMR until Credit shows the quote again.",
+            ) from exc
+
+    def poll_topup(self, vid: str) -> dict:
+        try:
+            r = self._topup_client().redeem(str(vid))
+        except SyncError:
+            raise
+        except Exception as exc:
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not answer. Payments already sent are safe; retry later.",
+                "Retry later.",
+            ) from exc
+        n = int(r.get("tokens_added") or 0)
+        if n:
+            self._append_recent("XMR top-up", n)
+        return r
+
+    def pending_topups(self) -> list[dict[str, Any]]:
+        if not self.topup_state_path.is_file():
+            return []
+        try:
+            from leasegrid_zkap.payment.topup import TopUpState
+
+            st = TopUpState(self.topup_state_path)
+            out = []
+            for vid, rec in st.pending.items():
+                row = dict(rec)
+                row["vid"] = vid
+                out.append(row)
+            return out
+        except Exception:
+            return []
+
+    def resume_pending_topups(self) -> int:
+        """Finish XMR top-ups the issuer has confirmed since we last looked. Never raises.
+
+        Pending vouchers live in credit-topup.json (07-payment.md §5.2); a crash
+        between paying and collecting, or a restore from a recovery key, leaves
+        rows there. Opening Credit is when they get collected.
+        """
+        if not self.topup_state_path.is_file():
+            return 0
+        try:
+            from leasegrid_zkap.payment.topup import TopUpClient
+
+            tc = TopUpClient(self.issuer_url, self.wallet_path, self.topup_state_path)
+            if not tc.state.pending:
+                return 0
+            added = 0
+            for r in tc.resume():
+                n = int(r.get("tokens_added") or 0)
+                if n:
+                    added += n
+                    self._append_recent("XMR top-up", n)
+            return added
+        except Exception:
+            return 0
+
     def load_balance(self) -> CreditSnapshot:
         info = self.ping_issuer()
+        self.resume_pending_topups()
         wallet = self._read_wallet()
         pubkey = str(info.get("issuer-pubkey-id") or "")
         tokens = 0
@@ -316,12 +464,6 @@ class CreditCtl:
         info = self.ping_issuer()
         existing = None
         try:
-            existing = self._read_wallet()
-        except SyncError as exc:
-            if OPAQUE_REJECT in exc.message:
-                raise
-            existing = None
-        try:
             minted = self._mint(self.issuer_url, int(count))
         except SyncError:
             raise
@@ -333,8 +475,17 @@ class CreditCtl:
         live_id = str(info.get("issuer-pubkey-id") or "")
         if minted_id and live_id and minted_id != live_id:
             raise SyncError(REDEEM_FAIL_MSG, REDEEM_FAIL_NEXT)
-        merged = merge_wallets(existing, minted)
-        save_wallet(self.wallet_path, merged)
+        # Read-merge-write under the wallet lock: the Tahoe client may be spending
+        # from this same file right now.
+        with wallet_lock(self.wallet_path):
+            try:
+                existing = self._read_wallet()
+            except SyncError as exc:
+                if OPAQUE_REJECT in exc.message:
+                    raise
+                existing = None
+            merged = merge_wallets(existing, minted)
+            save_wallet(self.wallet_path, merged)
         self._append_recent("Faucet top-up", int(count))
         tokens = len(merged.get("tokens") or [])
         return CreditSnapshot(

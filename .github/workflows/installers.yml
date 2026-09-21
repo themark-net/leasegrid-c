@@ -1,0 +1,177 @@
+name: Installers
+
+# Builds the desktop bundles (Sync + Tahoe 1.20 + Magic Folder 24.3) for Linux,
+# macOS and Windows, and proves each one joins a friendnet, pays for an upload
+# and accepts a short invite code with no Python on PATH. Artifacts on every
+# run; attached to the GitHub Release on v* tags.
+#
+#   Linux    Leasegrid_Sync-<ver>-x86_64.AppImage        ubuntu-22.04 (glibc floor)
+#   macOS    Leasegrid_Sync-<ver>-macos-x86_64.dmg       macos-15-intel: the ristretto wheel is
+#                                                        x86_64-only; runs on Apple Silicon via Rosetta 2
+#   Windows  Leasegrid_Sync-<ver>-win64.zip + -setup.exe windows-2022
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - "scripts/dev-grid.sh"
+      - "src/**"
+      - "pyproject.toml"
+      - ".github/workflows/installers.yml"
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "scripts/dev-grid.sh"
+      - "src/**"
+      - "pyproject.toml"
+      - ".github/workflows/installers.yml"
+  workflow_dispatch:
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+concurrency:
+  group: installers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q python3-dev build-essential libfuse2 file \
+            libxcb-xinerama0 libxkbcommon-x11-0 libegl1
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -e ".[sync,tahoe]" pyinstaller pillow
+      - name: Build AppImage
+        run: packaging/build-appimage.sh
+      - name: Exit test (client = AppImage only)
+        run: |
+          APP="$(ls dist/Leasegrid_Sync-*.AppImage)"
+          packaging/exit-test.sh "leasegrid-sync/tahoe" "$APP" --appimage-extract-and-run
+      - name: Exit test logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exit-test-logs-linux
+          path: |
+            ${{ runner.temp }}/lg-exit/*.out
+            ${{ runner.temp }}/lg-exit/home*/logs/*.log
+            ${{ runner.temp }}/lg-exit/grid/logs/*.log
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Leasegrid_Sync-linux-x86_64.AppImage
+          path: dist/Leasegrid_Sync-*.AppImage
+          if-no-files-found: error
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Leasegrid_Sync-*.AppImage
+          generate_release_notes: true
+
+  macos:
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          # netifaces has no cp312 mac wheel; clang from the Xcode CLT builds it.
+          .venv/bin/pip install -e ".[sync,tahoe]" pyinstaller pillow
+      - name: Build .app + .dmg
+        run: packaging/build-desktop.sh
+      - name: Exit test (client = .app only)
+        run: packaging/exit-test.sh "MacOS/tahoe" "dist/Leasegrid Sync.app/Contents/MacOS/leasegrid-sync"
+      - name: Exit test logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exit-test-logs-macos
+          path: |
+            ${{ runner.temp }}/lg-exit/*.out
+            ${{ runner.temp }}/lg-exit/home*/logs/*.log
+            ${{ runner.temp }}/lg-exit/grid/logs/*.log
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Leasegrid_Sync-macos-x86_64.dmg
+          path: dist/Leasegrid_Sync-*.dmg
+          if-no-files-found: error
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Leasegrid_Sync-*.dmg
+          generate_release_notes: true
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build deps
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python -m pip install -U pip
+          # netifaces has no cp312 Windows wheel; MSVC on the runner builds it.
+          .venv/Scripts/pip install -e ".[sync,tahoe]" pyinstaller pillow
+          command -v iscc >/dev/null 2>&1 || [[ -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]] \
+            || choco install innosetup -y --no-progress
+      - name: Build onedir + zip + setup.exe
+        run: packaging/build-desktop.sh
+      - name: Exit test (client = bundle only)
+        run: packaging/exit-test.sh 'leasegrid-sync\\tahoe.exe' dist/leasegrid-sync/leasegrid-sync-cli.exe
+      - name: Exit test logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exit-test-logs-windows
+          path: |
+            ${{ runner.temp }}/lg-exit/*.out
+            ${{ runner.temp }}/lg-exit/home*/logs/*.log
+            ${{ runner.temp }}/lg-exit/grid/logs/*.log
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Leasegrid_Sync-win64
+          path: |
+            dist/Leasegrid_Sync-*-win64.zip
+            dist/Leasegrid_Sync-*-win64-setup.exe
+          if-no-files-found: error
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Leasegrid_Sync-*-win64.zip
+            dist/Leasegrid_Sync-*-win64-setup.exe
+          generate_release_notes: true

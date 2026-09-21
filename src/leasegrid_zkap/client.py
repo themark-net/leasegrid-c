@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -38,9 +40,16 @@ def http_json(url: str, method: str = "GET", body: dict | None = None, timeout: 
         raise ClientError("%s %s -> %s %s" % (method, url, e.code, err_body)) from e
     except URLError as e:
         raise ClientError("unreachable %s: %s" % (url, e.reason)) from e
+    except (OSError, HTTPException) as e:
+        # Not URLError: read timeouts, resets, a non-HTTP service on the port
+        # (RemoteDisconnected), truncated bodies. Callers see one error type.
+        raise ClientError("%s %s failed: %s: %s" % (method, url, type(e).__name__, e)) from e
     if not payload:
         return {}
-    return json.loads(payload.decode("utf-8"))
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        raise ClientError("%s %s returned non-JSON: %s" % (method, url, e)) from e
 
 
 def faucet_mint(issuer_url: str, count: int = 8) -> dict:
@@ -71,13 +80,61 @@ def faucet_mint(issuer_url: str, count: int = 8) -> dict:
     }
 
 
+@contextlib.contextmanager
+def wallet_lock(path: str | os.PathLike):
+    """Cross-process exclusive lock on a wallet file (Sync tops up while Tahoe spends).
+
+    Uses a lock on ``<wallet>.lock`` beside the wallet so the wallet itself can be
+    replaced atomically: flock on POSIX, msvcrt byte-range locking on Windows.
+    """
+    lock_path = Path(path).expanduser().with_name(Path(path).name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        _lock_fd(fd)
+        yield
+    finally:
+        try:
+            _unlock_fd(fd)
+        finally:
+            os.close(fd)
+
+
+if os.name == "nt":  # pragma: no cover - exercised on the Windows CI runner
+    import msvcrt
+
+    def _lock_fd(fd: int) -> None:
+        # LK_LOCK retries for ~10 s then raises; spin so a long faucet redeem
+        # on the other side does not turn into an error here.
+        while True:
+            try:
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                continue
+
+    def _unlock_fd(fd: int) -> None:
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock_fd(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+    def _unlock_fd(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
 def save_wallet(path: str | os.PathLike, wallet: dict) -> None:
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(wallet, f, indent=2, sort_keys=True)
         f.write("\n")
+    os.replace(tmp, path)
 
 
 def load_wallet(path: str | os.PathLike) -> dict:

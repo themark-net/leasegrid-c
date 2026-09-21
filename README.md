@@ -17,7 +17,21 @@ The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the compa
 Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [`src/leasegrid_zkap/`](src/leasegrid_zkap/) and [`deploy/zkap-lab/`](deploy/zkap-lab/). That lab is **not** PyPI ZKAPAuthorizer (Tahoe 1.20 pin; see [`docs/adr/0001-thin-lab-zkap-authorizer.md`](docs/adr/0001-thin-lab-zkap-authorizer.md)). Gates 0a and 0b have dated PASS rows in [`docs/08-lab.md`](docs/08-lab.md). Gates 0c–0d are not PASS until that log says so. No mainnet wallet.
 
 **U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
-**U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md). Installer / recovery HITL / XMR wait for U3–U5.
+**U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md).  
+**U3:** Installers for Linux (AppImage), macOS (.dmg) and Windows (setup.exe / zip) bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](docs/ops/installers.md).  
+**U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md).  
+**Paid path:** with `LEASEGRID_GATED=1` storage refuses unpaid leases and the client spends Credit per upload: [`docs/ops/paid-path.md`](docs/ops/paid-path.md) (read the denomination finding). XMR quote → redeem runs against a FakeChain in CI ([`docs/07-payment.md`](docs/07-payment.md) S0–S2, S5); the U5 window and live stagenet (gate 0c) are still open.
+
+## Run it locally (client + server, one machine)
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -U pip && .venv/bin/pip install -e ".[sync,tahoe]"
+scripts/dev-grid.sh                      # shell 1: introducer + 3 storage + issuer; prints an invite furl
+LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 .venv/bin/leasegrid-sync   # shell 2: paste the furl → Join
+scripts/dev-grid.sh --invite             # optional shell 3: a short one-time code (7-word-word) instead of the furl
+```
+
+Join accepts a furl or a `tahoe invite` code and creates a Tahoe **node** (sync + storage by default; uncheck Offer disk or pass `--client-only` to skip). Credit → Top up is for grids that charge; unpaid join does not need it. Folders → Add folder syncs via Magic Folder. Details: [`docs/ops/dev-grid.md`](docs/ops/dev-grid.md).
 
 **Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 
@@ -29,9 +43,10 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 4. [`docs/design/`](docs/design/) — U0 wireframes (10–14) + U2 Credit handoff (15–19)
 5. [`docs/01-architecture.md`](docs/01-architecture.md) — roles and rails
 6. [`docs/02-objects.md`](docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
-7. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
-8. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
-9. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet
+7. [`docs/07-payment.md`](docs/07-payment.md) — XMR → `vid` → ZKAP → settlement (gate 0c / U5; FakeChain S0–S2, S5 in tree; live 0c not PASS)
+8. [`docs/05-bonds.md`](docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
+9. [`docs/08-lab.md`](docs/08-lab.md) — paid rails PASS/FAIL criterion
+10. [`deploy/zkap-lab/README.md`](deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet
 
 ## Two rails
 

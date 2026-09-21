@@ -80,7 +80,7 @@ Wrapping a live storage node makes **anonymous allocate fail** (that is 0b.2). `
 4. Issuer on nimo (or leasegrid-1):
 
    ```bash
-   .venv/bin/leasegrid-zkap issuer --listen 10.42.0.0:8700
+   .venv/bin/leasegrid-zkap issuer --listen 10.42.0.0:8700 --faucet
    ```
 
    Bind the address nimo actually has on `10.42.0.0/24`; do not publish it in git.
@@ -105,10 +105,41 @@ A future client plugin / GBS header can attach passes to CHK upload. That is not
 
 ```
 leasegrid-zkap keygen
-leasegrid-zkap issuer --listen 127.0.0.1:8700
+leasegrid-zkap issuer --listen 127.0.0.1:8700 --faucet          # faucet is opt-in; --chain fake for the XMR lab flow
+leasegrid-zkap issuer --chain wallet-rpc --wallet-rpc-url http://127.0.0.1:18083/json_rpc --db ~/DEVELOP/leasegrid-lab-private/issuer.sqlite
 leasegrid-zkap storage-gate --nodeid <my_nodeid> --listen 127.0.0.1:8701
 leasegrid-zkap faucet --issuer http://127.0.0.1:8700 --out ~/DEVELOP/leasegrid-lab-private/client-wallet.json
 leasegrid-zkap spend --storage http://127.0.0.1:8701 --nodeid ... --storage-index <32 hex chars>
 leasegrid-zkap settle --issuer http://127.0.0.1:8700 --from-storage http://127.0.0.1:8701
 leasegrid-zkap check-0b
 ```
+
+## Issuer backup (S3)
+
+`WalletRpcChain` is view-only: restore the SQLite file + view key + signing key and nothing is lost (subaddress indices are never reused).
+
+```bash
+deploy/zkap-lab/scripts/backup-issuer.sh \
+  --db ~/DEVELOP/leasegrid-lab-private/issuer.sqlite \
+  --out-dir ~/DEVELOP/leasegrid-lab-private/issuer-backups \
+  --signing-key ~/DEVELOP/leasegrid-lab-private/issuer.signing.key
+
+# stop the issuer, then:
+deploy/zkap-lab/scripts/restore-issuer.sh \
+  --from ~/DEVELOP/leasegrid-lab-private/issuer-backups/issuer-YYYYMMDDThhmmssZ.sqlite \
+  --db ~/DEVELOP/leasegrid-lab-private/issuer.sqlite \
+  --force
+```
+
+Live stagenet smoke (`--chain wallet-rpc` against a real view-only wallet) is gate 0c / S7, not this lab README.
+
+## Silent eject (0d, local)
+
+```bash
+leasegrid-zkap check-0d
+leasegrid-zkap eject --nodeid NODE --eject-set ~/DEVELOP/leasegrid-lab-private/ejected.json
+deploy/zkap-lab/scripts/repair-drill.sh --nodeid NODE --url http://127.0.0.1:8701
+```
+
+Ejected nodeids are not paid and not written. Repair is reconstruct onto remaining nodes. No slash.
+

@@ -10,3 +10,4 @@ DEFAULT_SHARE_BYTES = GIB
 DEFAULT_ISSUER_KEY = "~/DEVELOP/leasegrid-lab-private/issuer.signing.key"
 DEFAULT_WALLET = "~/DEVELOP/leasegrid-lab-private/client-wallet.json"
 DEFAULT_SPENT_SET = "~/DEVELOP/leasegrid-lab-private/storage-spent.json"
+DEFAULT_EJECT_SET = "~/DEVELOP/leasegrid-lab-private/ejected.json"

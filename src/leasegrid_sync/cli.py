@@ -65,6 +65,47 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("small", "medium", "large"),
         help="Faucet amount tier for --credit-dogfood (default: medium).",
     )
+    p.add_argument(
+        "--join",
+        metavar="INVITE",
+        default=None,
+        help="Headless: join from a link (http://….i2p/join#… or leasegrid:join#…), a short "
+        "`tahoe invite` code (7-word-word), or a pb:// introducer furl. Creates and starts "
+        "a Tahoe node (client+storage) if needed; pass --client-only to skip offering disk.",
+    )
+    p.add_argument(
+        "--client-only",
+        action="store_true",
+        help="Join without offering storage (tahoe create-node --no-storage). "
+        "Default unpaid join is the same process as offering disk.",
+    )
+    p.add_argument(
+        "--invite-url",
+        action="store_true",
+        help="Print the shareable join URL for this nodedir (I2P page fragment) and exit.",
+    )
+    p.add_argument(
+        "--export-invite-page",
+        metavar="PATH",
+        default=None,
+        help="Write a self-contained HTML invite page (QR + link) to PATH and exit. "
+        "Host that file on your I2P eepsite.",
+    )
+    p.add_argument(
+        "--export-recovery",
+        metavar="PATH",
+        default=None,
+        help="Write a recovery key for the joined friendnet to PATH and exit (no window). "
+        "Passphrase from LEASEGRID_RECOVERY_PASSPHRASE (empty = plaintext).",
+    )
+    p.add_argument(
+        "--restore-recovery",
+        metavar="PATH",
+        default=None,
+        help="Restore folders from a recovery key on this device and exit (no window). "
+        "Passphrase from LEASEGRID_RECOVERY_PASSPHRASE. Folders land in "
+        "LEASEGRID_RESTORE_ROOT (default ~/Leasegrid).",
+    )
     return p
 
 
@@ -87,6 +128,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("%d\t%s" % (snap.balance.tokens, format_remaining(snap.balance.tokens).split("\n")[0]))
         return 0
+    if args.invite_url or args.export_invite_page:
+        return _invite_share_headless(args, nodedir)
+    if args.export_recovery or args.restore_recovery:
+        return _recovery_headless(args, nodedir)
+    if args.join and not (args.dogfood_folder or args.credit_dogfood or args.screenshot):
+        return _join_headless(args, nodedir)
     try:
         from .app import run_app
     except ImportError as exc:
@@ -105,7 +152,101 @@ def main(argv: list[str] | None = None) -> int:
         issuer_url=args.issuer,
         credit_dogfood=args.credit_dogfood,
         credit_tier=args.credit_tier,
+        invite=args.join,
+        offer_storage=not args.client_only,
     )
+
+
+def _invite_share_headless(args, nodedir: Path) -> int:
+    from .invite import invite_page_html, share_url_for_nodedir
+
+    try:
+        url = share_url_for_nodedir(nodedir)
+    except SyncError as exc:
+        print(exc.banner(), file=sys.stderr)
+        return 1
+    if args.export_invite_page:
+        path = Path(args.export_invite_page).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(invite_page_html(url), encoding="utf-8")
+        print("invite-page path=%s" % path)
+    if args.invite_url:
+        print(url)
+    return 0
+
+
+def _join_headless(args, nodedir: Path) -> int:
+    from .backend import default_home
+
+    tahoe = TahoeClient(nodedir=nodedir, home=default_home())
+    try:
+        st = tahoe.join_invite(args.join.strip(), offer_storage=not args.client_only)
+    except SyncError as exc:
+        print(exc.banner(), file=sys.stderr)
+        tahoe.stop()
+        return 1
+    print("%s\t%s\t%s" % (st.state, st.detail, tahoe.nodedir))
+    tahoe.stop()
+    return 0 if st.state == "Connected" else 1
+
+
+def _recovery_headless(args, nodedir: Path) -> int:
+    from .backend import MagicFolderCtl, default_home
+    from .recovery import RecoveryCtl
+
+    home = default_home()
+    tahoe = TahoeClient(nodedir=nodedir, home=home)
+    mf = MagicFolderCtl(config_dir=home / "magic-folder", nodedir=tahoe.nodedir)
+    credit = CreditCtl(home=home, issuer_url=args.issuer)
+    root = os.environ.get("LEASEGRID_RESTORE_ROOT")
+    ctl = RecoveryCtl(home, tahoe, mf, credit, folder_root=Path(root).expanduser() if root else None)
+    passphrase = os.environ.get("LEASEGRID_RECOVERY_PASSPHRASE", "")
+    try:
+        if args.export_recovery:
+            bundle = ctl.export(Path(args.export_recovery).expanduser(), passphrase)
+            print(
+                "recovery-export path=%s folders=%d wallet=%s credit-seed=%s encrypted=%s"
+                % (
+                    args.export_recovery,
+                    len(bundle.folders),
+                    "yes" if bundle.wallet else "no",
+                    "yes" if bundle.credit_seed else "no",
+                    "yes" if passphrase else "NO",
+                )
+            )
+            return 0
+        result = ctl.restore(
+            Path(args.restore_recovery).expanduser(),
+            passphrase,
+            progress=lambda text: print(text, file=sys.stderr),
+        )
+        credit = str(result.credit_recovered)
+        if result.credit_recover_error:
+            credit += " error=%s" % result.credit_recover_error
+        print(
+            "recovery-restore folders=%s skipped=%s wallet=%s credit=%s author=%s grid=%s"
+            % (
+                ",".join(result.folders) or "-",
+                ",".join(result.skipped) or "-",
+                "restored" if result.wallet_restored else "kept",
+                credit,
+                result.author_name,
+                result.grid,
+            )
+        )
+        # Leave the daemons running long enough for a first download pass when asked.
+        linger = float(os.environ.get("LEASEGRID_RESTORE_LINGER", "0") or 0)
+        if linger > 0:
+            import time
+
+            time.sleep(linger)
+        return 0
+    except SyncError as exc:
+        print(exc.banner(), file=sys.stderr)
+        return 1
+    finally:
+        mf.stop()
+        tahoe.stop()
 
 
 if __name__ == "__main__":

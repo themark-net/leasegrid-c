@@ -23,6 +23,12 @@ if "$PYTHON" -m pip install -q -e ".[sync]"; then
 else
   echo "==> sync extra skipped (PyQt5 wheels missing; UI tests will skip)"
 fi
+# Tahoe 1.20 + Magic Folder + pins; on nimo's 3.14 tahoe-venv this may not resolve.
+if "$PYTHON" -m pip install -q -e ".[tahoe]"; then
+  echo "==> tahoe extra installed"
+else
+  echo "==> tahoe extra skipped (check-0b local test will skip)"
+fi
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 "$PYTHON" -m ruff check src tests scripts --select E4,E7,E9,F
 "$PYTHON" -m pytest -q

@@ -98,6 +98,8 @@ Secrets (furls, keys, wallet files) stay **off git**.
 
 **Record:** which node ejected, repair method, before/after connected storage count, PASS/FAIL.
 
+**Implementation (code, not a live PASS):** `src/leasegrid_zkap/eject.py` (`EjectSet` + probe), spender/plugin refuse to pay an ejected nodeid, `leasegrid-zkap check-0d` / `eject` / `probe` / `repair`, `deploy/zkap-lab/scripts/repair-drill.sh`. Covered by `tests/test_zkap_eject.py`. Dated live 0d PASS (real Tahoe happy-set) is not started.
+
 ### Gate 0e — Publicly verifiable tokens (`rsa-bssa-v1`)
 
 **Intent:** a second paid operator cannot mint and cannot re-bind a token it received. Lab (0b/0c) stays on `ristretto-v0`. This gate is required before operator #2 joins a paid grid ([`07-payment.md`](07-payment.md) §9, [ADR-0002](adr/0002-payment-attribution-and-token-scheme.md)).

@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional
 from .client import ClientError, http_json, load_wallet, save_wallet, wallet_lock
 from .constants import DEFAULT_LEASE_SECONDS, DEFAULT_SHARE_BYTES, TOKEN_EPOCH_V0
 from .crypto import load_unblinded, mac_k_r
+from .eject import Ejected, EjectSet
 from .r_bind import encode_r
 
 
@@ -62,6 +63,9 @@ class WalletSpender:
             if sp is None:
                 sp = cls(wallet_path, **kwargs)
                 _SHARED[key] = sp
+            eject = kwargs.get("eject")
+            if eject is not None:
+                sp.eject = eject
             return sp
 
     def __init__(
@@ -73,6 +77,7 @@ class WalletSpender:
         lease_seconds: int = DEFAULT_LEASE_SECONDS,
         share_bytes: int = DEFAULT_SHARE_BYTES,
         http: Callable[..., dict] = http_json,
+        eject: Optional[EjectSet] = None,
     ) -> None:
         self.wallet_path = Path(wallet_path).expanduser()
         self.grants_path = (
@@ -86,6 +91,7 @@ class WalletSpender:
         self._http = http
         self._lock = threading.Lock()
         self._last_refusal_note = 0.0
+        self.eject = eject
 
     # -- grants cache --------------------------------------------------------
 
@@ -149,6 +155,11 @@ class WalletSpender:
         """Return a grant for (nodeid, storage_index), spending one token if needed."""
         si_hex = storage_index.hex()
         with self._lock, wallet_lock(self.wallet_path):
+            if self.eject is not None and self.eject.is_ejected(nodeid):
+                self._note_refusal("Upload skipped: node ejected")
+                raise Ejected(
+                    "leasegrid-zkap-v0: node %s is ejected; not paying" % _short(nodeid)
+                )
             grants = self._load_grants()
             cached = grants.get(nodeid, {}).get(si_hex)
             if cached and int(need_bytes) <= int(cached.get("share_bytes", self.share_bytes)):

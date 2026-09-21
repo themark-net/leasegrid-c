@@ -1,4 +1,4 @@
-"""leasegrid-zkap CLI: issuer, storage-gate, faucet, topup/resume/recover, spend, settle, check-0b."""
+"""leasegrid-zkap CLI: issuer, storage-gate, topup, spend, settle, eject, check-0b/0d."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from .constants import (
+    DEFAULT_EJECT_SET,
     DEFAULT_ISSUER_KEY,
     DEFAULT_LEASE_SECONDS,
     DEFAULT_SHARE_BYTES,
@@ -322,6 +323,62 @@ def cmd_check(args) -> int:
     return check_main(argv)
 
 
+def cmd_check_0d(args) -> int:
+    from .check_0d import main as check_main
+
+    return check_main([])
+
+
+def _eject_set_from_args(args):
+    from .eject import EjectSet
+
+    return EjectSet(os.path.expanduser(args.eject_set or DEFAULT_EJECT_SET))
+
+
+def cmd_eject(args) -> int:
+    s = _eject_set_from_args(args)
+    s.eject(args.nodeid, reason=args.reason or "operator")
+    print("ejected %s" % args.nodeid)
+    print("invariant: stop paying this nodeid; no slash")
+    return 0
+
+
+def cmd_admit(args) -> int:
+    s = _eject_set_from_args(args)
+    s.admit(args.nodeid)
+    print("admitted %s" % args.nodeid)
+    return 0
+
+
+def cmd_probe(args) -> int:
+    s = _eject_set_from_args(args)
+    down = s.consider(args.nodeid, args.url)
+    print("nodeid %s  url %s  ejected %s" % (args.nodeid, args.url, "yes" if down else "no"))
+    return 2 if down else 0
+
+
+def cmd_repair(args) -> int:
+    s = _eject_set_from_args(args)
+    if args.nodeid and not s.is_ejected(args.nodeid):
+        s.eject(args.nodeid, reason="repair-drill")
+    s.record_repair(
+        ejected=args.nodeid or (s.nodeids()[0] if s.nodeids() else "unknown"),
+        method=args.method,
+        before_connected=int(args.before),
+        after_connected=int(args.after),
+    )
+    if args.tahoe_dir:
+        import subprocess
+
+        cmd = ["tahoe", "check", "--repair", "--node-directory", os.path.expanduser(args.tahoe_dir)]
+        if args.cap:
+            cmd.append(args.cap)
+        print("repair: %s" % " ".join(cmd), flush=True)
+        return subprocess.call(cmd)
+    print("recorded reconstruct onto remaining nodes (no slash)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="leasegrid-zkap")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -432,6 +489,36 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--storage", default="")
     c.add_argument("--nodeid", default="")
     c.set_defaults(func=cmd_check)
+
+    d = sub.add_parser("check-0d", help="print PASS/FAIL for 0d.1–0d.5 (local, no slash)")
+    d.set_defaults(func=cmd_check_0d)
+
+    ej = sub.add_parser("eject", help="silently drop a nodeid: stop paying it")
+    ej.add_argument("--nodeid", required=True)
+    ej.add_argument("--eject-set", default=DEFAULT_EJECT_SET)
+    ej.add_argument("--reason", default="operator")
+    ej.set_defaults(func=cmd_eject)
+
+    ad = sub.add_parser("admit", help="undo an eject (node is usable again)")
+    ad.add_argument("--nodeid", required=True)
+    ad.add_argument("--eject-set", default=DEFAULT_EJECT_SET)
+    ad.set_defaults(func=cmd_admit)
+
+    pr = sub.add_parser("probe", help="liveness probe; eject after consecutive misses")
+    pr.add_argument("--nodeid", required=True)
+    pr.add_argument("--url", required=True, help="spend HTTP base URL")
+    pr.add_argument("--eject-set", default=DEFAULT_EJECT_SET)
+    pr.set_defaults(func=cmd_probe)
+
+    rp = sub.add_parser("repair", help="record reconstruct onto remaining nodes (optional tahoe check --repair)")
+    rp.add_argument("--eject-set", default=DEFAULT_EJECT_SET)
+    rp.add_argument("--nodeid", default="")
+    rp.add_argument("--method", default="reconstruct")
+    rp.add_argument("--before", default="0")
+    rp.add_argument("--after", default="0")
+    rp.add_argument("--tahoe-dir", default="")
+    rp.add_argument("--cap", default="")
+    rp.set_defaults(func=cmd_repair)
     return p
 
 

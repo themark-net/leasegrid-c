@@ -49,6 +49,15 @@ def _node_cfg(node_config, key, default=None):
     return _cfg(node_config, key, default)
 
 
+def _eject_set(configuration):
+    path = _node_cfg(configuration, "eject-set-path") or _node_cfg(configuration, "eject_set_path")
+    if not path:
+        return None
+    from .eject import EjectSet
+
+    return EjectSet(path)
+
+
 @implementer(IFoolscapStoragePlugin)
 class LeasegridZKAPPlugin:
     name = PLUGIN_NAME
@@ -122,6 +131,7 @@ class LeasegridZKAPPlugin:
             wallet_path,
             grants_path=_node_cfg(configuration, "grants-path"),
             recent_path=_node_cfg(configuration, "recent-path"),
+            eject=_eject_set(configuration),
         )
         return ZKAPStorageClient(
             get_rref,

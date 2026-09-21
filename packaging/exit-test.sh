@@ -79,11 +79,19 @@ export LEASEGRID_DEVGRID_DIR="$T/grid" LEASEGRID_GATED=1
 PATH="$VENV_BIN:$PATH" scripts/dev-grid.sh > "$GRID_LOG" 2>&1 &
 GRID_PID=$!
 cleanup() {
-  kill "$GRID_PID" 2>/dev/null || true; kill "${INVITE_PID:-}" 2>/dev/null || true
-  # A client killed by the timeout can leave its bundled daemons behind; on
-  # Windows they are not in our process group, so name them.
+  # Windows bash `kill` does not take the dev-grid tree with it. Those
+  # python/tahoe children keep the workspace locked, and Actions then fails
+  # post-checkout with no useful log.
   if [[ "$OS" == windows ]]; then
+    taskkill /F /T /PID "$GRID_PID" >/dev/null 2>&1 || true
+    if [[ -n "${INVITE_PID:-}" ]]; then
+      taskkill /F /T /PID "$INVITE_PID" >/dev/null 2>&1 || true
+    fi
     taskkill /F /T /IM tahoe.exe /IM magic-folder.exe /IM leasegrid-sync-cli.exe >/dev/null 2>&1 || true
+    sleep 2
+  else
+    kill "$GRID_PID" 2>/dev/null || true
+    kill "${INVITE_PID:-}" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT

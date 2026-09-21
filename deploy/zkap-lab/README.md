@@ -132,3 +132,14 @@ deploy/zkap-lab/scripts/restore-issuer.sh \
 ```
 
 Live stagenet smoke (`--chain wallet-rpc` against a real view-only wallet) is gate 0c / S7, not this lab README.
+
+## Silent eject (0d, local)
+
+```bash
+leasegrid-zkap check-0d
+leasegrid-zkap eject --nodeid NODE --eject-set ~/DEVELOP/leasegrid-lab-private/ejected.json
+deploy/zkap-lab/scripts/repair-drill.sh --nodeid NODE --url http://127.0.0.1:8701
+```
+
+Ejected nodeids are not paid and not written. Repair is reconstruct onto remaining nodes. No slash.
+

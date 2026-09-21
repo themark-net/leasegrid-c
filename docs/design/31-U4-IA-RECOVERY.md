@@ -8,7 +8,7 @@
 ## Places (CrashPlan shell)
 
 | Place | Rank | Role in U4 |
-|-------|------|------------|
+|------|------|------------|
 | **Folders** | Primary | Post-join home; Offer pie; restored folders land here |
 | **Join** | First-run | Threat HITL + invite; **Import recovery key instead…** |
 | **Recovery** | Secondary (More) | Export / Import; scary copy; last-export status |

@@ -95,7 +95,7 @@ Four points (buyer voice; align with shipped `THREAT_COPY` / U0 §1a):
 ## Recovery key semantics (Design lock)
 
 | Topic | Rule |
-|-------|------|
+|------|------|
 | Artifact | One file `*.leasegrid-recovery` (JSON envelope) |
 | Secrets | Introducer/furl + folder collective caps + wallet/issuer as needed to rejoin |
 | Passphrase | Optional; empty ⇒ plaintext warning in UI |

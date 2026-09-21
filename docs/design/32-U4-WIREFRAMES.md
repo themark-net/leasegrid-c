@@ -25,16 +25,16 @@ ASCII only. Operate-or-FAIL banners stay in-window.
 │  │    and access can be gone forever. Export after join.  │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                             │
-│  ☐ I understand the four points above.                      │
+│  ☐ I understand the four points above.                      │ │
 │                                                             │
-│  Invite                                                     │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │ paste invite / furl…                                 │   │
-│  └──────────────────────────────────────────────────────┘   │
-│  ☑ Offer disk on this device                                │
-│                                                             │
-│  [ Join friendnet ]          ← disabled until ☐ checked     │
-│  [ Import recovery key instead… ]                           │
+│  Invite                                                     │ │
+│  ┌──────────────────────────────────────────────────────┐   │ │
+│  │ paste invite / furl…                                 │   │ │
+│  └──────────────────────────────────────────────────────┘   │ │
+│  ☑ Offer disk on this device                                │ │
+│                                                             │ │
+│  [ Join friendnet ]          ← disabled until ☐ checked     │ │
+│  [ Import recovery key instead… ]                           │ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,15 +52,15 @@ ASCII only. Operate-or-FAIL banners stay in-window.
 │  │ Photos      Synced                                     │ │
 │  │ Docs        Syncing…                                   │ │
 │  └────────────────────────────────────────────────────────┘ │
-│  [ Add folder ]                                             │
-│                                                             │
+│  [ Add folder ]                                             │ │
+│                                                             │ │
 │  ┌─ Offer storage on this disk ───────────────────────────┐ │
 │  │  (pie)   Offering 25% of this disk                     │ │
 │  │          Used · Free · Offered                         │ │
 │  └────────────────────────────────────────────────────────┘ │
-│                                                             │
-│  ⚠ No recovery key exported yet.                            │
-│  [ Export recovery key… ]  [ Dismiss ]                      │
+│                                                             │ │
+│  ⚠ No recovery key exported yet.                            │ │
+│  [ Export recovery key… ]  [ Dismiss ]                      │ │
 └─────────────────────────────────────────────────────────────┘
 
 More ▾ → Recovery · Settings · Credit*   (*gated only)
@@ -74,19 +74,19 @@ Nudge must not block Add folder / Offer. Dismissible; may return later.
 
 ```
 ┌─ Leasegrid Sync ──────────────────── Online ──── [More ▾] ─┐
-│  [← Folders]  Recovery                                      │
-│                                                             │
-│  A recovery key restores access to your folders if this     │
-│  device is lost. Store it offline (encrypted USB, safe).    │
-│                                                             │
-│  ⚠  Loss of your recovery key and this device can mean      │
-│     TOTAL LOSS of access. There is no “reset password.”      │
-│     Leasegrid cannot recover it for you.                    │
-│                                                             │
-│  [ Export recovery key… ]  ← primary                        │
-│  [ Import recovery key… ]                                   │
-│                                                             │
-│  Last export: never                                         │
+│  [← Folders]  Recovery                                      │ │
+│                                                             │ │
+│  A recovery key restores access to your folders if this     │ │
+│  device is lost. Store it offline (encrypted USB, safe).    │ │
+│                                                             │ │
+│  ⚠  Loss of your recovery key and this device can mean      │ │
+│     TOTAL LOSS of access. There is no “reset password.”      │ │
+│     Leasegrid cannot recover it for you.                    │ │
+│                                                             │ │
+│  [ Export recovery key… ]  ← primary                        │ │
+│  [ Import recovery key… ]                                   │ │
+│                                                             │ │
+│  Last export: never                                         │ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -103,20 +103,20 @@ Nudge must not block Add folder / Offer. Dismissible; may return later.
 │  If you lose the key and this computer, access can be       │
 │  gone forever. Leasegrid cannot reset it.                   │
 │                                                             │
-│  ☐ I understand: loss can mean total loss.                  │
-│  ☐ I will store this file somewhere safe, offline.          │
+│  ☐ I understand: loss can mean total loss.                  │ │
+│  ☐ I will store this file somewhere safe, offline.          │ │
 │                                                             │
-│  Passphrase (recommended)                                   │
-│  ┌────────────────────┐  ┌────────────────────┐             │
-│  │ ••••••••••         │  │ confirm            │             │
-│  └────────────────────┘  └────────────────────┘             │
-│  ⚠ No passphrase: the file is plaintext. Anyone who copies  │
-│    it has your folders.     ← show when fields empty        │
-│                                                             │
-│  Save to  [ ~/backups/…leasegrid-recovery ] [ Browse… ]     │
-│                                                             │
-│  [ Write recovery key ] ← disabled until both ☐             │
-│  [ Cancel ]                                                 │
+│  Passphrase (recommended)                                   │ │
+│  ┌────────────────────┐  ┌────────────────────┐             │ │
+│  │ ••••••••••         │  │ confirm            │ │
+│  └────────────────────┘  └────────────────────┘             │ │
+│  ⚠ No passphrase: the file is plaintext. Anyone who copies  │ │
+│    it has your folders.     ← show when fields empty        │ │
+│                                                             │ │
+│  Save to  [ ~/backups/…leasegrid-recovery ] [ Browse… ]     │ │
+│                                                             │ │
+│  [ Write recovery key ] ← disabled until both ☐             │ │
+│  [ Cancel ]                                                 │ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -140,6 +140,7 @@ Nudge must not block Add folder / Offer. Dismissible; may return later.
 │  Disk error, permission denied, or encrypt failed.          │
 │  Next: pick another path; Retry. Do not assume you are safe.│
 │  [ Retry ]  [ Cancel ]                                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -187,6 +188,7 @@ Then Folders (P1) with note:
 │  Next: check passphrase; try the file from your backup;     │
 │  Retry.                                                     │
 │  [ Retry ]  [ Cancel ]                                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 Introducer down variant:

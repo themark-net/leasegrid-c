@@ -15,6 +15,7 @@ from leasegrid_sync.credit import (
     TIER_TOKENS,
     XMR_LATER,
     CreditCtl,
+    credit_enforced,
     credit_gate,
     estimate_share_tokens,
     format_remaining,
@@ -70,6 +71,17 @@ def test_credit_gate():
     assert credit_gate(0, 5) == "zero"
     assert credit_gate(10, 4) == "ok"
     assert credit_gate(10, 11) == "review"
+
+
+def test_credit_enforced_reads_gated_env(monkeypatch):
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    assert credit_enforced() is False
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
+    assert credit_enforced() is True
+    monkeypatch.setenv("LEASEGRID_GATED", "true")
+    assert credit_enforced() is True
+    monkeypatch.setenv("LEASEGRID_GATED", "0")
+    assert credit_enforced() is False
 
 
 def test_estimate_share_tokens_expansion_not_one_to_one():

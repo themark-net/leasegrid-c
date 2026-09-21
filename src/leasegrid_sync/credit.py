@@ -144,6 +144,15 @@ def format_delta(tokens: int) -> str:
     return "%s%d GiB·mo" % (sign, tokens)
 
 
+def credit_enforced() -> bool:
+    """True when this grid charges for writes (``LEASEGRID_GATED=1``).
+
+    Unpaid friendnets use the same join/offer path with no Credit required to
+    add a folder. Payment complexity stays behind this flag.
+    """
+    return os.environ.get("LEASEGRID_GATED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def credit_gate(remaining: int, need: int) -> str:
     """Return 'ok', 'zero', or 'review' for add-folder vs remaining tokens."""
     if remaining <= 0:

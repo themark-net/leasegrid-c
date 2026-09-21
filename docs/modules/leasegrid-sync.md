@@ -8,7 +8,7 @@
 
 ### What it does
 
-Native **Leasegrid Sync** window: join an existing friendnet, list/add Magic Folders, show sync status, and a **Credit** place wired to the lab issuer/faucet. Tray or minimized window persists. Join/add/credit failures render in-window. It does not open Tahoe WUI.
+Native **Leasegrid Sync** window: join an existing friendnet (same unpaid invite also offers disk unless opted out), list/add Magic Folders, show sync status, and a **Credit** place for grids that charge. Tray or minimized window persists. Join/add/credit failures render in-window. It does not open Tahoe WUI.
 
 ### How to run
 
@@ -46,6 +46,8 @@ Headless: `leasegrid-sync --status` · `leasegrid-sync --credit-status`. CI: `QT
 | `LEASEGRID_SYNC_HOME` | env | App data (default `~/.local/share/leasegrid-sync`) |
 | `LEASEGRID_ISSUER_URL` | env | Lab issuer/faucet (default `http://127.0.0.1:8700`) |
 | `LEASEGRID_WALLET` | env | Override credit wallet path |
+| `LEASEGRID_STORAGE_HOSTNAME` | env | advertised storage hostname for offer-on-join (default `127.0.0.1`) |
+| `LEASEGRID_GATED` | env | when `1`, Add folder requires Credit; unpaid grids skip that gate |
 | `LEASEGRID_MF_PORT` | env | Magic Folder API port (default 19780) |
 | `QT_QPA_PLATFORM` | env | `offscreen` for CI |
 

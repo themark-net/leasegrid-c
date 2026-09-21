@@ -69,7 +69,7 @@ class FolderRow:
 
 
 def default_home(platform: Optional[str] = None) -> Path:
-    """Sync's data dir: Tahoe client, Magic Folder config, wallet, logs.
+    """Sync's data dir: Tahoe node, Magic Folder config, wallet, logs.
 
     LEASEGRID_SYNC_HOME wins. Otherwise the OS convention: %LOCALAPPDATA% on
     Windows, ~/Library/Application Support on macOS, $XDG_DATA_HOME or
@@ -93,7 +93,7 @@ def default_home(platform: Optional[str] = None) -> Path:
 def default_nodedir() -> Path:
     """Explicit env wins; then a pre-existing ~/.tahoe; else a Sync-owned dir.
 
-    A fresh install has no ~/.tahoe, and Sync should create its own client under
+    A fresh install has no ~/.tahoe, and Sync should create its own node under
     its data home rather than squat on Tahoe's default path.
     """
     env = os.environ.get("LEASEGRID_TAHOE_NODEDIR")
@@ -102,6 +102,15 @@ def default_nodedir() -> Path:
     if (DEFAULT_TAHOE_NODEDIR / "tahoe.cfg").is_file():
         return DEFAULT_TAHOE_NODEDIR
     return default_home() / "tahoe"
+
+
+def storage_hostname() -> str:
+    """Where this node advertises storage. Lab default is loopback.
+
+    Set ``LEASEGRID_STORAGE_HOSTNAME`` to a LAN name or IP when other machines
+    should put shares here. Unpaid join and offer use the same invite either way.
+    """
+    return (os.environ.get("LEASEGRID_STORAGE_HOSTNAME") or "127.0.0.1").strip() or "127.0.0.1"
 
 
 def shares_config() -> tuple[int, int, int]:
@@ -160,7 +169,7 @@ def is_wormhole_code(text: str) -> bool:
     return bool(WORMHOLE_CODE_RE.match((text or "").strip().lower()))
 
 
-# Tahoe 1.20 `create-client --join` writes the invited encoding as bytes reprs
+# Tahoe 1.20 `create-node --join` (and create-client) writes the invited encoding as bytes reprs
 # ("shares.needed = b'3'"), which `tahoe run` then rejects with ValueError.
 JOINED_BYTES_RE = re.compile(r"^(\s*shares\.(?:needed|happy|total)\s*=\s*)b'([0-9]+)'\s*$")
 
@@ -268,11 +277,21 @@ class TahoeClient:
             return False
 
     def create_client(self, invite: str, shares: Optional[tuple[int, int, int]] = None) -> None:
-        """`tahoe create-client` into self.nodedir.
+        """Client-only node: ``create-node --no-storage``. Prefer ``create_node``."""
+        self.create_node(invite, shares=shares, offer_storage=False)
 
-        `invite` is a pb:// introducer furl (we pick the encoding) or a short
-        `tahoe invite` code (the inviter's introducer + encoding arrive through
-        magic-wormhole; that handshake can take a while and needs the relay).
+    def create_node(
+        self,
+        invite: str,
+        shares: Optional[tuple[int, int, int]] = None,
+        offer_storage: bool = True,
+    ) -> None:
+        """``tahoe create-node`` into self.nodedir.
+
+        Unpaid join and offer are the same command. ``offer_storage=False`` adds
+        ``--no-storage --listen=none``. ``invite`` is a pb:// introducer furl
+        (we pick the encoding) or a short ``tahoe invite`` code (the inviter's
+        introducer + encoding arrive through magic-wormhole).
         """
         if self.has_nodedir():
             return
@@ -287,10 +306,20 @@ class TahoeClient:
         if relay:
             cmd += ["--wormhole-server", relay]
         cmd += [
-            "create-client",
+            "create-node",
             "--nickname=%s" % (os.environ.get("LEASEGRID_NICKNAME") or "leasegrid-sync"),
             "--webport=tcp:0:interface=127.0.0.1",
         ]
+        if offer_storage:
+            storage_dir = self.home / "storage"
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            cmd += [
+                "--listen=tcp",
+                "--hostname=%s" % storage_hostname(),
+                "--storage-dir=%s" % storage_dir,
+            ]
+        else:
+            cmd += ["--no-storage", "--listen=none"]
         code = is_wormhole_code(invite)
         if code:
             cmd.append("--join=%s" % invite.strip().lower())
@@ -320,17 +349,17 @@ class TahoeClient:
                     "get a fresh code; Retry.",
                 ) from exc
             raise SyncError(
-                "could not join this friendnet. tahoe create-client did not run: %s" % exc,
+                "could not join this friendnet. tahoe create-node did not run: %s" % exc,
                 "check that tahoe is installed; Retry.",
             ) from exc
         except OSError as exc:
             raise SyncError(
-                "could not join this friendnet. tahoe create-client did not run: %s" % exc,
+                "could not join this friendnet. tahoe create-node did not run: %s" % exc,
                 "check that tahoe is installed; Retry.",
             ) from exc
         if proc.returncode != 0:
             shutil.rmtree(self.nodedir, ignore_errors=True)
-            err = (proc.stderr or proc.stdout or "create-client failed").strip().split("\n")[-1]
+            err = (proc.stderr or proc.stdout or "create-node failed").strip().split("\n")[-1]
             if code:
                 raise SyncError(
                     "could not join this friendnet. Invite code %s was not accepted: %s"
@@ -338,7 +367,7 @@ class TahoeClient:
                     "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
                 )
             raise SyncError(
-                "could not join this friendnet. Tahoe could not create a client: %s" % err,
+                "could not join this friendnet. Tahoe could not create a node: %s" % err,
                 "check the invite code with your inviter; Retry.",
             )
         if code:
@@ -615,12 +644,13 @@ class TahoeClient:
             )
         return self._bring_up()
 
-    def join_invite(self, invite: str) -> ConnectionStatus:
+    def join_invite(self, invite: str, offer_storage: bool = True) -> ConnectionStatus:
         """Join from a pb:// introducer furl or a short `tahoe invite` code.
 
-        No node yet: create a Tahoe client for that friendnet, start it, wait
-        for the introducer to connect. Node already present: reuse it (start it
-        if needed) and confirm it reaches an introducer.
+        No node yet: create a Tahoe node for that friendnet (client+storage
+        unless ``offer_storage`` is false), start it, wait for the introducer.
+        Node already present: reuse it (start it if needed) and confirm it
+        reaches an introducer. Unpaid join and offer are this same path.
         """
         furl = validate_invite(invite)
         if self.has_nodedir():
@@ -630,13 +660,13 @@ class TahoeClient:
                 if "Introducer is unreachable" not in exc.message:
                     raise
                 raise SyncError(
-                    "could not join this friendnet. A Tahoe client already exists at %s "
+                    "could not join this friendnet. A Tahoe node already exists at %s "
                     "but is not connected to an introducer (invite %s)."
                     % (self.nodedir, redact_furl(furl)),
-                    "if that client belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
+                    "if that node belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
                     "to a new path; otherwise check the introducer is up; Retry.",
                 ) from exc
-        self.create_client(furl)
+        self.create_node(furl, offer_storage=offer_storage)
         return self._bring_up()
 
 

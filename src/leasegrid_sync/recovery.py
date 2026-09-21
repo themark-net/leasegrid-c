@@ -457,7 +457,7 @@ class RecoveryCtl:
 
         say("Joining the friendnet from the recovery key…")
         if not self.tahoe.has_nodedir():
-            self.tahoe.create_client(bundle.introducer_furl, shares=bundle.shares)
+            self.tahoe.create_node(bundle.introducer_furl, shares=bundle.shares)
         status = self.tahoe.join_invite(bundle.introducer_furl)
 
         # Credit first: on a gated grid `tahoe mkdir` (personal DMD) is a paid

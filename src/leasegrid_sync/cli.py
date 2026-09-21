@@ -71,9 +71,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Headless: join the friendnet from an invite -- a short `tahoe invite` code "
         "(7-word-word; set LEASEGRID_WORMHOLE_SERVER to match a private relay) or a pb:// "
-        "introducer furl. Creates and starts the Tahoe client if needed, prints the "
-        "connection line, stops the daemons, exits. Combine with "
-        "--dogfood-folder / --credit-dogfood to continue into the window flows.",
+        "introducer furl. Creates and starts a Tahoe node (client+storage) if needed; "
+        "pass --client-only to skip offering disk. Prints the connection line, stops "
+        "the daemons, exits. Combine with --dogfood-folder / --credit-dogfood to "
+        "continue into the window flows.",
+    )
+    p.add_argument(
+        "--client-only",
+        action="store_true",
+        help="Join without offering storage (tahoe create-node --no-storage). "
+        "Default unpaid join is the same process as offering disk.",
     )
     p.add_argument(
         "--export-recovery",
@@ -135,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         credit_dogfood=args.credit_dogfood,
         credit_tier=args.credit_tier,
         invite=args.join,
+        offer_storage=not args.client_only,
     )
 
 
@@ -143,7 +151,7 @@ def _join_headless(args, nodedir: Path) -> int:
 
     tahoe = TahoeClient(nodedir=nodedir, home=default_home())
     try:
-        st = tahoe.join_invite(args.join.strip())
+        st = tahoe.join_invite(args.join.strip(), offer_storage=not args.client_only)
     except SyncError as exc:
         print(exc.banner(), file=sys.stderr)
         tahoe.stop()

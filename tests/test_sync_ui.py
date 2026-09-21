@@ -148,9 +148,10 @@ def test_join_invite_success_enters_main(ui: MainWindow):
     st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
     seen = {}
 
-    def fake_join(invite):
+    def fake_join(invite, offer_storage=True):
         seen["progress"] = ui.join_progress.text()
         seen["disabled"] = not ui.join_btn.isEnabled()
+        seen["offer_storage"] = offer_storage
         return st
 
     ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
@@ -271,18 +272,59 @@ def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
 def test_join_page_explains_what_join_does(ui: MainWindow):
     labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
     blob = " ".join(w.text() for w in labels)
-    assert "creates a Tahoe client" in blob
+    assert "same invite" in blob.lower()
+    assert "offers disk" in blob.lower() or "offer" in blob.lower()
     assert "Nothing is uploaded until you add a folder" in blob
     assert "short code" in blob
     assert "7-word-word" in ui.invite_edit.placeholderText()
+    cb = ui.join_page.findChild(PyQt5.QtWidgets.QCheckBox, "offerStorage")
+    assert cb is not None
+    assert cb.isChecked()
+    assert "offer" in cb.text().lower()
+
+
+def test_join_invite_passes_offer_storage_default(ui: MainWindow):
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    seen = {}
+
+    def fake_join(invite, offer_storage=True):
+        seen["offer_storage"] = offer_storage
+        return st
+
+    ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
+    with patch.object(ui.tahoe, "has_nodedir", return_value=False):
+        with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
+            with patch.object(ui.tahoe, "connection_status", return_value=st):
+                with patch.object(ui.mf, "list_folders", return_value=[]):
+                    ui.on_join_invite()
+    assert seen["offer_storage"] is True
+
+
+def test_join_opt_out_passes_offer_storage_false(ui: MainWindow):
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    seen = {}
+
+    def fake_join(invite, offer_storage=True):
+        seen["offer_storage"] = offer_storage
+        return st
+
+    ui.offer_storage_cb.setChecked(False)
+    ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
+    with patch.object(ui.tahoe, "has_nodedir", return_value=False):
+        with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
+            with patch.object(ui.tahoe, "connection_status", return_value=st):
+                with patch.object(ui.mf, "list_folders", return_value=[]):
+                    ui.on_join_invite()
+    assert seen["offer_storage"] is False
 
 
 def test_join_with_short_code_shows_code_progress(ui: MainWindow):
     st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
     seen = {}
 
-    def fake_join(invite):
+    def fake_join(invite, offer_storage=True):
         seen["progress"] = ui.join_progress.text()
+        seen["offer_storage"] = offer_storage
         return st
 
     ui.invite_edit.setText(" 7-Guitarist-Revenge ")
@@ -675,7 +717,8 @@ def test_add_folder_500_with_refusal_shows_credit_copy(ui: MainWindow, fake_cred
     assert not ui.open_credit_btn.isHidden()
 
 
-def test_add_folder_zero_credit_open_credit(ui: MainWindow, fake_credit: FakeCredit):
+def test_add_folder_zero_credit_open_credit(ui: MainWindow, fake_credit: FakeCredit, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
     fake_credit.tokens = 0
     _enter(ui)
     ui.on_add_folder()
@@ -685,6 +728,18 @@ def test_add_folder_zero_credit_open_credit(ui: MainWindow, fake_credit: FakeCre
     assert not ui.open_credit_btn.isHidden()
     ui.open_credit_place()
     assert ui.tabs.currentWidget() is ui.credit_tab
+
+
+def test_add_folder_ungated_zero_credit_does_not_block(ui: MainWindow, fake_credit: FakeCredit, monkeypatch):
+    """Unpaid grids: join already offered disk; Add folder must not demand Credit first."""
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    fake_credit.tokens = 0
+    _enter(ui)
+    with patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value="") as dlg:
+        ui.on_add_folder()
+    assert dlg.called
+    assert "Not enough storage credit" not in ui.folder_error.text()
+    assert ui.open_credit_btn.isHidden()
 
 
 def test_no_wui_cta_on_credit(ui: MainWindow):

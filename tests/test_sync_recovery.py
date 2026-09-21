@@ -307,7 +307,7 @@ def test_export_includes_seed_and_restore_recollects_credit(mf_config: Path, tmp
         mf_b = MagicFolderCtl(config_dir=mf_config, nodedir=tmp_path / "tahoe-b", mf_bin="/bin/true")
         ctl_b = RecoveryCtl(home_b, tahoe_b, mf_b, credit_b, folder_root=tmp_path / "LG-b")
         st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
-        with patch.object(tahoe_b, "create_client", return_value=None), \
+        with patch.object(tahoe_b, "create_node", return_value=None), \
              patch.object(tahoe_b, "join_invite", return_value=st), \
              patch.object(mf_b, "ensure_init", return_value=None):
             result = ctl_b.restore(key, "pw", progress=lambda t: None)
@@ -326,7 +326,7 @@ def test_export_includes_seed_and_restore_recollects_credit(mf_config: Path, tmp
         mf_c = MagicFolderCtl(config_dir=tmp_path / "mf-c", nodedir=tmp_path / "tahoe-c", mf_bin="/bin/true")
         (tmp_path / "mf-c").mkdir()
         ctl_c = RecoveryCtl(home_c, tahoe_c, mf_c, credit_c, folder_root=tmp_path / "LG-c")
-        with patch.object(tahoe_c, "create_client", return_value=None), \
+        with patch.object(tahoe_c, "create_node", return_value=None), \
              patch.object(tahoe_c, "join_invite", return_value=st), \
              patch.object(mf_c, "ensure_init", return_value=None):
             result = ctl_c.restore(key, "pw", progress=lambda t: None)

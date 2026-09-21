@@ -14,6 +14,7 @@ def test_help_describes_native_not_wui():
     assert "native" in text.lower()
     assert "--credit-status" in text
     assert "--credit-dogfood" in text
+    assert "--client-only" in text
 
 
 def test_status_uses_nodedir(tmp_path, capsys):

@@ -34,6 +34,7 @@ from .credit import (
     ZERO_FOLDER_NEXT,
     CreditCtl,
     CreditSnapshot,
+    credit_enforced,
     credit_gate,
     format_remaining,
     underpaid_copy,
@@ -52,9 +53,10 @@ from .recovery import (
 )
 
 THREAT_COPY = (
-    "You are joining a paid friendnet you trust — not Dropbox-the-company and not Filecoin.\n"
-    "1. Issuer trust — credit is minted by this friendnet's issuer after payment.\n"
-    "2. No storage proofs — dead or unpaid nodes are dropped and shares moved, not slashed.\n"
+    "You are joining a friendnet you trust — not Dropbox-the-company and not Filecoin.\n"
+    "1. Same invite, same process — joining and offering disk are one unpaid step. "
+    "This device syncs folders and, by default, also stores shares for the friendnet.\n"
+    "2. No storage proofs — dead nodes are dropped and shares moved, not slashed.\n"
     "3. Tor vs sync — full privacy often wants Tor; folder sync may use LAN/WAN. "
     "Transport policy is a visible setting.\n"
     "4. Recovery — lose the recovery key and this device and access can be gone forever. "
@@ -627,7 +629,9 @@ class MainWindow:
         font.setBold(True)
         title.setFont(font)
         v.addWidget(title)
-        intro = QtWidgets.QLabel("Sync folders with a paid friendnet you trust.")
+        intro = QtWidgets.QLabel(
+            "Sync folders with a friendnet you trust. Joining and offering storage use the same invite."
+        )
         v.addWidget(intro)
         threat = QtWidgets.QLabel(THREAT_COPY)
         threat.setWordWrap(True)
@@ -640,12 +644,16 @@ class MainWindow:
         self.invite_edit.returnPressed.connect(self.on_join_invite)
         v.addWidget(self.invite_edit)
         hint = QtWidgets.QLabel(
-            "Joining creates a Tahoe client for this friendnet on this device and keeps it "
-            "running while Sync is open. Nothing is uploaded until you add a folder."
+            "Joining creates a Tahoe node on this device: it syncs your folders and, unless you "
+            "turn it off, offers disk to the same friendnet. Nothing is uploaded until you add a folder."
         )
         hint.setWordWrap(True)
         hint.setObjectName("joinHint")
         v.addWidget(hint)
+        self.offer_storage_cb = QtWidgets.QCheckBox("Offer disk to this friendnet (same invite; no payment yet)")
+        self.offer_storage_cb.setObjectName("offerStorage")
+        self.offer_storage_cb.setChecked(True)
+        v.addWidget(self.offer_storage_cb)
         row = QtWidgets.QHBoxLayout()
         self.join_btn = QtWidgets.QPushButton("Join friendnet")
         self.join_btn.setObjectName("joinButton")
@@ -906,7 +914,11 @@ class MainWindow:
             "that feels normal may use LAN/WAN. This is a visible design flag; a transport setting is still to come.\n\n"
             "Coming later\n"
             "· .deb package (AppImage / macOS / Windows installers ship now)\n\n"
-            "Credit → Top up quotes XMR for this friendnet. Live stagenet settlement is still to come.\n\n"
+            "This device offers disk on Join unless you uncheck it. Reachable from other "
+            "machines only if LEASEGRID_STORAGE_HOSTNAME is a LAN name or IP "
+            "(lab default is 127.0.0.1).\n\n"
+            "Credit → Top up quotes XMR when this friendnet charges. Unpaid join and offer "
+            "do not need it. Live stagenet settlement is still to come.\n\n"
             "About\n"
             "%s (buyer) · version %s\n"
             "Grid: lab-friendnet\n"
@@ -1004,7 +1016,7 @@ class MainWindow:
             self.stack.setCurrentWidget(self.join_page)
             return
         self.stack.setCurrentWidget(self.join_page)
-        self._join_busy(True, "Tahoe client found at %s — connecting…" % self.tahoe.nodedir)
+        self._join_busy(True, "Tahoe node found at %s — connecting…" % self.tahoe.nodedir)
         try:
             status = self.tahoe.join_existing()
         except SyncError as exc:
@@ -1018,26 +1030,30 @@ class MainWindow:
         self.join_btn.setEnabled(not busy)
         self.existing_btn.setEnabled(not busy)
         self.invite_edit.setEnabled(not busy)
+        self.offer_storage_cb.setEnabled(not busy)
         self.join_progress.setText(text)
         self.QtWidgets.QApplication.processEvents()
 
     def on_join_invite(self) -> None:
         self.clear_errors()
         invite = self.invite_edit.text()
+        offer = self.offer_storage_cb.isChecked()
+        kind = "sync + storage" if offer else "sync only"
         progress = (
-            "Joining… starting the Tahoe client and waiting for the introducer "
-            "(this can take up to a minute the first time)."
+            "Joining… starting this Tahoe node (%s) and waiting for the introducer "
+            "(this can take up to a minute the first time)." % kind
         )
         if self.tahoe.has_nodedir():
-            progress = "Connecting to the existing Tahoe client…"
+            progress = "Connecting to the existing Tahoe node…"
         elif is_wormhole_code(invite):
             progress = (
                 "Joining… collecting the friendnet settings behind code %s from your "
-                "inviter, then starting the Tahoe client." % invite.strip().lower()
+                "inviter, then starting this Tahoe node (%s)."
+                % (invite.strip().lower(), kind)
             )
         self._join_busy(True, progress)
         try:
-            status = self.tahoe.join_invite(invite)
+            status = self.tahoe.join_invite(invite, offer_storage=offer)
         except SyncError as exc:
             self._join_busy(False)
             self.show_join_error(exc)
@@ -1047,7 +1063,7 @@ class MainWindow:
 
     def on_join_existing(self) -> None:
         self.clear_errors()
-        self._join_busy(True, "Connecting to the existing Tahoe client…")
+        self._join_busy(True, "Connecting to the existing Tahoe node…")
         try:
             status = self.tahoe.join_existing()
         except SyncError as exc:
@@ -1105,7 +1121,7 @@ class MainWindow:
         QtWidgets = self.QtWidgets
         self.clear_errors()
         remaining = self.credit.remaining_tokens()
-        if credit_gate(remaining, 0) == "zero":
+        if credit_enforced() and credit_gate(remaining, 0) == "zero":
             self.show_folder_error(SyncError(ZERO_FOLDER_MSG, ZERO_FOLDER_NEXT), open_credit=True)
             return
         path = QtWidgets.QFileDialog.getExistingDirectory(
@@ -1114,7 +1130,7 @@ class MainWindow:
         if not path:
             return
         need = self.credit.estimate_tokens(Path(path))
-        gate = credit_gate(remaining, need)
+        gate = credit_gate(remaining, need) if credit_enforced() else "ok"
         if gate == "zero":
             self.show_folder_error(SyncError(ZERO_FOLDER_MSG, ZERO_FOLDER_NEXT), open_credit=True)
             return
@@ -1303,6 +1319,7 @@ def run_app(
     credit_dogfood: bool = False,
     credit_tier: str = "medium",
     invite: Optional[str] = None,
+    offer_storage: bool = True,
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
@@ -1311,10 +1328,10 @@ def run_app(
     ui.QtWidgets.QApplication.processEvents()
     try:
         if invite:
-            # Headless join first (creates + starts the client); the modes below then
+            # Headless join first (creates + starts the node); the modes below then
             # attach to it as an existing node and quit stops what we started.
             try:
-                ui.tahoe.join_invite(invite.strip())
+                ui.tahoe.join_invite(invite.strip(), offer_storage=offer_storage)
             except SyncError as exc:
                 ui.show_join_error(exc)
                 if screenshot:

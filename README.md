@@ -31,7 +31,7 @@ LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 .venv/bin/leasegrid-sync   # shell 2:
 scripts/dev-grid.sh --invite             # optional shell 3: a short one-time code (7-word-word) instead of the furl
 ```
 
-Join accepts a furl or a `tahoe invite` code and creates and runs a Tahoe client for you; Credit → Top up hits the lab faucet; Folders → Add folder syncs via Magic Folder. Details: [`docs/ops/dev-grid.md`](docs/ops/dev-grid.md).
+Join accepts a furl or a `tahoe invite` code and creates a Tahoe **node** (sync + storage by default; uncheck Offer disk or pass `--client-only` to skip). Credit → Top up is for grids that charge; unpaid join does not need it. Folders → Add folder syncs via Magic Folder. Details: [`docs/ops/dev-grid.md`](docs/ops/dev-grid.md).
 
 **Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 

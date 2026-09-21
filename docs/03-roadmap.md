@@ -39,11 +39,13 @@ Closest substitute today is PrivateStorage + ProxyStore (same Tahoe/ZKAP family,
 
 **Exit:** A non-expert can sync a folder, see balance, top up, and recover from a documented key backup on a friendnet that runs Phase 0 rails.
 
-### Phase 2 — Operator supply package
+### Phase 2 — Operator supply package (paid)
 
-**Goal:** A friendnet peer can run a node without reading the Tahoe man pages.
+**Goal:** A friendnet peer can run a **paid** node without reading the Tahoe man pages.
 
-- [ ] Install path for storage node (scripted or packaged)
+Unpaid offering is already the Sync join path (`create-node` on the same invite; opt out with `--no-storage`). Phase 2 is the payment and operator-dashboard layer on top of that.
+
+- [ ] Install path for a gated storage node (scripted or packaged)
 - [ ] Dashboard: accepted ZKAPs, disk used, lease count, eject / probe logs
 - [ ] Payout status (even if settlement stays out-of-band at first — make the *status* visible)
 - [ ] Short-TTL cert / silent-eject policy that matches [`01-architecture.md`](01-architecture.md)
@@ -110,7 +112,7 @@ Unchanged from the architecture decision:
 | Architecture spec (00–02, 05) | Draft published |
 | Paid rails (issuer, plugin, eject) | 0b lab PASS; XMR quote/redeem against FakeChain (S0–S2, S5–S6, S8); S3 WalletRpcChain (CI); S9 `rsa-bssa-v1` in CI; 0d eject/stop-paying in CI; live 0c / dated 0d / 0e open — [`08-lab.md`](08-lab.md) |
 | Magic Folder / normal-person client | **UI track locked 2026-09-19** — native + installer; see [`09-ui-track.md`](09-ui-track.md); U0–U5 |
-| Operator package | Not started (local stock-Tahoe bootstrap only) |
+| Operator package | Unpaid offer-on-join is Sync (`create-node`); paid/gated operator kit not started |
 | Abuse / settlement / issuer-compromise designs | Payment, settlement, issuer-compromise: **designed** ([`07-payment.md`](07-payment.md), proposed). Abuse / free reads: flagged; not designed |
 
 ## Research / distribution layer (MictlanX)

@@ -99,9 +99,14 @@ FAKE_TAHOE = """#!/usr/bin/env python3
 import pathlib, sys, time
 args = sys.argv[1:]
 nodedir = pathlib.Path(args[-1])
-sub = "create-client" if "create-client" in args else args[0]
+if "create-node" in args:
+    sub = "create-node"
+elif "create-client" in args:
+    sub = "create-client"
+else:
+    sub = args[0]
 join = [a for a in args if a.startswith("--join=")]
-if sub == "create-client" and join:
+if sub in ("create-node", "create-client") and join:
     # tahoe 1.20 --join: basedir exists before the wormhole handshake; the
     # invited encoding is written as bytes reprs; a dead code fails non-zero.
     nodedir.mkdir(parents=True)
@@ -112,7 +117,7 @@ if sub == "create-client" and join:
         "# argv: " + " ".join(args) + "\\n[node]\\nnickname = alice\\n[client]\\n"
         "introducer.furl =\\nshares.needed = b'2'\\nshares.happy = b'3'\\n"
         "shares.total = b'3'\\n", encoding="utf-8")
-elif sub == "create-client":
+elif sub in ("create-node", "create-client"):
     nodedir.mkdir(parents=True)
     (nodedir / "tahoe.cfg").write_text("\\n".join(args), encoding="utf-8")
 elif args[0] == "run":
@@ -153,16 +158,25 @@ def _welcome_when_node_url(client: TahoeClient):
     return welcome
 
 
-def test_join_invite_creates_client_and_starts_it(tmp_path: Path, monkeypatch):
+def test_join_invite_creates_node_and_starts_it(tmp_path: Path, monkeypatch):
+    """Unpaid join = offer: one create-node, no --no-storage."""
     monkeypatch.setenv("LEASEGRID_SHARES", "2,3,3")
+    monkeypatch.delenv("LEASEGRID_STORAGE_HOSTNAME", raising=False)
     nodedir = tmp_path / "home" / "tahoe"
-    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    home = tmp_path / "home"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=home)
     try:
         with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
             st = client.join_invite(GOOD_FURL)
         assert st.state == "Connected"
         assert client.owns_process()
         cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "create-node" in cfg
+        assert "create-client" not in cfg
+        assert "--no-storage" not in cfg
+        assert "--listen=tcp" in cfg
+        assert "--hostname=127.0.0.1" in cfg
+        assert "--storage-dir=%s" % (home / "storage") in cfg
         assert "--introducer=%s" % GOOD_FURL in cfg
         assert "--shares-needed=2" in cfg and "--shares-happy=3" in cfg
         assert "--shares-total=3" in cfg
@@ -171,6 +185,49 @@ def test_join_invite_creates_client_and_starts_it(tmp_path: Path, monkeypatch):
     finally:
         client.stop()
     assert not client.owns_process()
+
+
+def test_join_invite_opt_out_does_not_offer_storage(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_SHARES", "2,3,3")
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite(GOOD_FURL, offer_storage=False)
+        assert st.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "create-node" in cfg
+        assert "--no-storage" in cfg
+        assert "--listen=none" in cfg
+        assert "--hostname=" not in cfg
+        assert "--storage-dir=" not in cfg
+        assert "--introducer=%s" % GOOD_FURL in cfg
+    finally:
+        client.stop()
+
+
+def test_storage_hostname_env(monkeypatch):
+    from leasegrid_sync.backend import storage_hostname
+
+    monkeypatch.delenv("LEASEGRID_STORAGE_HOSTNAME", raising=False)
+    assert storage_hostname() == "127.0.0.1"
+    monkeypatch.setenv("LEASEGRID_STORAGE_HOSTNAME", "alice.local")
+    assert storage_hostname() == "alice.local"
+
+
+def test_join_invite_uses_storage_hostname_env(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_STORAGE_HOSTNAME", "alice.local")
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            client.join_invite(GOOD_FURL)
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--hostname=alice.local" in cfg
+        assert "--listen=tcp" in cfg
+        assert "--no-storage" not in cfg
+    finally:
+        client.stop()
 
 
 @pytest.mark.parametrize(
@@ -223,7 +280,10 @@ def test_join_wormhole_code_creates_client_via_join(tmp_path: Path, monkeypatch)
         cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
         argv = cfg.splitlines()[0]
         assert "--join=7-guitarist-revenge" in argv
-        assert "--wormhole-server ws://127.0.0.1:45040/v1 create-client" in argv
+        assert "--wormhole-server ws://127.0.0.1:45040/v1 create-node" in argv
+        assert "create-client" not in argv
+        assert "--no-storage" not in argv
+        assert "--listen=tcp" in argv
         assert "--introducer" not in argv and "--shares-needed" not in argv
         # the inviter chooses the encoding; 1.20's b'N' output is repaired
         assert "shares.needed = 2\nshares.happy = 3\nshares.total = 3\n" in cfg

@@ -27,9 +27,10 @@ Related: [`03-roadmap.md`](03-roadmap.md) Phase 1. Conditional Go / corner C rai
    - Platforms: **Linux AppImage + .deb first** (lab/friendnet on nimo); macOS/Windows when buyer demand says so.  
    - First-run wizard: join friendnet (invite code) → pick sync folder → see balance → recovery key export.
 
-2. **`Leasegrid Node`** (operator) — Phase 2  
-   - Installs: storage node + ZKAP gate + short status dashboard + eject logs.  
-   - Not required for buyer UI dogfood if lab friendnet already runs.
+2. **`Leasegrid Node`** (operator) — Phase 2, **paid** kit  
+   - Unpaid offering is already the Sync join path (`tahoe create-node` on the same invite).  
+   - This installer is the later paid/gated operator surface: ZKAP gate, status dashboard, eject logs, payout.  
+   - Not required to dogfood folder sync or to offer disk on an unpaid friendnet.
 
 ---
 

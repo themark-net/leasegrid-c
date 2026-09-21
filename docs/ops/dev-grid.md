@@ -43,9 +43,11 @@ leasegrid-sync
 ```
 
 1. Paste the furl from shell 1 (or a short code, below) into **Invite** → **Join friendnet**.
-   Sync runs `tahoe create-client` into `~/.local/share/leasegrid-sync/tahoe`,
-   starts `tahoe run`, and waits for the introducer. Chip:
-   **Connected · introducer up · 3 storage**.
+   Sync runs `tahoe create-node` into `~/.local/share/leasegrid-sync/tahoe` (client +
+   storage; uncheck **Offer disk** for `--no-storage`), starts `tahoe run`, and waits
+   for the introducer. Chip: **Connected · introducer up · 3 storage**.
+   Offering disk uses `LEASEGRID_STORAGE_HOSTNAME` (default `127.0.0.1`, so other
+   lab nodes on this machine can reach it).
 2. **Credit** → **Top up** → **Request faucet credit**. Balance updates.
    XMR (FakeChain, no Monero daemon) from another shell:
    `leasegrid-zkap topup --issuer http://127.0.0.1:8700 --wallet "$LEASEGRID_SYNC_HOME/credit-wallet.json" --tokens 20 --json`
@@ -101,9 +103,10 @@ leasegrid-sync --offscreen --dogfood-folder ~/Leasegrid/demo --screenshot /tmp/s
 | otherwise | `~/.local/share/leasegrid-sync/tahoe` (Sync creates it on Join) |
 
 If the node exists but is not running and `tahoe` is on PATH, Sync starts it and
-owns the process until Quit. Encoding for a Sync-created client is
+owns the process until Quit. Encoding for a Sync-created node is
 `shares.needed/happy/total = 2/3/3` (matches the lab friendnet); override with
-`LEASEGRID_SHARES="n,h,t"` before the first Join.
+`LEASEGRID_SHARES="n,h,t"` before the first Join. Unpaid join and offer are the
+same `create-node` path; `--client-only` / uncheck Offer disk adds `--no-storage`.
 
 ## Env
 
@@ -113,9 +116,10 @@ owns the process until Quit. Encoding for a Sync-created client is
 | `LEASEGRID_DEVGRID_CHAIN` | `fake` (default) or `none`; same as `--chain` |
 | `LEASEGRID_DEVGRID_STORAGE` | number of storage nodes (default 3) |
 | `LEASEGRID_ISSUER_URL` | issuer for the Credit place (dev-grid: `http://127.0.0.1:8700`) |
-| `LEASEGRID_SYNC_HOME` | Sync data: Tahoe client, Magic Folder config, wallet, logs |
-| `LEASEGRID_TAHOE_NODEDIR` | force a specific Tahoe client dir |
-| `LEASEGRID_SHARES` | `needed,happy,total` for a Sync-created client and for `dev-grid --invite` (default `2,3,3`) |
+| `LEASEGRID_SYNC_HOME` | Sync data: Tahoe node, Magic Folder config, wallet, logs |
+| `LEASEGRID_TAHOE_NODEDIR` | force a specific Tahoe node dir |
+| `LEASEGRID_SHARES` | `needed,happy,total` for a Sync-created node and for `dev-grid --invite` (default `2,3,3`) |
+| `LEASEGRID_STORAGE_HOSTNAME` | advertised storage hostname for unpaid offer-on-join (default `127.0.0.1`) |
 | `LEASEGRID_WORMHOLE_SERVER` | relay for short invite codes (client; unset = Tahoe's public relay) |
 | `LEASEGRID_DEVGRID_WORMHOLE` / `_PORT` | dev-grid relay: `auto` (local if installed), `local`, `public`; port 45040 |
 | `LEASEGRID_TAHOE_BIN` / `LEASEGRID_MAGIC_FOLDER_BIN` | explicit executables |
@@ -126,7 +130,7 @@ owns the process until Quit. Encoding for a Sync-created client is
 |--------|-----------|
 | Join, `tahoe` not installed | FAIL — The Tahoe client is not installed. Next: pip install '…[sync,tahoe]' |
 | Join, introducer down | FAIL — Introducer is unreachable. Next: check the network path… |
-| Join, node dir exists for another grid | FAIL — A Tahoe client already exists at … but is not connected… Next: set LEASEGRID_TAHOE_NODEDIR |
+| Join, node dir exists for another grid | FAIL — A Tahoe node already exists at … but is not connected… Next: set LEASEGRID_TAHOE_NODEDIR |
 | Join, Tahoe crashes on start | FAIL — Tahoe exited while starting. Next: see …/logs/tahoe.log |
 
 ## Paid mode

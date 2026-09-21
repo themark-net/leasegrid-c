@@ -27,7 +27,7 @@ the old `upload_dircap` on an empty disk would therefore sync nothing.
 
 So restore does what a second device does:
 
-1. `tahoe create-client` from the furl + shares, start it, wait for the introducer.
+1. `tahoe create-node` from the furl + shares (same unpaid join=offer path), start it, wait for the introducer.
 2. `magic-folder init`.
 3. Per folder: `mkdir` a fresh personal DMD on the grid, write the folder into the
    Magic Folder config with the **old collective cap** and the **new personal DMD**,

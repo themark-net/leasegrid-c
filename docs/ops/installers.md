@@ -65,7 +65,8 @@ from the venv, then drives the bundle with the venv scrubbed from PATH
 (`env -i … PATH=/usr/bin:/bin` on Linux/macOS; `PATH=C:\Windows\System32` on Windows):
 
 1. `--version` for the client.
-2. `--join <furl>` → `Connected · introducer up · 3 storage`.
+2. `--join <furl> --client-only` → `Connected` (this grid charges; the paying
+   home must not offer disk or a share can land unpaid).
 3. XMR path (FakeChain): `leasegrid-zkap topup --json` → `POST /v0/fake/pay` →
    bundled `--credit-status` collects the batch → `--dogfood-folder` spends
    those tokens. `/v0/info` on all three storage nodes shows `spent ≥ 1`, and
@@ -73,10 +74,12 @@ from the venv, then drives the bundle with the venv scrubbed from PATH
    not a system one. Lab faucet (`--credit-dogfood`) stays as the U2 dogfood
    path; the installer exit test now buys credit the way a real XMR payment
    will.
-4. `dev-grid.sh --invite` → a second Sync home joins with the short code via the
+4. `--join <furl>` on a separate home (no `--client-only`) → `tahoe.cfg`
+   `[storage] enabled = true` (unpaid join and offer are the same invite).
+5. `dev-grid.sh --invite` → a second Sync home joins with the short code via the
    grid's local wormhole relay; the joined `tahoe.cfg` carries the invite's
    nickname and encoding.
-5. `--export-recovery` from the paying home, `--restore-recovery` on a third
+6. `--export-recovery` from the paying home, `--restore-recovery` on a third
    home → Credit re-collects the same XMR batch from the seed.
 
 ## Evidence (CI run 35491091151, 2026-09-20)

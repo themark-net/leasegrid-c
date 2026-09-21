@@ -17,6 +17,16 @@ def test_help_describes_native_not_wui():
     assert "--client-only" in text
 
 
+def test_exit_test_paid_join_is_client_only():
+    """Gated installer proof: the paying home must not offer disk (or a lab node sees spent=0)."""
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "packaging" / "exit-test.sh").read_text(encoding="utf-8")
+    assert 'client --join "$FURL" --client-only' in text
+    assert "same invite offers disk" in text
+    assert 'OUT="$T/offer.out" client --join "$FURL"' in text
+
+
 def test_status_uses_nodedir(tmp_path, capsys):
     nodedir = tmp_path / "tahoe"
     nodedir.mkdir()

@@ -12,10 +12,12 @@
 #            "dist/Leasegrid Sync.app/Contents/MacOS/leasegrid-sync"
 #            dist/leasegrid-sync/leasegrid-sync-cli.exe
 #
-# Proves: --version; join by furl -> Connected; XMR quote → /v0/fake/pay →
-# Credit collects → paid upload (tokens spent on every storage node); a second
-# home joins by short invite code; a third home restores the recovery key and
-# re-collects the XMR batch.
+# Proves: --version; client-only join by furl -> Connected (gated grid: the
+# paying home must not offer disk or a share lands unpaid and a lab node sees
+# spent=0); XMR quote → /v0/fake/pay → Credit collects → paid upload (tokens
+# spent on every storage node); a fourth home joins the same invite and offers
+# disk (create-node, storage enabled); a second home joins by short invite code;
+# a third home restores the recovery key and re-collects the XMR batch.
 set -euo pipefail
 
 NEEDLE="$1"; shift
@@ -38,7 +40,7 @@ else
   VENV_BIN="$ROOT/.venv/bin"
 fi
 T="$T/lg-exit"
-rm -rf "$T"; mkdir -p "$T/home" "$T/sync" "$T/home2" "$T/home3"
+rm -rf "$T"; mkdir -p "$T/home" "$T/sync" "$T/home2" "$T/home3" "$T/home-offer"
 
 # Resolve the timeout tool now, before PATH is scrubbed for the client: on
 # Windows a bare `timeout` would then hit System32's TIMEOUT.EXE; macOS ships no
@@ -94,8 +96,8 @@ test -n "$FURL"; test -n "$RELAY"
 echo "==> client --version"
 SYNC_HOME="$T/home" OUT="$T/version.out" client --version
 
-echo "==> join by furl"
-SYNC_HOME="$T/home" OUT="$T/join.out" client --join "$FURL"
+echo "==> join by furl (client-only: this grid charges; unpaid offer is a later step)"
+SYNC_HOME="$T/home" OUT="$T/join.out" client --join "$FURL" --client-only
 grep -q "^Connected" "$T/join.out"
 
 if [[ "$OS" == windows ]]; then
@@ -129,9 +131,21 @@ SYNC_HOME="$T/home" OUT="$T/dogfood.out" client --dogfood-folder "$T/sync"
 grep -q "^U1 dogfood" "$T/dogfood.out"
 grep -q "$NEEDLE" "$T/home/logs/tahoe.log" || { echo "tahoe.log lacks '$NEEDLE' (did a system tahoe run?)"; head -5 "$T/home/logs/tahoe.log"; exit 1; }
 for p in 8711 8712 8713; do
-  curl -fsS "http://127.0.0.1:$p/v0/info" | grep -q '"spent": [1-9]'
+  info="$(curl -fsS "http://127.0.0.1:$p/v0/info")"
+  echo "$info" | grep -q '"spent": [1-9]' || { echo "no spend on :$p: $info"; exit 1; }
 done
 grep -q "Lease on" "$T/home/credit-recent.json"
+
+echo "==> same invite offers disk (create-node; no upload on this home)"
+SYNC_HOME="$T/home-offer" OUT="$T/offer.out" client --join "$FURL"
+grep -q "^Connected" "$T/offer.out"
+"$PY" - "$T/home-offer/tahoe/tahoe.cfg" <<'PY'
+import configparser, sys
+cfg = configparser.ConfigParser()
+cfg.read(sys.argv[1])
+assert cfg.getboolean("storage", "enabled"), dict(cfg.items("storage"))
+print("offer-on-join storage_dir", cfg.get("storage", "storage_dir"))
+PY
 
 echo "==> second home joins by short invite code via $RELAY"
 PATH="$VENV_BIN:$PATH" scripts/dev-grid.sh --invite ci-code > "$T/invite.out" 2>&1 &

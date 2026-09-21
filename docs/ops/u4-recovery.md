@@ -1,6 +1,6 @@
 # U4 — Recovery key (export / import)
 
-**Cite:** `docs/09-ui-track.md` U4 · `docs/design/12-U0-WIREFRAMES.md` §4 · `docs/03-roadmap.md` Phase 1 “Recovery Key / capability backup”  
+**Cite:** `docs/design/34-U4-DEVBOT-HANDOFF.md` · issue #15 · tip `4e1e6bd` · `docs/09-ui-track.md` U4 · `docs/design/12-U0-WIREFRAMES.md` §4  
 **Not:** Tahoe WUI. Not a Tahoe rootcap you paste by hand. Not a “reset password”.
 
 Screenshots: [`u4-recovery.png`](u4-recovery.png) (Recovery place), [`u4-export-gate.png`](u4-export-gate.png) (scary gate).
@@ -40,7 +40,7 @@ The lost device stays listed as a participant. If it comes back, both keep synci
 
 ## Dogfood
 
-Window: **More → Recovery**. Check the threat box (HITL). **Restore to Folders** is the primary button and lands on the folder list. **Export recovery key…** stays disabled until that box is checked, then still needs both export ACKs (no one-click dump). Folders also has **Restore from recovery key…**. Fresh device: join page → **Import recovery key instead…** (same threat box, then the folder list).
+Window: first-run **Join** shows the four-point threat copy. **Join friendnet** stays disabled until **I understand the four points above.** Offer disk stays checked. After join the window is **Folders** with the offer pie. **More → Recovery** → **Export recovery key…** (STOP, both ACKs, optional passphrase, Write). Success says to store the file offline. A blank device uses **Import recovery key instead…** and lands on the Folders list. A dismissible “No recovery key exported yet” nudge may sit under the pie; it does not block Add folder.
 
 Headless (same as the e2e run on the dev grid). Export without the three ACKs FAILs and writes nothing:
 

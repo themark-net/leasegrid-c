@@ -469,6 +469,14 @@ class RecoveryCtl:
         data["threat_ack"] = False
         self._write_state(data)
 
+    def nudge_dismissed(self) -> bool:
+        return bool(self._read_state().get("nudge_dismissed"))
+
+    def dismiss_export_nudge(self) -> None:
+        data = self._read_state()
+        data["nudge_dismissed"] = True
+        self._write_state(data)
+
     def _record_export(self, path: Path) -> None:
         data = self._read_state()
         data["last_export"] = time.time()

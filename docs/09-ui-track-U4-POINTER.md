@@ -1,3 +1,3 @@
-# U4 Design pointer
+# UI track pointer — U4
 
-**U4 recovery-copy** lives in [`design/`](design/) artifacts **30–34**, especially [`design/34-U4-DEVBOT-HANDOFF.md`](design/34-U4-DEVBOT-HANDOFF.md). Cite tip `4e1e6bd` (P0+P1 SHIP) and [`10-post-fable-plan.md`](10-post-fable-plan.md). Canonical nimo `docs/design/` 30–34 was not on GitHub main; these files match the U4 locks. Issue #15.
+**U4 Design DoD** (recovery key export + first-run threat HITL; journey + IA + wireframes + U4 DevBot handoff) lives in [`design/`](design/) — start at [`design/README.md`](design/README.md) (artifacts `30`–`34`). Cite: issue [#15](https://github.com/themark-net/leasegrid-c/issues/15) · tip ≥ `4e1e6bd` (P0+P1 CrashPlan shell) · `09-ui-track.md` U4 exit = **non-expert walkthrough PASS**. U5 (XMR) deferred.

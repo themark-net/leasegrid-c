@@ -59,6 +59,23 @@ def test_threat_ack_persists_beside_last_export(tmp_path: Path):
     assert again.last_export() is not None
 
 
+def test_wrong_passphrase_does_not_create_a_node(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    nodedir = tmp_path / "tahoe-missing"
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_bytes(encode_recovery_file(_bundle(), "correct horse"))
+    tahoe = TahoeClient(nodedir=nodedir, home=home)
+    mf = MagicFolderCtl(config_dir=home / "mf", nodedir=nodedir)
+    credit = CreditCtl(home=home)
+    ctl = RecoveryCtl(home, tahoe, mf, credit)
+    with pytest.raises(SyncError) as exc:
+        ctl.restore(key, "wrong")
+    assert IMPORT_FAIL_MSG in exc.value.banner()
+    assert "Next:" in exc.value.banner()
+    assert not nodedir.exists()
+
+
 def test_roundtrip_with_passphrase():
     data = encode_recovery_file(_bundle(), "correct horse")
     assert b"URI:DIR2" not in data

@@ -48,17 +48,12 @@ from .credit import (
 from .recovery import (
     ACK_LOSS,
     ACK_STORE,
-    ACK_THREAT,
-    EXPORT_ACK_MSG,
-    EXPORT_ACK_NEXT,
     EXPORT_STOP,
     EXPORT_WARN,
     NO_PASSPHRASE_NOTE,
     RECOVERY_INTRO,
     RECOVERY_SUFFIX,
     SCARY_LOSS,
-    THREAT_ACK_MSG,
-    THREAT_ACK_NEXT,
     RecoveryCtl,
     RestoreResult,
 )
@@ -73,6 +68,9 @@ THREAT_COPY = (
     "4. Recovery — lose the recovery key and this device and access can be gone forever. "
     "Export one from the Recovery place after you join."
 )
+JOIN_THREAT_ACK = "I understand the four points above."
+JOIN_ACK_MSG = "could not join this friendnet. The four points above are not acknowledged."
+JOIN_ACK_NEXT = "check “I understand the four points above.”, then Join."
 
 
 def _qt_api():
@@ -436,53 +434,6 @@ class TopUpDialog:
         self.dlg.accept()
 
 
-class ThreatAckDialog:
-    """HITL before a recovery-copy import from the join page (no Recovery place yet)."""
-
-    def __init__(self, parent, qt) -> None:
-        QtWidgets = qt
-        self.QtWidgets = QtWidgets
-        self.acked = False
-        self.dlg = QtWidgets.QDialog(parent)
-        self.dlg.setWindowTitle("Before you restore")
-        self.dlg.setObjectName("threatAckDialog")
-        self.dlg.setModal(True)
-        v = QtWidgets.QVBoxLayout(self.dlg)
-        copy = QtWidgets.QLabel(THREAT_COPY)
-        copy.setWordWrap(True)
-        copy.setObjectName("threatCopy")
-        v.addWidget(copy)
-        self.ack = QtWidgets.QCheckBox(ACK_THREAT)
-        self.ack.setObjectName("threatAck")
-        v.addWidget(self.ack)
-        self.status = QtWidgets.QLabel("")
-        self.status.setWordWrap(True)
-        self.status.setObjectName("threatAckStatus")
-        v.addWidget(self.status)
-        row = QtWidgets.QHBoxLayout()
-        self.continue_btn = QtWidgets.QPushButton("Continue")
-        self.continue_btn.setObjectName("threatContinue")
-        self.continue_btn.setEnabled(False)
-        self.continue_btn.clicked.connect(self.on_continue)
-        cancel = QtWidgets.QPushButton("Cancel")
-        cancel.clicked.connect(self.dlg.reject)
-        row.addWidget(self.continue_btn)
-        row.addWidget(cancel)
-        row.addStretch(1)
-        v.addLayout(row)
-        self.ack.toggled.connect(self._update_gate)
-
-    def _update_gate(self, *_args) -> None:
-        self.continue_btn.setEnabled(self.ack.isChecked())
-
-    def on_continue(self) -> None:
-        if not self.ack.isChecked():
-            self.status.setText(SyncError(THREAT_ACK_MSG, THREAT_ACK_NEXT).banner())
-            return
-        self.acked = True
-        self.dlg.accept()
-
-
 class ExportRecoveryDialog:
     """Wireframe 4b: scary gate, two ACKs, optional passphrase, path, write."""
 
@@ -709,6 +660,7 @@ class MainWindow:
         self.credit = credit or CreditCtl(home=self.home, issuer_url=issuer_url)
         self.recovery = RecoveryCtl(self.home, self.tahoe, self.mf, self.credit)
         self._joined = False
+        self._joining = False
         self._credit_loaded = False
 
         self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
@@ -770,6 +722,18 @@ class MainWindow:
         intro.setWordWrap(True)
         intro.setObjectName("joinIntro")
         v.addWidget(intro)
+        threat_box = QtWidgets.QGroupBox("Please read before you join")
+        threat_box.setObjectName("threatBlock")
+        tb = QtWidgets.QVBoxLayout(threat_box)
+        threat = QtWidgets.QLabel(THREAT_COPY)
+        threat.setWordWrap(True)
+        threat.setObjectName("threatCopy")
+        tb.addWidget(threat)
+        self.threat_ack = QtWidgets.QCheckBox(JOIN_THREAT_ACK)
+        self.threat_ack.setObjectName("threatAck")
+        self.threat_ack.toggled.connect(self._on_join_threat_toggled)
+        tb.addWidget(self.threat_ack)
+        v.addWidget(threat_box)
         self.invite_edit = QtWidgets.QLineEdit()
         self.invite_edit.setPlaceholderText("http://….i2p/join#…   or   7-word-word")
         self.invite_edit.setObjectName("inviteEdit")
@@ -783,12 +747,14 @@ class MainWindow:
         self.join_btn.setObjectName("joinButton")
         self.join_btn.setAutoDefault(True)
         self.join_btn.setDefault(True)
+        self.join_btn.setEnabled(False)
         self.join_btn.clicked.connect(self.on_join_invite)
         v.addWidget(self.join_btn)
         self.existing_btn = QtWidgets.QPushButton("Use existing Tahoe node")
         self.existing_btn.setObjectName("existingButton")
         self.existing_btn.setFlat(True)
         self.existing_btn.setAutoDefault(False)
+        self.existing_btn.setEnabled(False)
         self.existing_btn.clicked.connect(self.on_join_existing)
         v.addWidget(self.existing_btn)
         self.import_key_btn = QtWidgets.QPushButton("Import recovery key instead…")
@@ -879,11 +845,6 @@ class MainWindow:
         self.add_btn.setObjectName("addFolderButton")
         self.add_btn.clicked.connect(self.on_add_folder)
         head.addWidget(self.add_btn)
-        self.restore_from_key_btn = QtWidgets.QPushButton("Restore from recovery key…")
-        self.restore_from_key_btn.setObjectName("restoreFromKey")
-        self.restore_from_key_btn.setFlat(True)
-        self.restore_from_key_btn.clicked.connect(self.on_import_recovery)
-        head.addWidget(self.restore_from_key_btn)
         fl.addLayout(head)
         self.empty_label = QtWidgets.QLabel(
             "No folders on this device yet.\n"
@@ -910,6 +871,7 @@ class MainWindow:
         self.open_credit_btn.hide()
         fl.addWidget(self.open_credit_btn)
         fl.addWidget(self._build_offer_box())
+        fl.addWidget(self._build_recovery_nudge())
 
         self._build_credit_tab()
         self._build_recovery_tab()
@@ -959,6 +921,31 @@ class MainWindow:
         col.addWidget(self.offer_status)
         col.addStretch(1)
         lay.addLayout(col, 1)
+        return box
+
+    def _build_recovery_nudge(self):
+        """Dismissible export reminder. Does not block Add folder or the Offer slider."""
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QWidget()
+        box.setObjectName("recoveryNudge")
+        lay = QtWidgets.QHBoxLayout(box)
+        lay.setContentsMargins(0, 4, 0, 0)
+        note = QtWidgets.QLabel("No recovery key exported yet.")
+        note.setObjectName("recoveryNudgeNote")
+        note.setWordWrap(True)
+        lay.addWidget(note, 1)
+        export = QtWidgets.QPushButton("Export recovery key…")
+        export.setObjectName("nudgeExport")
+        export.setAutoDefault(False)
+        export.clicked.connect(self.on_export_recovery)
+        dismiss = QtWidgets.QPushButton("Dismiss")
+        dismiss.setObjectName("nudgeDismiss")
+        dismiss.setFlat(True)
+        dismiss.setAutoDefault(False)
+        dismiss.clicked.connect(self.on_dismiss_recovery_nudge)
+        lay.addWidget(export)
+        lay.addWidget(dismiss)
+        self._refresh_recovery_nudge(box)
         return box
 
     def _build_credit_tab(self) -> None:
@@ -1053,31 +1040,19 @@ class MainWindow:
         scary.setObjectName("recoveryScary")
         scary.setStyleSheet("color: #8b1a1a; font-weight: bold;")
         rl.addWidget(scary)
-        threat = QtWidgets.QLabel(THREAT_COPY)
-        threat.setWordWrap(True)
-        threat.setObjectName("threatCopy")
-        rl.addWidget(threat)
-        self.threat_ack = QtWidgets.QCheckBox(ACK_THREAT)
-        self.threat_ack.setObjectName("threatAck")
-        self.threat_ack.toggled.connect(self._on_threat_toggled)
-        rl.addWidget(self.threat_ack)
         row = QtWidgets.QHBoxLayout()
-        self.restore_to_folders_btn = QtWidgets.QPushButton("Restore to Folders")
-        self.restore_to_folders_btn.setObjectName("restoreToFolders")
-        self.restore_to_folders_btn.setDefault(True)
-        self.restore_to_folders_btn.clicked.connect(self.on_import_recovery)
         self.export_key_btn = QtWidgets.QPushButton("Export recovery key…")
         self.export_key_btn.setObjectName("exportKeyButton")
+        self.export_key_btn.setDefault(True)
         self.export_key_btn.clicked.connect(self.on_export_recovery)
-        row.addWidget(self.restore_to_folders_btn)
+        self.import_key_btn2 = QtWidgets.QPushButton("Import recovery key…")
+        self.import_key_btn2.setObjectName("importKeyButton2")
+        self.import_key_btn2.setAutoDefault(False)
+        self.import_key_btn2.clicked.connect(self.on_import_recovery)
         row.addWidget(self.export_key_btn)
+        row.addWidget(self.import_key_btn2)
         row.addStretch(1)
         rl.addLayout(row)
-        if self.recovery.threat_acked():
-            self.threat_ack.blockSignals(True)
-            self.threat_ack.setChecked(True)
-            self.threat_ack.blockSignals(False)
-        self._sync_recovery_gate()
         self.recovery_status = QtWidgets.QLabel("")
         self.recovery_status.setObjectName("recoveryStatus")
         self.recovery_status.setWordWrap(True)
@@ -1096,48 +1071,29 @@ class MainWindow:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(info["last_export"])))
         self.last_export_label.setText("Last export: %s  →  %s" % (when, info.get("path", "")))
 
-    def _sync_recovery_gate(self) -> None:
-        ok = self.threat_ack.isChecked() and self.recovery.threat_acked()
-        self.export_key_btn.setEnabled(ok)
-        self.restore_to_folders_btn.setEnabled(ok)
+    def _refresh_recovery_nudge(self, box=None) -> None:
+        widget = box if box is not None else self.win.findChild(self.QtWidgets.QWidget, "recoveryNudge")
+        if widget is None:
+            return
+        show = self.recovery.last_export() is None and not self.recovery.nudge_dismissed()
+        widget.setVisible(show)
 
-    def _on_threat_toggled(self, checked: bool) -> None:
-        if checked:
-            self.recovery.acknowledge_threat()
-        else:
-            self.recovery.clear_threat_ack()
-        self._sync_recovery_gate()
-
-    def _ensure_threat_ack(self) -> bool:
-        if self.recovery.threat_acked():
-            return True
-        dlg = ThreatAckDialog(self.win, self.QtWidgets)
-        if dlg.dlg.exec_() != self.QtWidgets.QDialog.Accepted or not dlg.acked:
-            return False
-        self.recovery.acknowledge_threat()
-        self.threat_ack.blockSignals(True)
-        self.threat_ack.setChecked(True)
-        self.threat_ack.blockSignals(False)
-        self._sync_recovery_gate()
-        return True
+    def on_dismiss_recovery_nudge(self) -> None:
+        self.recovery.dismiss_export_nudge()
+        self._refresh_recovery_nudge()
 
     def on_export_recovery(self) -> None:
         self.recovery_status.setStyleSheet("")
         self.recovery_status.setText("")
-        if not self.recovery.threat_acked():
-            self.recovery_status.setStyleSheet("color: #8b1a1a;")
-            self.recovery_status.setText(SyncError(EXPORT_ACK_MSG, EXPORT_ACK_NEXT).banner())
-            return
         dlg = ExportRecoveryDialog(self.win, self.recovery, self.QtWidgets)
         if dlg.dlg.exec_() == self.QtWidgets.QDialog.Accepted and dlg.written is not None:
             self.recovery_status.setText(
                 "Recovery key written to %s. Move it somewhere safe and offline." % dlg.written
             )
             self._refresh_last_export()
+            self._refresh_recovery_nudge()
 
     def on_import_recovery(self) -> None:
-        if not self._ensure_threat_ack():
-            return
         dlg = ImportRecoveryDialog(self.win, self.recovery, self.QtWidgets)
         if dlg.dlg.exec_() != self.QtWidgets.QDialog.Accepted or dlg.result is None:
             return
@@ -1153,7 +1109,10 @@ class MainWindow:
             note += " %d credits re-collected from the issuer (confirmed as you sync)." % result.credit_recovered
         if result.credit_recover_error:
             note += " Credit could not be re-collected yet (%s); Credit → Retry later." % result.credit_recover_error
-        note += " Files download from the friendnet as this device (%s)." % result.author_name
+        note += " Files will download from the friendnet into %s as this device (%s)." % (
+            self.recovery.folder_root,
+            result.author_name,
+        )
         if not self._joined:
             self._enter_main("Connected", result.grid)
         else:
@@ -1380,9 +1339,24 @@ class MainWindow:
         self._join_busy(False)
         self._enter_main(status.state, status.detail)
 
+    def _on_join_threat_toggled(self, checked: bool) -> None:
+        if self._joining:
+            return
+        self.join_btn.setEnabled(checked)
+        self.existing_btn.setEnabled(checked)
+
+    def _join_refused_without_ack(self) -> bool:
+        if self.threat_ack.isChecked():
+            return False
+        self.show_join_error(SyncError(JOIN_ACK_MSG, JOIN_ACK_NEXT))
+        return True
+
     def _join_busy(self, busy: bool, text: str = "") -> None:
-        self.join_btn.setEnabled(not busy)
-        self.existing_btn.setEnabled(not busy)
+        self._joining = busy
+        allowed = (not busy) and self.threat_ack.isChecked()
+        self.join_btn.setEnabled(allowed)
+        self.existing_btn.setEnabled(allowed)
+        self.threat_ack.setEnabled(not busy)
         self.import_key_btn.setEnabled(not busy)
         self.details_btn.setEnabled(not busy)
         self.invite_edit.setEnabled(not busy)
@@ -1392,6 +1366,8 @@ class MainWindow:
 
     def on_join_invite(self) -> None:
         self.clear_errors()
+        if self._join_refused_without_ack():
+            return
         invite = self.invite_edit.text()
         offer = self.offer_storage_cb.isChecked()
         kind = "sync + storage" if offer else "sync only"
@@ -1419,6 +1395,8 @@ class MainWindow:
 
     def on_join_existing(self) -> None:
         self.clear_errors()
+        if self._join_refused_without_ack():
+            return
         self._join_busy(True, "Connecting to the existing Tahoe node…")
         try:
             status = self.tahoe.join_existing()

@@ -127,7 +127,44 @@ def test_window_title_is_leasegrid_sync(ui: MainWindow):
     assert "Leasegrid Sync" in ui.win.windowTitle()
 
 
+def _ack_join(ui: MainWindow) -> None:
+    ui.threat_ack.setChecked(True)
+
+
+def test_join_stays_disabled_until_threat_ack(ui: MainWindow):
+    """First-run HITL: four points on Join; Join does not run until the box is checked."""
+    block = ui.join_page.findChild(PyQt5.QtWidgets.QGroupBox, "threatBlock")
+    assert block is not None
+    copy = ui.join_page.findChild(PyQt5.QtWidgets.QLabel, "threatCopy")
+    assert copy is not None
+    text = copy.text()
+    assert "1. Same invite" in text or "offering disk" in text.lower()
+    assert "No storage proofs" in text or "not slashed" in text.lower()
+    assert "I2P" in text or "LAN/WAN" in text
+    assert "recovery key" in text.lower()
+    assert "mainnet" not in text.lower()
+    ack = ui.join_page.findChild(PyQt5.QtWidgets.QCheckBox, "threatAck")
+    assert ack is not None
+    assert not ack.isChecked()
+    assert ack.text() == "I understand the four points above."
+    assert not ui.join_btn.isEnabled()
+    assert not ui.existing_btn.isEnabled()
+    assert ui.import_key_btn.isEnabled()
+    with patch.object(ui.tahoe, "join_invite") as join:
+        ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
+        ui.on_join_invite()
+    join.assert_not_called()
+    assert "FAIL" in ui.join_error.text()
+    assert "Next:" in ui.join_error.text()
+    assert "web UI" not in ui.join_error.text().lower()
+    ack.setChecked(True)
+    assert ui.join_btn.isEnabled()
+    ack.setChecked(False)
+    assert not ui.join_btn.isEnabled()
+
+
 def test_join_failure_is_in_window_not_silent(ui: MainWindow):
+    _ack_join(ui)
     ui.invite_edit.setText("nope")
     ui.on_join_invite()
     text = ui.join_error.text()
@@ -137,6 +174,7 @@ def test_join_failure_is_in_window_not_silent(ui: MainWindow):
 
 
 def test_empty_invite_fail(ui: MainWindow):
+    _ack_join(ui)
     ui.invite_edit.setText("")
     ui.on_join_invite()
     assert "FAIL" in ui.join_error.text()
@@ -157,6 +195,7 @@ def test_join_invite_success_enters_main(ui: MainWindow):
     assert ui.join_btn.isDefault()
     assert ui.existing_btn.isFlat()
     assert ui.import_key_btn.isFlat()
+    _ack_join(ui)
     ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
     with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
         with patch.object(ui.tahoe, "connection_status", return_value=st):
@@ -186,48 +225,19 @@ def test_recovery_place_has_scary_copy_and_both_actions(ui: MainWindow):
     assert "Last export: never" in blob
     names = [b.text() for b in buttons]
     assert "Export recovery key…" in names
-    assert "Restore to Folders" in names
-    assert "not in this build" not in blob
-
-
-def test_recovery_copy_requires_threat_ack_then_restore_is_primary(ui: MainWindow):
-    """Threat HITL gates the recovery-copy path. Restore to Folders is the primary CTA."""
-    ack = ui.recovery_tab.findChild(PyQt5.QtWidgets.QCheckBox, "threatAck")
-    assert ack is not None
-    assert not ack.isChecked()
-    assert not ui.recovery.threat_acked()
-    assert not ui.export_key_btn.isEnabled()
-    assert not ui.restore_to_folders_btn.isEnabled()
-    assert ui.restore_to_folders_btn.text() == "Restore to Folders"
-    assert ui.restore_to_folders_btn.isDefault()
-    threat = ui.recovery_tab.findChild(PyQt5.QtWidgets.QLabel, "threatCopy")
-    assert threat is not None
-    assert "friendnet" in threat.text().lower()
-    assert "mainnet" not in threat.text().lower()
-    ack.setChecked(True)
-    assert ui.recovery.threat_acked()
+    assert "Import recovery key…" in names
+    assert ui.export_key_btn.isDefault()
     assert ui.export_key_btn.isEnabled()
-    assert ui.restore_to_folders_btn.isEnabled()
-    ack.setChecked(False)
-    assert not ui.recovery.threat_acked()
-    assert not ui.restore_to_folders_btn.isEnabled()
+    assert ui.import_key_btn2.isEnabled()
+    assert "not in this build" not in blob
+    assert "xmr" not in blob.lower()
+    assert "mainnet" not in blob.lower()
 
 
-def test_export_without_threat_ack_does_not_open_a_dump(ui: MainWindow):
-    def boom(*_a, **_k):
-        raise AssertionError("export dialog opened without threat acknowledgement")
-
-    with patch("leasegrid_sync.app.ExportRecoveryDialog", side_effect=boom):
-        ui.on_export_recovery()
-    assert "FAIL" in ui.recovery_status.text()
-    assert "acknowledg" in ui.recovery_status.text().lower()
-
-
-def test_import_after_threat_ack_lands_on_folders(ui: MainWindow):
+def test_import_from_recovery_lands_on_folders(ui: MainWindow):
     from leasegrid_sync.app import ImportRecoveryDialog
     from leasegrid_sync.recovery import RestoreResult
 
-    ui.recovery.acknowledge_threat()
     res = RestoreResult(
         folders=["Photos"], skipped=[], wallet_restored=False, author_name="me@box-ab12",
         grid="introducer up · 3 storage",
@@ -250,11 +260,18 @@ def test_import_after_threat_ack_lands_on_folders(ui: MainWindow):
     assert "Photos" in ui.folder_error.text()
 
 
-def test_folders_offers_restore_from_recovery_key(ui: MainWindow):
-    btn = ui.folders_tab.findChild(PyQt5.QtWidgets.QPushButton, "restoreFromKey")
-    assert btn is not None
-    assert "recovery key" in btn.text().lower()
+def test_folders_nudge_is_dismissible_and_does_not_block_add(ui: MainWindow):
+    _enter(ui)
+    nudge = ui.folders_tab.findChild(PyQt5.QtWidgets.QWidget, "recoveryNudge")
+    assert nudge is not None
+    assert not nudge.isHidden()
+    assert "No recovery key exported yet" in nudge.findChild(PyQt5.QtWidgets.QLabel).text()
     assert ui.add_btn.isEnabled()
+    assert not ui.disk_pie.isHidden()
+    ui.on_dismiss_recovery_nudge()
+    assert nudge.isHidden()
+    assert ui.add_btn.isEnabled()
+    assert ui.recovery.nudge_dismissed()
 
 
 def test_join_page_offers_import_recovery(ui: MainWindow):
@@ -348,9 +365,9 @@ def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
 def test_join_page_explains_what_join_does(ui: MainWindow):
     labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
     blob = " ".join(w.text() for w in labels)
-    assert "1. Same invite" not in blob
-    assert "No storage proofs" not in blob
-    assert "Issuer trust" not in blob
+    assert "1. Same invite" in blob
+    assert "No storage proofs" in blob
+    assert "Recovery" in blob
     assert "paste" in blob.lower() or "link" in blob.lower() or "code" in blob.lower()
     ph = ui.invite_edit.placeholderText().lower()
     assert "i2p" in ph or "join#" in ph
@@ -363,14 +380,12 @@ def test_join_page_explains_what_join_does(ui: MainWindow):
     assert details is not None
 
 
-def test_join_page_is_not_a_lecture(ui: MainWindow):
-    labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
-    blob = " ".join(w.text() for w in labels)
-    assert blob.count("\n") < 8 or len(blob) < 500
-    assert "You are joining a friendnet you trust" not in blob
+def test_join_page_threat_is_the_hitl_not_a_hidden_dialog(ui: MainWindow):
     intro = ui.join_page.findChild(PyQt5.QtWidgets.QLabel, "joinIntro")
     assert intro is not None
     assert len(intro.text()) < 120
+    assert ui.join_page.findChild(PyQt5.QtWidgets.QLabel, "threatCopy") is not None
+    assert not ui.join_btn.isEnabled()
 
 
 def test_join_i2p_url_enters_main(ui: MainWindow):
@@ -387,6 +402,7 @@ def test_join_i2p_url_enters_main(ui: MainWindow):
         return st
 
     ui.invite_edit.setText(url)
+    _ack_join(ui)
     with patch.object(ui.tahoe, "has_nodedir", return_value=False):
         with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
             with patch.object(ui.tahoe, "connection_status", return_value=st):
@@ -435,6 +451,7 @@ def test_join_invite_passes_offer_storage_default(ui: MainWindow):
         return st
 
     ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
+    _ack_join(ui)
     with patch.object(ui.tahoe, "has_nodedir", return_value=False):
         with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
             with patch.object(ui.tahoe, "connection_status", return_value=st):
@@ -452,6 +469,7 @@ def test_join_opt_out_passes_offer_storage_false(ui: MainWindow):
         return st
 
     ui.offer_storage_cb.setChecked(False)
+    _ack_join(ui)
     ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
     with patch.object(ui.tahoe, "has_nodedir", return_value=False):
         with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
@@ -470,6 +488,7 @@ def test_join_with_short_code_shows_code_progress(ui: MainWindow):
         seen["offer_storage"] = offer_storage
         return st
 
+    _ack_join(ui)
     ui.invite_edit.setText(" 7-Guitarist-Revenge ")
     with patch.object(ui.tahoe, "has_nodedir", return_value=False):
         with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):

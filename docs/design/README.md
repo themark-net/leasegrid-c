@@ -19,10 +19,12 @@
 | **U1** | **SHIP** @ tip ≥ `3452a87` | Gridsync-class Sync boots; one Magic Folder syncs; no WUI |
 | **U2** | **Design DoD ready** (this package) | Implement: Credit panel ↔ lab issuer/faucet; **balance visible after faucet** |
 | **U3** | Deferred until U2 SHIP | Linux AppImage and/or `.deb` |
-| **U4** | Recovery-copy (this package, 30–34) | Threat HITL + recovery key + restore to Folders. Base `4e1e6bd` |
+| **U4** | **Design DoD ready** (`30`–`34`) | Threat HITL + recovery key export/import; non-expert walkthrough PASS @ `4e1e6bd` |
 | **U5** | Deferred | Swap faucet for XMR when gate 0c PASS |
 
 **U2 one-liner:** Credit becomes a real place in Leasegrid Sync — remaining GiB-share-months in plain language, Top up via lab faucet, balance updates after redeem; no mainnet XMR; denomination honesty (expansion is real); operate-or-FAIL.
+
+**U4 one-liner:** Recovery-copy UX on the CrashPlan shell — first-run threat HITL, dual-ACK recovery key export, import-on-new-device restore to Folders — without Tahoe WUI or a payment lecture. Canonical handoff: [34-U4-DEVBOT-HANDOFF.md](34-U4-DEVBOT-HANDOFF.md). Cite issue #15 · tip `4e1e6bd`. U0–P1 bodies (`10`–`29`) are not rewritten by this package.
 
 ---
 
@@ -36,12 +38,12 @@
 | [18-U2-NON-GOALS.md](18-U2-NON-GOALS.md) | Explicit rejects for U2 Design / implement |
 | [19-U2-DEVBOT-HANDOFF.md](19-U2-DEVBOT-HANDOFF.md) | Tight DoD: wire Credit panel to lab issuer/faucet; tests; tip ≥ `3452a87`; defer U3–U5 |
 | [../09-ui-track-U2-POINTER.md](../09-ui-track-U2-POINTER.md) | One-line pointer beside `09-ui-track.md` |
-| [30-U4-RECOVERY-JOURNEY.md](30-U4-RECOVERY-JOURNEY.md) | Recovery-copy journey after the CrashPlan shell |
-| [31-U4-IA-RECOVERY.md](31-U4-IA-RECOVERY.md) | Recovery under More; Folders stays home |
-| [32-U4-WIREFRAMES.md](32-U4-WIREFRAMES.md) | Threat HITL, dual-ACK export, restore to Folders |
-| [33-U4-NON-GOALS.md](33-U4-NON-GOALS.md) | AppImage, WUI, mainnet XMR, payment lecture |
-| [34-U4-DEVBOT-HANDOFF.md](34-U4-DEVBOT-HANDOFF.md) | Implement locks for U4 |
-| [../09-ui-track-U4-POINTER.md](../09-ui-track-U4-POINTER.md) | Pointer for U4 |
+| [30-U4-RECOVERY-JOURNEY.md](30-U4-RECOVERY-JOURNEY.md) | Threat → join → export; import → Folders restore; FAIL paths |
+| [31-U4-IA-RECOVERY.md](31-U4-IA-RECOVERY.md) | IA: Folders primary; Recovery under More; CTA ranks; copy layers |
+| [32-U4-WIREFRAMES.md](32-U4-WIREFRAMES.md) | ASCII: threat Join; Recovery place; export gate; import; FAIL |
+| [33-U4-NON-GOALS.md](33-U4-NON-GOALS.md) | WUI; reset-password; payment lecture; AppImage/U5 claims; do not rewrite `10`–`29` |
+| [34-U4-DEVBOT-HANDOFF.md](34-U4-DEVBOT-HANDOFF.md) | Tight DoD + tests; cite #15 + tip `4e1e6bd`; operate-or-FAIL |
+| [../09-ui-track-U4-POINTER.md](../09-ui-track-U4-POINTER.md) | One-line pointer beside `09-ui-track.md` |
 | [10-U0-BUYER-JOURNEY.md](10-U0-BUYER-JOURNEY.md) | Prior U0 (still in tree) |
 | [11-U0-IA-NATIVE-SYNC.md](11-U0-IA-NATIVE-SYNC.md) | Prior U0 |
 | [12-U0-WIREFRAMES.md](12-U0-WIREFRAMES.md) | Prior U0 (Credit baseline §3) |

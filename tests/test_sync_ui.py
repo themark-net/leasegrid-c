@@ -272,15 +272,79 @@ def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
 def test_join_page_explains_what_join_does(ui: MainWindow):
     labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
     blob = " ".join(w.text() for w in labels)
-    assert "same invite" in blob.lower()
-    assert "offers disk" in blob.lower() or "offer" in blob.lower()
-    assert "Nothing is uploaded until you add a folder" in blob
-    assert "short code" in blob
-    assert "7-word-word" in ui.invite_edit.placeholderText()
+    assert "1. Same invite" not in blob
+    assert "No storage proofs" not in blob
+    assert "Issuer trust" not in blob
+    assert "paste" in blob.lower() or "link" in blob.lower() or "code" in ui.invite_edit.placeholderText().lower()
+    assert "link" in ui.invite_edit.placeholderText().lower() or "code" in ui.invite_edit.placeholderText().lower()
     cb = ui.join_page.findChild(PyQt5.QtWidgets.QCheckBox, "offerStorage")
     assert cb is not None
     assert cb.isChecked()
     assert "offer" in cb.text().lower()
+    details = ui.join_page.findChild(PyQt5.QtWidgets.QPushButton, "joinDetails")
+    assert details is not None
+
+
+def test_join_page_is_not_a_lecture(ui: MainWindow):
+    labels = ui.join_page.findChildren(PyQt5.QtWidgets.QLabel)
+    blob = " ".join(w.text() for w in labels)
+    assert blob.count("\n") < 8 or len(blob) < 500
+    assert "You are joining a friendnet you trust" not in blob
+    intro = ui.join_page.findChild(PyQt5.QtWidgets.QLabel, "joinIntro")
+    assert intro is not None
+    assert len(intro.text()) < 120
+
+
+def test_join_i2p_url_enters_main(ui: MainWindow):
+    from leasegrid_sync.invite import format_join_url
+
+    st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    url = format_join_url(furl, origin="http://alice.i2p/join")
+    seen = {}
+
+    def fake_join(invite, offer_storage=True):
+        seen["invite"] = invite
+        seen["offer_storage"] = offer_storage
+        return st
+
+    ui.invite_edit.setText(url)
+    with patch.object(ui.tahoe, "has_nodedir", return_value=False):
+        with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
+            with patch.object(ui.tahoe, "connection_status", return_value=st):
+                with patch.object(ui.mf, "list_folders", return_value=[]):
+                    ui.on_join_invite()
+    assert seen["invite"] == url
+    assert seen["offer_storage"] is True
+    assert ui.stack.currentWidget() is ui.main_page
+
+
+def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[node]\n[client]\nintroducer.furl = %s\nshares.needed = 2\n"
+        "shares.happy = 3\nshares.total = 3\n" % furl,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LEASEGRID_JOIN_ORIGIN", "http://alice.i2p/join")
+    st = ConnectionStatus(state="Connected", detail="introducer up", introducer_ok=True)
+    with patch.object(ui.tahoe, "connection_status", return_value=st):
+        with patch.object(ui.mf, "list_folders", return_value=[]):
+            ui._enter_main("Connected", "introducer up")
+    box = ui.settings_tab.findChild(PyQt5.QtWidgets.QGroupBox, "shareBox")
+    assert box is not None
+    url = ui.share_url_edit.text()
+    assert url.startswith("http://alice.i2p/join#")
+    assert furl not in url.split("#", 1)[0]
+    pix = ui.share_qr.pixmap()
+    assert pix is not None and not pix.isNull()
+    ui.on_copy_share_url()
+    assert ui.QtWidgets.QApplication.clipboard().text() == url
+    assert ui.copy_share_btn.isEnabled()
+    assert ui.export_page_btn.isEnabled()
+    hint = " ".join(w.text() for w in box.findChildren(PyQt5.QtWidgets.QLabel))
+    assert "i2p" in hint.lower()
+    assert "qr" in hint.lower() or "QR" in hint
 
 
 def test_join_invite_passes_offer_storage_default(ui: MainWindow):

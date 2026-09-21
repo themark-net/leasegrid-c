@@ -192,11 +192,10 @@ def fix_joined_shares(cfg_path: Path) -> bool:
 
 
 def validate_invite(raw: str) -> str:
-    """Accept either a pb:// introducer furl or a short `tahoe invite` code."""
-    text = (raw or "").strip()
-    if is_wormhole_code(text):
-        return text.lower()
-    return validate_introducer_furl(text)
+    """Accept a join URL, a pb:// introducer furl, or a short `tahoe invite` code."""
+    from .invite import parse_invite
+
+    return parse_invite(raw).token
 
 
 def validate_introducer_furl(raw: str) -> str:
@@ -645,14 +644,17 @@ class TahoeClient:
         return self._bring_up()
 
     def join_invite(self, invite: str, offer_storage: bool = True) -> ConnectionStatus:
-        """Join from a pb:// introducer furl or a short `tahoe invite` code.
+        """Join from a join URL, pb:// introducer furl, or short `tahoe invite` code.
 
         No node yet: create a Tahoe node for that friendnet (client+storage
         unless ``offer_storage`` is false), start it, wait for the introducer.
         Node already present: reuse it (start it if needed) and confirm it
         reaches an introducer. Unpaid join and offer are this same path.
         """
-        furl = validate_invite(invite)
+        from .invite import parse_invite
+
+        parsed = parse_invite(invite)
+        furl = parsed.token
         if self.has_nodedir():
             try:
                 return self._bring_up()
@@ -666,7 +668,7 @@ class TahoeClient:
                     "if that node belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
                     "to a new path; otherwise check the introducer is up; Retry.",
                 ) from exc
-        self.create_node(furl, offer_storage=offer_storage)
+        self.create_node(furl, shares=parsed.shares, offer_storage=offer_storage)
         return self._bring_up()
 
 

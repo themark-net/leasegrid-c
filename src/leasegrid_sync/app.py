@@ -57,8 +57,8 @@ THREAT_COPY = (
     "1. Same invite, same process — joining and offering disk are one unpaid step. "
     "This device syncs folders and, by default, also stores shares for the friendnet.\n"
     "2. No storage proofs — dead nodes are dropped and shares moved, not slashed.\n"
-    "3. Tor vs sync — full privacy often wants Tor; folder sync may use LAN/WAN. "
-    "Transport policy is a visible setting.\n"
+    "3. Share over I2P — the join URL is a page you host; the address lives after # "
+    "so the eepsite never sees it. Folder sync may still use LAN/WAN.\n"
     "4. Recovery — lose the recovery key and this device and access can be gone forever. "
     "Export one from the Recovery place after you join."
 )
@@ -622,53 +622,46 @@ class MainWindow:
         page = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(page)
         v.setContentsMargins(28, 24, 28, 24)
-        title = QtWidgets.QLabel("Welcome to %s" % APP_NAME)
+        title = QtWidgets.QLabel("Join a friendnet")
         title.setObjectName("joinTitle")
         font = title.font()
         font.setPointSize(16)
         font.setBold(True)
         title.setFont(font)
         v.addWidget(title)
-        intro = QtWidgets.QLabel(
-            "Sync folders with a friendnet you trust. Joining and offering storage use the same invite."
-        )
+        intro = QtWidgets.QLabel("Paste a link, short code, or the text from a QR.")
+        intro.setWordWrap(True)
+        intro.setObjectName("joinIntro")
         v.addWidget(intro)
-        threat = QtWidgets.QLabel(THREAT_COPY)
-        threat.setWordWrap(True)
-        threat.setObjectName("threatCopy")
-        v.addWidget(threat)
-        v.addWidget(QtWidgets.QLabel("Invite (short code from your inviter, or introducer furl)"))
         self.invite_edit = QtWidgets.QLineEdit()
-        self.invite_edit.setPlaceholderText("paste invite: 7-word-word  or  pb://…")
+        self.invite_edit.setPlaceholderText("http://….i2p/join#…   or   7-word-word")
         self.invite_edit.setObjectName("inviteEdit")
         self.invite_edit.returnPressed.connect(self.on_join_invite)
         v.addWidget(self.invite_edit)
-        hint = QtWidgets.QLabel(
-            "Joining creates a Tahoe node on this device: it syncs your folders and, unless you "
-            "turn it off, offers disk to the same friendnet. Nothing is uploaded until you add a folder."
-        )
-        hint.setWordWrap(True)
-        hint.setObjectName("joinHint")
-        v.addWidget(hint)
-        self.offer_storage_cb = QtWidgets.QCheckBox("Offer disk to this friendnet (same invite; no payment yet)")
+        self.offer_storage_cb = QtWidgets.QCheckBox("Offer disk on this device")
         self.offer_storage_cb.setObjectName("offerStorage")
         self.offer_storage_cb.setChecked(True)
         v.addWidget(self.offer_storage_cb)
-        row = QtWidgets.QHBoxLayout()
         self.join_btn = QtWidgets.QPushButton("Join friendnet")
         self.join_btn.setObjectName("joinButton")
+        self.join_btn.setDefault(True)
         self.join_btn.clicked.connect(self.on_join_invite)
+        v.addWidget(self.join_btn)
         self.existing_btn = QtWidgets.QPushButton("Use existing Tahoe node")
         self.existing_btn.setObjectName("existingButton")
+        self.existing_btn.setFlat(True)
         self.existing_btn.clicked.connect(self.on_join_existing)
-        row.addWidget(self.join_btn)
-        row.addWidget(self.existing_btn)
+        v.addWidget(self.existing_btn)
         self.import_key_btn = QtWidgets.QPushButton("Import recovery key instead…")
         self.import_key_btn.setObjectName("importKeyButton")
+        self.import_key_btn.setFlat(True)
         self.import_key_btn.clicked.connect(self.on_import_recovery)
-        row.addWidget(self.import_key_btn)
-        row.addStretch(1)
-        v.addLayout(row)
+        v.addWidget(self.import_key_btn)
+        self.details_btn = QtWidgets.QPushButton("What's a friendnet?")
+        self.details_btn.setObjectName("joinDetails")
+        self.details_btn.setFlat(True)
+        self.details_btn.clicked.connect(self.on_join_details)
+        v.addWidget(self.details_btn)
         self.join_progress = QtWidgets.QLabel("")
         self.join_progress.setObjectName("joinProgress")
         self.join_progress.setWordWrap(True)
@@ -909,16 +902,46 @@ class MainWindow:
         QtWidgets = self.QtWidgets
         sl = QtWidgets.QVBoxLayout(self.settings_tab)
         sl.addWidget(QtWidgets.QLabel("Settings"))
+        share_box = QtWidgets.QGroupBox("Invite others")
+        share_box.setObjectName("shareBox")
+        sb = QtWidgets.QVBoxLayout(share_box)
+        share_hint = QtWidgets.QLabel(
+            "Share the link or QR. Host the exported page on your I2P eepsite."
+        )
+        share_hint.setWordWrap(True)
+        sb.addWidget(share_hint)
+        self.share_url_edit = QtWidgets.QLineEdit()
+        self.share_url_edit.setObjectName("shareUrl")
+        self.share_url_edit.setReadOnly(True)
+        self.share_url_edit.setPlaceholderText("Join a friendnet first")
+        sb.addWidget(self.share_url_edit)
+        srow = QtWidgets.QHBoxLayout()
+        self.copy_share_btn = QtWidgets.QPushButton("Copy link")
+        self.copy_share_btn.setObjectName("copyShare")
+        self.copy_share_btn.clicked.connect(self.on_copy_share_url)
+        self.export_page_btn = QtWidgets.QPushButton("Export I2P page…")
+        self.export_page_btn.setObjectName("exportInvitePage")
+        self.export_page_btn.clicked.connect(self.on_export_invite_page)
+        srow.addWidget(self.copy_share_btn)
+        srow.addWidget(self.export_page_btn)
+        srow.addStretch(1)
+        sb.addLayout(srow)
+        self.share_qr = QtWidgets.QLabel("")
+        self.share_qr.setObjectName("shareQr")
+        self.share_qr.setMinimumSize(160, 160)
+        sb.addWidget(self.share_qr)
+        sl.addWidget(share_box)
+        self._refresh_share()
         note = QtWidgets.QLabel(
-            "Transport policy: full privacy claims often want Tor; Magic Folder sync "
-            "that feels normal may use LAN/WAN. This is a visible design flag; a transport setting is still to come.\n\n"
+            "Join links are I2P pages (secret in the #fragment). Folder sync may still "
+            "use LAN/WAN.\n\n"
             "Coming later\n"
             "· .deb package (AppImage / macOS / Windows installers ship now)\n\n"
             "This device offers disk on Join unless you uncheck it. Reachable from other "
             "machines only if LEASEGRID_STORAGE_HOSTNAME is a LAN name or IP "
             "(lab default is 127.0.0.1).\n\n"
             "Credit → Top up quotes XMR when this friendnet charges. Unpaid join and offer "
-            "do not need it. Live stagenet settlement is still to come.\n\n"
+            "do not need it.\n\n"
             "About\n"
             "%s (buyer) · version %s\n"
             "Grid: lab-friendnet\n"
@@ -929,6 +952,64 @@ class MainWindow:
         note.setObjectName("settingsNote")
         sl.addWidget(note)
         sl.addStretch(1)
+
+    def on_join_details(self) -> None:
+        QtWidgets = self.QtWidgets
+        dlg = QtWidgets.QDialog(self.win)
+        dlg.setWindowTitle("What's a friendnet?")
+        dlg.setObjectName("joinDetailsDialog")
+        lay = QtWidgets.QVBoxLayout(dlg)
+        lab = QtWidgets.QLabel(THREAT_COPY)
+        lab.setWordWrap(True)
+        lab.setObjectName("threatCopy")
+        lay.addWidget(lab)
+        close = QtWidgets.QPushButton("Close")
+        close.clicked.connect(dlg.accept)
+        lay.addWidget(close)
+        dlg.exec_()
+
+    def current_share_url(self) -> str:
+        from .invite import share_url_for_nodedir
+
+        try:
+            return share_url_for_nodedir(self.tahoe.nodedir)
+        except SyncError:
+            return ""
+
+    def _refresh_share(self) -> None:
+        url = self.current_share_url()
+        self.share_url_edit.setText(url)
+        self.copy_share_btn.setEnabled(bool(url))
+        self.export_page_btn.setEnabled(bool(url))
+        if not url:
+            self.share_qr.clear()
+            return
+        try:
+            from .invite import qr_png
+
+            pix = self.QtGui.QPixmap()
+            pix.loadFromData(qr_png(url))
+            self.share_qr.setPixmap(pix.scaled(160, 160, self.QtCore.Qt.KeepAspectRatio))
+        except Exception:
+            self.share_qr.setText("QR unavailable")
+
+    def on_copy_share_url(self) -> None:
+        url = self.share_url_edit.text().strip() or self.current_share_url()
+        if url:
+            self.QtWidgets.QApplication.clipboard().setText(url)
+
+    def on_export_invite_page(self) -> None:
+        url = self.current_share_url()
+        if not url:
+            return
+        path, _ = self.QtWidgets.QFileDialog.getSaveFileName(
+            self.win, "Export I2P invite page", str(Path.home() / "join.html"), "HTML (*.html)"
+        )
+        if not path:
+            return
+        from .invite import invite_page_html
+
+        Path(path).write_text(invite_page_html(url), encoding="utf-8")
 
     def _init_tray(self) -> None:
         QtWidgets = self.QtWidgets
@@ -1029,6 +1110,8 @@ class MainWindow:
     def _join_busy(self, busy: bool, text: str = "") -> None:
         self.join_btn.setEnabled(not busy)
         self.existing_btn.setEnabled(not busy)
+        self.import_key_btn.setEnabled(not busy)
+        self.details_btn.setEnabled(not busy)
         self.invite_edit.setEnabled(not busy)
         self.offer_storage_cb.setEnabled(not busy)
         self.join_progress.setText(text)
@@ -1078,6 +1161,7 @@ class MainWindow:
         self.status_chip.setText("%s  %s" % (state, detail))
         self.stack.setCurrentWidget(self.main_page)
         self.poll.start()
+        self._refresh_share()
         self.refresh()
 
     def refresh(self) -> None:
@@ -1180,6 +1264,8 @@ class MainWindow:
             return
         if self.tabs.widget(idx) is self.credit_tab:
             self.load_credit()
+        elif self.tabs.widget(idx) is self.settings_tab:
+            self._refresh_share()
 
     def load_credit(self) -> None:
         self.credit_success.hide()

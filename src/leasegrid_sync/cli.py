@@ -69,18 +69,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--join",
         metavar="INVITE",
         default=None,
-        help="Headless: join the friendnet from an invite -- a short `tahoe invite` code "
-        "(7-word-word; set LEASEGRID_WORMHOLE_SERVER to match a private relay) or a pb:// "
-        "introducer furl. Creates and starts a Tahoe node (client+storage) if needed; "
-        "pass --client-only to skip offering disk. Prints the connection line, stops "
-        "the daemons, exits. Combine with --dogfood-folder / --credit-dogfood to "
-        "continue into the window flows.",
+        help="Headless: join from a link (http://….i2p/join#… or leasegrid:join#…), a short "
+        "`tahoe invite` code (7-word-word), or a pb:// introducer furl. Creates and starts "
+        "a Tahoe node (client+storage) if needed; pass --client-only to skip offering disk.",
     )
     p.add_argument(
         "--client-only",
         action="store_true",
         help="Join without offering storage (tahoe create-node --no-storage). "
         "Default unpaid join is the same process as offering disk.",
+    )
+    p.add_argument(
+        "--invite-url",
+        action="store_true",
+        help="Print the shareable join URL for this nodedir (I2P page fragment) and exit.",
+    )
+    p.add_argument(
+        "--export-invite-page",
+        metavar="PATH",
+        default=None,
+        help="Write a self-contained HTML invite page (QR + link) to PATH and exit. "
+        "Host that file on your I2P eepsite.",
     )
     p.add_argument(
         "--export-recovery",
@@ -119,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("%d\t%s" % (snap.balance.tokens, format_remaining(snap.balance.tokens).split("\n")[0]))
         return 0
+    if args.invite_url or args.export_invite_page:
+        return _invite_share_headless(args, nodedir)
     if args.export_recovery or args.restore_recovery:
         return _recovery_headless(args, nodedir)
     if args.join and not (args.dogfood_folder or args.credit_dogfood or args.screenshot):
@@ -144,6 +155,24 @@ def main(argv: list[str] | None = None) -> int:
         invite=args.join,
         offer_storage=not args.client_only,
     )
+
+
+def _invite_share_headless(args, nodedir: Path) -> int:
+    from .invite import invite_page_html, share_url_for_nodedir
+
+    try:
+        url = share_url_for_nodedir(nodedir)
+    except SyncError as exc:
+        print(exc.banner(), file=sys.stderr)
+        return 1
+    if args.export_invite_page:
+        path = Path(args.export_invite_page).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(invite_page_html(url), encoding="utf-8")
+        print("invite-page path=%s" % path)
+    if args.invite_url:
+        print(url)
+    return 0
 
 
 def _join_headless(args, nodedir: Path) -> int:

@@ -15,6 +15,9 @@ def test_help_describes_native_not_wui():
     assert "--credit-status" in text
     assert "--credit-dogfood" in text
     assert "--client-only" in text
+    assert "--invite-url" in text
+    assert "--export-invite-page" in text
+    assert "i2p" in text.lower()
 
 
 def test_exit_test_paid_join_is_client_only():
@@ -35,6 +38,40 @@ def test_status_uses_nodedir(tmp_path, capsys):
     out = capsys.readouterr().out
     assert code == 1
     assert "FAIL" in out or "Offline" in out or str(nodedir) in out
+
+
+def test_invite_url_and_export_page(tmp_path, monkeypatch, capsys):
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    (nodedir / "tahoe.cfg").write_text(
+        "[node]\n[client]\nintroducer.furl = %s\nshares.needed = 2\n"
+        "shares.happy = 3\nshares.total = 3\n" % furl,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LEASEGRID_JOIN_ORIGIN", "http://alice.i2p/join")
+    code = main(["--invite-url", "--nodedir", str(nodedir)])
+    out = capsys.readouterr().out.strip()
+    assert code == 0
+    assert out.startswith("http://alice.i2p/join#")
+    assert furl not in out.split("#", 1)[0]
+    page = tmp_path / "join.html"
+    code = main(["--export-invite-page", str(page), "--nodedir", str(nodedir)])
+    capsys.readouterr()
+    assert code == 0
+    html = page.read_text(encoding="utf-8")
+    assert "alice.i2p/join#" in html
+    assert "<svg" in html.lower()
+    assert "cdn." not in html.lower()
+
+
+def test_invite_url_fails_closed_when_not_joined(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(tmp_path / "home"))
+    code = main(["--invite-url", "--nodedir", str(tmp_path / "missing")])
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "No friendnet joined" in err
+    assert not (tmp_path / "missing").exists()
 
 
 def test_join_headless_rejects_bad_invite_without_tahoe(tmp_path, monkeypatch, capsys):

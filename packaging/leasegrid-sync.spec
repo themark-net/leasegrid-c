@@ -58,12 +58,13 @@ hiddenimports = (
         "cryptography.fernet",
         "PyQt5.sip",
         "sqlite3",
+        "segno",
     ]
 )
 
 # Version strings some of these read back at runtime.
 for dist in ("tahoe-lafs", "magic-folder", "foolscap", "twisted", "zope.interface", "autobahn", "magic-wormhole",
-             "python-challenge-bypass-ristretto", "cryptography", "leasegrid-zkap-lab"):
+             "python-challenge-bypass-ristretto", "cryptography", "leasegrid-zkap-lab", "segno"):
     try:
         datas += copy_metadata(dist)
     except Exception:

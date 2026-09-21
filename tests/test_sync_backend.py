@@ -187,6 +187,27 @@ def test_join_invite_creates_node_and_starts_it(tmp_path: Path, monkeypatch):
     assert not client.owns_process()
 
 
+def test_join_invite_accepts_i2p_join_url(tmp_path: Path, monkeypatch):
+    from leasegrid_sync.invite import format_join_url
+
+    monkeypatch.setenv("LEASEGRID_SHARES", "1,1,1")
+    nodedir = tmp_path / "home" / "tahoe"
+    home = tmp_path / "home"
+    url = format_join_url(GOOD_FURL, shares=(2, 3, 3), origin="http://alice.i2p/join")
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=home)
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite(url)
+        assert st.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--introducer=%s" % GOOD_FURL in cfg
+        assert "--shares-needed=2" in cfg
+        assert "--shares-happy=3" in cfg
+        assert "http://alice.i2p" not in cfg
+    finally:
+        client.stop()
+
+
 def test_join_invite_opt_out_does_not_offer_storage(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("LEASEGRID_SHARES", "2,3,3")
     nodedir = tmp_path / "home" / "tahoe"

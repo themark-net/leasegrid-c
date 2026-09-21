@@ -554,3 +554,134 @@ def test_welcome_json_roundtrip_shape():
     )
     data = json.loads(raw)
     assert "introducers" in data
+
+
+def test_parse_reserved_space_sizes_and_percent():
+    from leasegrid_sync.backend import parse_reserved_space
+
+    assert parse_reserved_space("1024", 10**9) == 1024
+    assert parse_reserved_space("1K", 10**9) == 1024
+    assert parse_reserved_space("1KiB", 10**9) == 1024
+    assert parse_reserved_space("1KB", 10**9) == 1000
+    assert parse_reserved_space("1G", 10**12) == 1024**3
+    assert parse_reserved_space("50%", 1000) == 500
+    assert parse_reserved_space("", 1000) == 0
+    with pytest.raises(SyncError) as exc:
+        parse_reserved_space("lots", 1000)
+    assert "reserved_space" in exc.value.message
+    assert exc.value.next_hint
+
+
+def test_disk_slices_used_free_offered(tmp_path: Path):
+    from collections import namedtuple
+
+    from leasegrid_sync.backend import format_bytes, read_disk_offer
+
+    nodedir = tmp_path / "tahoe"
+    home = tmp_path / "home"
+    nodedir.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text(
+        "[storage]\nenabled = true\nreserved_space = 100\n", encoding="utf-8"
+    )
+    usage = namedtuple("usage", "total used free")(1000, 400, 600)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        slices = read_disk_offer(nodedir, home)
+    assert slices.used == 400
+    assert slices.kept == 100
+    assert slices.offered == 500
+    assert slices.offered_percent == 50
+    assert format_bytes(400) == "400 B"
+    assert format_bytes(1500) == "1.5 KB"
+
+
+def test_read_disk_offer_not_offering_is_zero_percent(tmp_path: Path):
+    from collections import namedtuple
+
+    from leasegrid_sync.backend import read_disk_offer
+
+    nodedir = tmp_path / "tahoe"
+    home = tmp_path / "home"
+    nodedir.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    usage = namedtuple("usage", "total used free")(1000, 250, 750)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        slices = read_disk_offer(nodedir, home)
+    assert slices.offered == 0
+    assert slices.kept == 750
+    assert slices.offered_percent == 0
+
+
+def test_apply_offer_percent_writes_reserve(tmp_path: Path):
+    from collections import namedtuple
+
+    from leasegrid_sync.backend import apply_offer_percent
+
+    nodedir = tmp_path / "tahoe"
+    home = tmp_path / "home"
+    nodedir.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text(
+        "[node]\nnickname = sync\n[storage]\nenabled = true\n", encoding="utf-8"
+    )
+    usage = namedtuple("usage", "total used free")(1000, 200, 800)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        slices = apply_offer_percent(nodedir, home, 25)
+    assert slices.offered == 250
+    assert slices.kept == 550
+    assert slices.offered_percent == 25
+    text = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+    assert "nickname = sync" in text
+    assert "enabled = true" in text
+    assert "reserved_space = 550" in text
+
+
+def test_apply_offer_percent_zero_disables_storage(tmp_path: Path):
+    from collections import namedtuple
+
+    from leasegrid_sync.backend import apply_offer_percent, storage_offered
+
+    nodedir = tmp_path / "tahoe"
+    home = tmp_path / "home"
+    nodedir.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[storage]\nenabled = true\n", encoding="utf-8")
+    usage = namedtuple("usage", "total used free")(1000, 200, 800)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        slices = apply_offer_percent(nodedir, home, 0)
+    assert slices.offered == 0
+    assert storage_offered(nodedir) is False
+
+
+def test_apply_offer_percent_sync_only_fails(tmp_path: Path):
+    from collections import namedtuple
+
+    from leasegrid_sync.backend import apply_offer_percent
+
+    nodedir = tmp_path / "tahoe"
+    home = tmp_path / "home"
+    nodedir.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    usage = namedtuple("usage", "total used free")(1000, 200, 800)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        with pytest.raises(SyncError) as exc:
+            apply_offer_percent(nodedir, home, 40)
+    assert "sync-only" in exc.value.message
+    assert "Offer disk" in exc.value.next_hint
+
+
+def test_read_disk_offer_oserror_is_fail(tmp_path: Path):
+    from leasegrid_sync.backend import read_disk_offer
+
+    nodedir = tmp_path / "tahoe"
+    home = tmp_path / "home"
+    nodedir.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    with patch("leasegrid_sync.backend.shutil.disk_usage", side_effect=OSError("no disk")):
+        with pytest.raises(SyncError) as exc:
+            read_disk_offer(nodedir, home)
+    assert "could not read this disk" in exc.value.message
+    assert "mounted" in exc.value.next_hint

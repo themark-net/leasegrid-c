@@ -154,6 +154,9 @@ def test_join_invite_success_enters_main(ui: MainWindow):
         seen["offer_storage"] = offer_storage
         return st
 
+    assert ui.join_btn.isDefault()
+    assert ui.existing_btn.isFlat()
+    assert ui.import_key_btn.isFlat()
     ui.invite_edit.setText("pb://hashhashhash@127.0.0.1:45001/swissnumswiss")
     with patch.object(ui.tahoe, "join_invite", side_effect=fake_join):
         with patch.object(ui.tahoe, "connection_status", return_value=st):
@@ -169,6 +172,10 @@ def test_join_invite_success_enters_main(ui: MainWindow):
     assert ui.join_btn.isEnabled()
     assert ui.join_progress.text() == ""
     assert ui.join_error.text() == ""
+    assert ui.places.currentWidget() is ui.folders_tab
+    assert not ui.disk_pie.isHidden()
+    assert "% of this disk" in ui.offer_percent.text()
+    assert "Used" in ui.offer_legend.text() and "Offered" in ui.offer_legend.text()
 
 
 def test_recovery_place_has_scary_copy_and_both_actions(ui: MainWindow):
@@ -266,7 +273,7 @@ def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
         with patch.object(ui.mf, "list_folders", return_value=[]):
             ui.apply_restore_result(res)
     assert ui.stack.currentWidget() is ui.main_page
-    assert ui.tabs.currentWidget() is ui.folders_tab
+    assert ui.places.currentWidget() is ui.folders_tab
     assert "Restored 1 folder(s): Photos" in ui.folder_error.text()
     assert "Credit wallet restored" in ui.folder_error.text()
 
@@ -437,23 +444,41 @@ def test_enter_main_shows_folders_tab(ui: MainWindow):
         with patch.object(ui.mf, "list_folders", return_value=[]):
             ui._enter_main("Connected", "introducer up")
     assert ui.stack.currentWidget() is ui.main_page
-    assert ui.tabs.tabText(0) == "Folders"
-    assert ui.tabs.tabText(1) == "Credit"
-    assert ui.tabs.tabText(2) == "Recovery"
-    assert ui.tabs.tabText(3) == "Settings"
+    assert ui.places.currentWidget() is ui.folders_tab
+    assert ui.back_btn.isHidden()
+    assert ui.more_btn.text() == "More"
+    assert ui.recovery_action.text() == "Recovery"
+    assert ui.settings_action.text() == "Settings"
+    assert not ui.credit_action.isVisible()
     assert ui.status_chip.text().startswith("Online")
 
 
-def test_settings_stub_does_not_defer_shipped_xmr_topup(ui: MainWindow):
+def test_payment_lecture_hidden_until_gated(ui: MainWindow, monkeypatch):
+    """Unpaid default. XMR / Credit copy stays off the window until LEASEGRID_GATED."""
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    _enter(ui)
     note = ui.settings_tab.findChild(PyQt5.QtWidgets.QLabel, "settingsNote")
     text = note.text() if note is not None else ""
     assert "AppImage" in text
     assert "U3" not in text and "U4" not in text and "U5" not in text
-    assert "after mint rails" not in text.lower()
-    assert "Credit:" in text
-    assert "open the Credit place" in text
-    assert "XMR" in text
-    assert "Credit → Top up" in text or "Top up" in text
+    assert "xmr" not in text.lower()
+    assert "top up" not in text.lower()
+    lecture = ui.payment_lecture
+    assert "XMR" in lecture.text()
+    assert "Top up" in lecture.text()
+    assert "after mint rails" not in lecture.text().lower()
+    assert not lecture.isVisibleTo(ui.settings_tab)
+    assert not ui.credit_action.isVisible()
+    visible = " ".join(
+        w.text() for w in ui.folders_tab.findChildren(PyQt5.QtWidgets.QLabel) if not w.isHidden()
+    ).lower()
+    assert "top up" not in visible
+    assert "xmr" not in visible
+    assert "% of this disk" in visible
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
+    ui._sync_gated_chrome()
+    assert lecture.isVisibleTo(ui.settings_tab)
+    assert ui.credit_action.isVisible()
 
 
 def test_connected_autoload_skips_join(tmp_path: Path):
@@ -527,15 +552,73 @@ def test_status_chip_is_not_tahoe_jargon(ui: MainWindow):
     ) == text
 
 
-def test_offer_line_reads_storage_enabled(ui: MainWindow):
+def test_offer_pie_shows_percent_of_this_disk(ui: MainWindow):
+    from collections import namedtuple
+
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[node]\n[storage]\nenabled = true\nreserved_space = 10%\n", encoding="utf-8"
+    )
+    usage = namedtuple("usage", "total used free")(1000, 400, 600)
+    st = ConnectionStatus(state="Connected", detail="lab", introducer_ok=True)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        with patch.object(ui.tahoe, "connection_status", return_value=st):
+            with patch.object(ui.mf, "list_folders", return_value=[]):
+                ui._enter_main("Connected", "lab")
+    assert ui.places.currentWidget() is ui.folders_tab
+    assert not ui.disk_pie.isHidden()
+    # reserved 10% of 1000 = 100, kept = min(600, 100) = 100, offered = 500 → 50%
+    assert ui.offer_percent.text() == "Offering 50% of this disk"
+    legend = ui.offer_legend.text()
+    assert legend.startswith("Used ")
+    assert "Free " in legend
+    assert "Offered " in legend
+    assert ui.offer_slider.value() == 50
+    assert "Open web UI" not in legend
+
+
+def test_offer_pie_fail_stays_in_window(ui: MainWindow):
+    with patch(
+        "leasegrid_sync.app.read_disk_offer",
+        side_effect=SyncError("could not read this disk. boom", "check that the disk is mounted; Retry."),
+    ):
+        _enter(ui)
+    assert ui.places.currentWidget() is ui.folders_tab
+    assert "FAIL" in ui.offer_status.text()
+    assert "boom" in ui.offer_status.text()
+    assert "Next:" in ui.offer_status.text()
+    assert "% of this disk" in ui.offer_percent.text()
+    assert "Used" in ui.offer_legend.text() and "Offered" in ui.offer_legend.text()
+
+
+def test_offer_slider_sync_only_fails_in_window(ui: MainWindow):
+    _enter(ui)
+    ui.offer_slider.setValue(25)
+    ui.on_offer_percent_chosen()
+    assert "FAIL" in ui.offer_status.text()
+    assert "sync-only" in ui.offer_status.text()
+    assert "Offer disk" in ui.offer_status.text()
+    assert ui.places.currentWidget() is ui.folders_tab
+
+
+def test_offer_slider_saves_percent_of_this_disk(ui: MainWindow):
+    from collections import namedtuple
+
     (ui.tahoe.nodedir / "tahoe.cfg").write_text(
         "[node]\n[storage]\nenabled = true\n", encoding="utf-8"
     )
-    st = ConnectionStatus(state="Connected", detail="lab", introducer_ok=True)
-    with patch.object(ui.tahoe, "connection_status", return_value=st):
-        with patch.object(ui.mf, "list_folders", return_value=[]):
-            ui._enter_main("Connected", "lab")
-    assert "offering disk" in ui.offer_line.text().lower()
+    usage = namedtuple("usage", "total used free")(1000, 200, 800)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        _enter(ui)
+        ui.offer_slider.setValue(25)
+        ui.on_offer_percent_chosen()
+    assert "Saved" in ui.offer_status.text()
+    assert ui.offer_percent.text() == "Offering 25% of this disk"
+    cfg = (ui.tahoe.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+    assert "enabled = true" in cfg
+    assert "reserved_space = 550" in cfg  # free 800 − 25% of 1000
+    assert "Used" in ui.offer_legend.text()
+    assert "Free" in ui.offer_legend.text()
+    assert "Offered" in ui.offer_legend.text()
 
 
 def _enter(ui: MainWindow) -> None:
@@ -546,10 +629,15 @@ def _enter(ui: MainWindow) -> None:
             ui._enter_main("Connected", "lab")
 
 
-def test_credit_is_primary_place(ui: MainWindow):
+def test_gated_credit_is_secondary_place(ui: MainWindow, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
     _enter(ui)
-    assert ui.tabs.tabText(1) == "Credit"
-    ui.tabs.setCurrentWidget(ui.credit_tab)
+    assert ui.places.currentWidget() is ui.folders_tab
+    assert ui.credit_action.isVisible()
+    assert ui.credit_action.text() == "Credit"
+    ui.open_credit_place()
+    assert ui.places.currentWidget() is ui.credit_tab
+    assert not ui.back_btn.isHidden()
     assert not ui.credit_body.isHidden()
     assert ui.credit_topup_btn.text() == "Top up"
     assert "1 GiB upload = 1 GiB credit" not in ui.credit_remaining.text()
@@ -565,7 +653,7 @@ def test_credit_is_primary_place(ui: MainWindow):
 def test_credit_zero_state(ui: MainWindow, fake_credit: FakeCredit):
     fake_credit.tokens = 0
     _enter(ui)
-    ui.tabs.setCurrentWidget(ui.credit_tab)
+    ui.show_place(ui.credit_tab)
     text = ui.credit_remaining.text().lower()
     assert "none" in text
     assert not ui.credit_topup_btn.isHidden()
@@ -575,7 +663,7 @@ def test_credit_zero_state(ui: MainWindow, fake_credit: FakeCredit):
 def test_credit_load_fail_retry(ui: MainWindow, fake_credit: FakeCredit):
     fake_credit.fail_load = True
     _enter(ui)
-    ui.tabs.setCurrentWidget(ui.credit_tab)
+    ui.show_place(ui.credit_tab)
     assert not ui.credit_error.isHidden()
     assert "FAIL" in ui.credit_error.text()
     assert "Next:" in ui.credit_error.text()
@@ -596,7 +684,7 @@ def test_credit_tab_survives_non_sync_error(ui: MainWindow, fake_credit: FakeCre
     with patch.object(
         fake_credit, "load_balance", side_effect=RuntimeError("Remote end closed connection")
     ):
-        ui.tabs.setCurrentWidget(ui.credit_tab)
+        ui.show_place(ui.credit_tab)
     assert not ui.credit_error.isHidden()
     text = ui.credit_error.text()
     assert text.startswith("FAIL")
@@ -858,7 +946,7 @@ def test_add_folder_zero_credit_open_credit(ui: MainWindow, fake_credit: FakeCre
     assert "Not enough storage credit" in ui.folder_error.text()
     assert not ui.open_credit_btn.isHidden()
     ui.open_credit_place()
-    assert ui.tabs.currentWidget() is ui.credit_tab
+    assert ui.places.currentWidget() is ui.credit_tab
 
 
 def test_add_folder_ungated_zero_credit_does_not_block(ui: MainWindow, fake_credit: FakeCredit, monkeypatch):

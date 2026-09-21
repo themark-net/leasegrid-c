@@ -79,10 +79,11 @@ Headless: `leasegrid-sync --status` · `leasegrid-sync --credit-status`. CI: `QT
 
 - No WUI product path (`QDesktopServices.openUrl`, `webbrowser`, “use the web UI” CTA)
 - No furls/caps / wallet tokens in git; redact furls in UI errors
-- Operate-or-FAIL: join/add/load/refresh/redeem errors set in-window labels + Next + Retry
-- Credit is a primary place (tab), not Settings-only
+- Operate-or-FAIL: join/offer/pie/add/load/refresh/redeem errors set in-window labels + Next + Retry
+- Folders are the primary place after join. Credit and Settings are secondary (More). Offer is a local disk pie (used / free / offered) plus % of this disk, on the folder page.
+- Payment lecture (XMR / Top up) is hidden until `LEASEGRID_GATED`. Unpaid Add folder does not demand Credit.
 - Denomination: 1 token ≈ 1 GiB-share × 30 days on one node; expansion is real
-- No opaque ZKAP convert; no live XMR fields
+- No opaque ZKAP convert. XMR copy stays inside Credit → Top up, shown only when `LEASEGRID_GATED`
 - Do not wait on gate 0c/XMR to demo credit (lab faucet)
 
 ### Extension points

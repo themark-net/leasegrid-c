@@ -190,6 +190,248 @@ def storage_offered(nodedir: Path) -> bool:
         return True
 
 
+@dataclass(frozen=True)
+class DiskSlices:
+    """One local disk, split into used / free-kept / offered.
+
+    ``free`` is the raw free bytes from the OS. ``kept`` is the free bytes this
+    device is not offering. ``offered`` is the free bytes it will store for the
+    friendnet. used + kept + offered == used + free.
+    """
+
+    total: int
+    used: int
+    free: int
+    offered: int
+    kept: int
+
+    @property
+    def offered_percent(self) -> int:
+        if self.total <= 0:
+            return 0
+        return int(round(100.0 * self.offered / self.total))
+
+
+def format_bytes(n: int) -> str:
+    """Short size for the offer legend (1000-based, one decimal past bytes)."""
+    n = max(0, int(n))
+    units = ("B", "KB", "MB", "GB", "TB")
+    value = float(n)
+    idx = 0
+    while value >= 1000.0 and idx < len(units) - 1:
+        value /= 1000.0
+        idx += 1
+    if idx == 0:
+        return "%d B" % n
+    return "%.1f %s" % (value, units[idx])
+
+
+def offer_disk_path(home: Path, nodedir: Path) -> Path:
+    """Filesystem path whose ``disk_usage`` is 'this disk' for the offer pie."""
+    for candidate in (Path(home) / "storage", Path(nodedir), Path(home)):
+        if candidate.exists():
+            return candidate
+    return Path(home)
+
+
+def storage_reserved_raw(nodedir: Path) -> Optional[str]:
+    """``[storage] reserved_space`` as written, or None when unset.
+
+    Line scan, not ConfigParser: a value like ``50%`` is not an interpolation.
+    """
+    path = Path(nodedir) / "tahoe.cfg"
+    if not path.is_file():
+        return None
+    in_storage = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_storage = stripped.lower() == "[storage]"
+            continue
+        if not in_storage or not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, val = stripped.split("=", 1)
+        if key.strip().lower() == "reserved_space":
+            return val.strip()
+    return None
+
+
+_RESERVED_PCT = re.compile(r"^(\d+(?:\.\d+)?)%$")
+_RESERVED_SIZE = re.compile(r"^(\d+(?:\.\d+)?)([kmgt]i?b?)?$", re.IGNORECASE)
+_RESERVED_MULT = {
+    "": 1,
+    "k": 1024,
+    "kb": 1000,
+    "kib": 1024,
+    "m": 1024**2,
+    "mb": 1000**2,
+    "mib": 1024**2,
+    "g": 1024**3,
+    "gb": 1000**3,
+    "gib": 1024**3,
+    "t": 1024**4,
+    "tb": 1000**4,
+    "tib": 1024**4,
+}
+
+
+def parse_reserved_space(raw: str, total: int) -> int:
+    """Tahoe ``reserved_space``: bytes, ``1G`` / ``1GiB`` / ``1GB``, or ``50%``."""
+    text = (raw or "").strip().replace(" ", "")
+    if not text:
+        return 0
+    pct = _RESERVED_PCT.fullmatch(text)
+    if pct:
+        return max(0, int(float(pct.group(1)) / 100.0 * max(0, total)))
+    size = _RESERVED_SIZE.fullmatch(text)
+    if size is None:
+        mult = None
+    elif size.group(2):
+        mult = _RESERVED_MULT.get(size.group(2).lower())
+    else:
+        mult = 1
+    if size is None or mult is None:
+        raise SyncError(
+            "could not read this disk offer. reserved_space is not a size (%s)." % raw.strip(),
+            "set reserved_space to bytes, a size like 1G, or a percent; Retry.",
+        )
+    return max(0, int(float(size.group(1)) * mult))
+
+
+def compute_slices(total: int, used: int, free: int, *, offering: bool, reserved: int) -> DiskSlices:
+    """Partition this disk. Offered is free space beyond the Tahoe reserve."""
+    total = max(0, int(total))
+    used = max(0, int(used))
+    free = max(0, int(free))
+    if not offering:
+        return DiskSlices(total=total, used=used, free=free, offered=0, kept=free)
+    kept = min(free, max(0, int(reserved)))
+    return DiskSlices(total=total, used=used, free=free, offered=free - kept, kept=kept)
+
+
+def read_disk_offer(nodedir: Path, home: Path) -> DiskSlices:
+    """Local disk pie inputs. Raises ``SyncError`` when the disk cannot be read."""
+    path = offer_disk_path(home, nodedir)
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError as exc:
+        raise SyncError(
+            "could not read this disk. %s" % exc,
+            "check that the disk is mounted; Retry.",
+        ) from exc
+    if usage.total <= 0:
+        raise SyncError(
+            "could not read this disk. Reported size is zero.",
+            "check that the disk is mounted; Retry.",
+        )
+    offering = storage_offered(nodedir)
+    reserved = 0
+    if offering:
+        raw = storage_reserved_raw(nodedir)
+        if raw:
+            reserved = parse_reserved_space(raw, usage.total)
+    return compute_slices(usage.total, usage.used, usage.free, offering=offering, reserved=reserved)
+
+
+def node_can_offer_storage(nodedir: Path, home: Path) -> bool:
+    """True when this node was created with storage, not ``--no-storage``."""
+    if storage_offered(nodedir):
+        return True
+    for candidate in (Path(home) / "storage", Path(nodedir) / "storage"):
+        if candidate.is_dir():
+            return True
+    return False
+
+
+def _upsert_storage(nodedir: Path, values: dict[str, str]) -> None:
+    """Set keys in ``[storage]``, creating the section when missing."""
+    path = Path(nodedir) / "tahoe.cfg"
+    if not path.is_file():
+        raise SyncError(
+            "could not offer disk. No Tahoe node config on this device.",
+            "join the friendnet first; Retry.",
+        )
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip().lower() == "[storage]":
+            start = i
+            break
+    pending = {k.lower(): v for k, v in values.items()}
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("[storage]")
+        for key, val in pending.items():
+            lines.append("%s = %s" % (key, val))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        stripped = lines[j].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end = j
+            break
+    section = [lines[start]]
+    seen: set[str] = set()
+    for line in lines[start + 1 : end]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            section.append(line)
+            continue
+        key = stripped.split("=", 1)[0].strip().lower()
+        if key in pending:
+            section.append("%s = %s" % (key, pending[key]))
+            seen.add(key)
+        else:
+            section.append(line)
+    for key, val in pending.items():
+        if key not in seen:
+            section.append("%s = %s" % (key, val))
+    path.write_text("\n".join(lines[:start] + section + lines[end:]) + "\n", encoding="utf-8")
+
+
+def apply_offer_percent(nodedir: Path, home: Path, percent: int) -> DiskSlices:
+    """Persist how much of this disk to offer. 0% turns storage off.
+
+    A sync-only node (no storage dir, storage disabled) cannot be flipped on
+    from here — that needs a rejoin with Offer disk checked.
+    """
+    percent = max(0, min(100, int(percent)))
+    path = offer_disk_path(home, nodedir)
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError as exc:
+        raise SyncError(
+            "could not offer disk. %s" % exc,
+            "check that the disk is mounted; Retry.",
+        ) from exc
+    if usage.total <= 0:
+        raise SyncError(
+            "could not offer disk. Reported size is zero.",
+            "check that the disk is mounted; Retry.",
+        )
+    if percent == 0:
+        _upsert_storage(nodedir, {"enabled": "false"})
+        return compute_slices(usage.total, usage.used, usage.free, offering=False, reserved=0)
+    if not node_can_offer_storage(nodedir, home):
+        raise SyncError(
+            "could not offer disk. This device joined sync-only.",
+            "rejoin with Offer disk checked; Retry.",
+        )
+    desired = int(round(usage.total * (percent / 100.0)))
+    if desired > usage.free:
+        desired = usage.free
+    if desired <= 0:
+        _upsert_storage(nodedir, {"enabled": "false"})
+        return compute_slices(usage.total, usage.used, usage.free, offering=False, reserved=0)
+    reserved = usage.free - desired
+    _upsert_storage(nodedir, {"enabled": "true", "reserved_space": str(reserved)})
+    return compute_slices(
+        usage.total, usage.used, usage.free, offering=True, reserved=reserved
+    )
+
+
 # magic-wormhole code as printed by `tahoe invite`: "7-guitarist-revenge"
 WORMHOLE_CODE_RE = re.compile(r"^[0-9]{1,3}(-[a-z0-9]+){2,}$")
 

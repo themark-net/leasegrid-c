@@ -17,6 +17,7 @@ The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the compa
 Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [`src/leasegrid_zkap/`](src/leasegrid_zkap/) and [`deploy/zkap-lab/`](deploy/zkap-lab/). That lab is **not** PyPI ZKAPAuthorizer (Tahoe 1.20 pin; see [`docs/adr/0001-thin-lab-zkap-authorizer.md`](docs/adr/0001-thin-lab-zkap-authorizer.md)). Gates 0a and 0b have dated PASS rows in [`docs/08-lab.md`](docs/08-lab.md). Gates 0c–0d are not PASS until that log says so. No mainnet wallet.
 
 **U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
+**P1:** CrashPlan shell — folders first, Offer disk pie. Dogfood: [`docs/ops/p1-dogfood.md`](docs/ops/p1-dogfood.md).  
 **U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md).  
 **U3:** Installers for Linux (AppImage), macOS (.dmg) and Windows (setup.exe / zip) bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](docs/ops/installers.md).  
 **U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md).  
@@ -31,7 +32,7 @@ LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 .venv/bin/leasegrid-sync   # shell 2:
 scripts/dev-grid.sh --invite             # optional shell 3: a short one-time code (7-word-word) instead of the furl
 ```
 
-Join accepts a furl or a `tahoe invite` code and creates a Tahoe **node** (sync + storage by default; uncheck Offer disk or pass `--client-only` to skip). Credit → Top up is for grids that charge; unpaid join does not need it. Folders → Add folder syncs via Magic Folder. Details: [`docs/ops/dev-grid.md`](docs/ops/dev-grid.md).
+Join accepts a furl or a `tahoe invite` code and creates a Tahoe **node** (sync + storage by default; uncheck Offer disk or pass `--client-only` to skip). After join the window is the folder list plus an Offer pie (used / free / offered, as a percent of this disk). Credit → Top up is under More, and only when `LEASEGRID_GATED=1`; unpaid join and Add folder do not need it. Details: [`docs/ops/dev-grid.md`](docs/ops/dev-grid.md) · [`docs/ops/p1-dogfood.md`](docs/ops/p1-dogfood.md).
 
 **Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
 

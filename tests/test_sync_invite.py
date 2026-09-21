@@ -55,7 +55,7 @@ def test_http_wui_still_rejected():
     assert "does not use the Tahoe web UI" in exc.value.banner()
     with pytest.raises(SyncError) as exc:
         parse_invite("http://127.0.0.1:3456/")
-    assert "web UI" in exc.value.banner().lower() or "invite" in exc.value.message.lower()
+    assert "web ui" in exc.value.banner().lower()
 
 
 def test_join_url_without_fragment_fails_clearly():

@@ -275,8 +275,10 @@ def test_join_page_explains_what_join_does(ui: MainWindow):
     assert "1. Same invite" not in blob
     assert "No storage proofs" not in blob
     assert "Issuer trust" not in blob
-    assert "paste" in blob.lower() or "link" in blob.lower() or "code" in ui.invite_edit.placeholderText().lower()
-    assert "link" in ui.invite_edit.placeholderText().lower() or "code" in ui.invite_edit.placeholderText().lower()
+    assert "paste" in blob.lower() or "link" in blob.lower() or "code" in blob.lower()
+    ph = ui.invite_edit.placeholderText().lower()
+    assert "i2p" in ph or "join#" in ph
+    assert "word-word" in ph or "7-" in ph
     cb = ui.join_page.findChild(PyQt5.QtWidgets.QCheckBox, "offerStorage")
     assert cb is not None
     assert cb.isChecked()
@@ -336,6 +338,7 @@ def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
     url = ui.share_url_edit.text()
     assert url.startswith("http://alice.i2p/join#")
     assert furl not in url.split("#", 1)[0]
+    assert ui.share_url_edit.cursorPosition() == 0
     pix = ui.share_qr.pixmap()
     assert pix is not None and not pix.isNull()
     ui.on_copy_share_url()

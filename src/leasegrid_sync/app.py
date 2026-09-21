@@ -979,6 +979,8 @@ class MainWindow:
     def _refresh_share(self) -> None:
         url = self.current_share_url()
         self.share_url_edit.setText(url)
+        self.share_url_edit.setCursorPosition(0)
+        self.share_url_edit.setToolTip(url)
         self.copy_share_btn.setEnabled(bool(url))
         self.export_page_btn.setEnabled(bool(url))
         if not url:

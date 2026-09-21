@@ -161,6 +161,35 @@ def redact_furl(value: str) -> str:
     return text
 
 
+def popen_hidden(cmd: list[str], log_f) -> subprocess.Popen:
+    """Spawn a daemon without a console flash (Windows CREATE_NO_WINDOW)."""
+    kwargs: dict[str, Any] = {
+        "stdin": subprocess.PIPE,
+        "stdout": log_f,
+        "stderr": subprocess.STDOUT,
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return subprocess.Popen(cmd, **kwargs)
+
+
+def storage_offered(nodedir: Path) -> bool:
+    """True when this Tahoe node is configured to store shares for others."""
+    import configparser
+
+    cfg = configparser.ConfigParser()
+    path = Path(nodedir) / "tahoe.cfg"
+    if not path.is_file():
+        return False
+    cfg.read(path, encoding="utf-8")
+    if not cfg.has_section("storage"):
+        return False
+    try:
+        return cfg.getboolean("storage", "enabled", fallback=True)
+    except ValueError:
+        return True
+
+
 # magic-wormhole code as printed by `tahoe invite`: "7-guitarist-revenge"
 WORMHOLE_CODE_RE = re.compile(r"^[0-9]{1,3}(-[a-z0-9]+){2,}$")
 
@@ -435,11 +464,9 @@ class TahoeClient:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         log_f = open(self.log_path, "ab")
         try:
-            self._proc = subprocess.Popen(
+            self._proc = popen_hidden(
                 [self.require_bin(), "run", str(self.nodedir)],
-                stdin=subprocess.PIPE,
-                stdout=log_f,
-                stderr=subprocess.STDOUT,
+                log_f,
             )
         except OSError as exc:
             log_f.close()
@@ -796,11 +823,9 @@ class MagicFolderCtl:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         log_f = open(self.log_path, "ab")
         try:
-            self._proc = subprocess.Popen(
+            self._proc = popen_hidden(
                 [self.require_bin(), "--config", str(self.config_dir), "run"],
-                stdin=subprocess.PIPE,
-                stdout=log_f,
-                stderr=subprocess.STDOUT,
+                log_f,
             )
         except OSError as exc:
             log_f.close()

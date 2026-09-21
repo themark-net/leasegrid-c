@@ -19,7 +19,9 @@ from leasegrid_sync.backend import (
     endpoint_to_url,
     fix_joined_shares,
     is_wormhole_code,
+    popen_hidden,
     redact_furl,
+    storage_offered,
     validate_introducer_furl,
     validate_invite,
     which_bin,
@@ -53,6 +55,33 @@ def test_redact_furl_does_not_leak():
     out = redact_furl(furl)
     assert "secrethashvalue" not in out
     assert out.startswith("pb://")
+
+
+def test_popen_hidden_uses_create_no_window_on_windows(monkeypatch):
+    seen = {}
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            seen["cmd"] = cmd
+            seen["kwargs"] = kwargs
+
+    monkeypatch.setattr("leasegrid_sync.backend.subprocess.Popen", FakePopen)
+    monkeypatch.setattr("leasegrid_sync.backend.sys.platform", "win32")
+    monkeypatch.setattr("leasegrid_sync.backend.subprocess.CREATE_NO_WINDOW", 0x08000000, raising=False)
+    popen_hidden(["tahoe", "run", "x"], log_f=None)
+    assert seen["kwargs"]["creationflags"] == 0x08000000
+    assert seen["kwargs"]["stdin"] is not None
+
+
+def test_storage_offered_reads_tahoe_cfg(tmp_path: Path):
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n[storage]\nenabled = true\n", encoding="utf-8")
+    assert storage_offered(nodedir) is True
+    (nodedir / "tahoe.cfg").write_text("[node]\n[storage]\nenabled = false\n", encoding="utf-8")
+    assert storage_offered(nodedir) is False
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    assert storage_offered(nodedir) is False
 
 
 def test_endpoint_to_url():

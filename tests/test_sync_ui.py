@@ -163,7 +163,9 @@ def test_join_invite_success_enters_main(ui: MainWindow):
     assert "Connecting" in seen["progress"]
     assert seen["disabled"]
     assert ui.stack.currentWidget() is ui.main_page
-    assert "3 storage" in ui.status_chip.text()
+    assert "computers storing files" in ui.status_chip.text()
+    assert "3" in ui.status_chip.text()
+    assert "introducer" not in ui.status_chip.text().lower()
     assert ui.join_btn.isEnabled()
     assert ui.join_progress.text() == ""
     assert ui.join_error.text() == ""
@@ -439,7 +441,7 @@ def test_enter_main_shows_folders_tab(ui: MainWindow):
     assert ui.tabs.tabText(1) == "Credit"
     assert ui.tabs.tabText(2) == "Recovery"
     assert ui.tabs.tabText(3) == "Settings"
-    assert ui.status_chip.text().startswith("Connected")
+    assert ui.status_chip.text().startswith("Online")
 
 
 def test_settings_stub_does_not_defer_shipped_xmr_topup(ui: MainWindow):
@@ -472,6 +474,68 @@ def test_connected_autoload_skips_join(tmp_path: Path):
         window.win.hide()
         if window.tray is not None:
             window.tray.hide()
+
+
+def test_window_close_quits_instead_of_hiding_to_tray(ui: MainWindow):
+    called = []
+
+    def fake_quit():
+        called.append(True)
+
+    ev = ui.QtGui.QCloseEvent()
+    with patch.object(ui, "quit", side_effect=fake_quit):
+        ui._on_close(ev)
+    assert called == [True]
+    assert ev.isAccepted()
+
+
+def test_refresh_non_sync_error_stays_in_window(ui: MainWindow):
+    _enter(ui)
+    with patch.object(ui.mf, "list_folders", side_effect=RuntimeError("boom")):
+        ui.refresh()
+    assert ui.folder_error.text().startswith("FAIL")
+    assert "RuntimeError" in ui.folder_error.text()
+    assert "boom" in ui.folder_error.text()
+    assert (ui.home / "logs" / "sync-ui.log").is_file()
+
+
+def test_add_folder_non_sync_error_stays_in_window(ui: MainWindow, tmp_path: Path):
+    _enter(ui)
+    with patch.object(
+        ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)
+    ), patch.object(ui.mf, "add_folder", side_effect=RuntimeError("native abort")):
+        ui.on_add_folder()
+    assert ui.folder_error.text().startswith("FAIL")
+    assert "native abort" in ui.folder_error.text()
+    assert "folder not added" in ui.folder_error.text().lower()
+
+
+def test_status_chip_is_not_tahoe_jargon(ui: MainWindow):
+    from leasegrid_sync.app import format_status_chip
+
+    st = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 3 storage",
+        introducer_ok=True,
+        servers_connected=3,
+    )
+    text = format_status_chip(st)
+    assert "introducer" not in text.lower()
+    assert "3 computers storing files" in text
+    assert format_status_chip(
+        ConnectionStatus(state="Connected", detail="introducer up · 3 storage")
+    ) == text
+
+
+def test_offer_line_reads_storage_enabled(ui: MainWindow):
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[node]\n[storage]\nenabled = true\n", encoding="utf-8"
+    )
+    st = ConnectionStatus(state="Connected", detail="lab", introducer_ok=True)
+    with patch.object(ui.tahoe, "connection_status", return_value=st):
+        with patch.object(ui.mf, "list_folders", return_value=[]):
+            ui._enter_main("Connected", "lab")
+    assert "offering disk" in ui.offer_line.text().lower()
 
 
 def _enter(ui: MainWindow) -> None:

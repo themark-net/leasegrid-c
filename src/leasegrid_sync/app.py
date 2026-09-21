@@ -6,6 +6,7 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 import traceback
@@ -14,12 +15,14 @@ from typing import Optional
 
 from . import APP_NAME, __version__
 from .backend import (
+    ConnectionStatus,
     FolderRow,
     MagicFolderCtl,
     SyncError,
     TahoeClient,
     default_home,
     is_wormhole_code,
+    storage_offered,
     write_probe_file,
     wait_for_file_status,
 )
@@ -72,6 +75,27 @@ def _qt_api():
 
 UI_LOG_NAME = "sync-ui.log"
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
+
+
+def format_status_chip(status: ConnectionStatus) -> str:
+    """Buyer-facing chip. Tahoe 'introducer up · N storage' stays in --status."""
+    if status.state == "Connected":
+        n = int(status.servers_connected or 0)
+        if n <= 0:
+            m = re.search(r"(\d+)\s+storage", status.detail or "")
+            n = int(m.group(1)) if m else 0
+        if n <= 0:
+            return "Online — connected to the friendnet"
+        if n == 1:
+            return "Online — 1 computer storing files"
+        return "Online — %d computers storing files" % n
+    if status.state == "Connecting":
+        return "Connecting…"
+    if status.state == "FAIL":
+        return "Can't reach the friendnet"
+    if status.state == "Offline":
+        return "Offline"
+    return status.state
 
 
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
@@ -578,7 +602,7 @@ class MainWindow:
 
         self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         self.app.setApplicationName(APP_NAME)
-        self.app.setQuitOnLastWindowClosed(False)
+        self.app.setQuitOnLastWindowClosed(True)
 
         self.win = QtWidgets.QMainWindow()
         self.win.setWindowTitle(APP_NAME)
@@ -687,6 +711,11 @@ class MainWindow:
         chrome.addWidget(self.status_chip)
         v.addLayout(chrome)
 
+        self.offer_line = QtWidgets.QLabel("")
+        self.offer_line.setObjectName("offerLine")
+        self.offer_line.setWordWrap(True)
+        v.addWidget(self.offer_line)
+
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setObjectName("places")
         self.folders_tab = QtWidgets.QWidget()
@@ -712,9 +741,8 @@ class MainWindow:
         head.addWidget(self.add_btn)
         fl.addLayout(head)
         self.empty_label = QtWidgets.QLabel(
-            "No sync folders yet.\n"
-            "Add a local folder to sync encrypted shares to your friendnet "
-            "(Dropbox-shaped — not a web file browser)."
+            "No folders on this device yet.\n"
+            "Add a local folder to keep in sync here."
         )
         self.empty_label.setWordWrap(True)
         self.empty_label.setObjectName("foldersEmpty")
@@ -1043,12 +1071,9 @@ class MainWindow:
             self.show()
 
     def _on_close(self, event) -> None:
-        if self.tray is not None and self.tray.isVisible():
-            self.win.hide()
-            event.ignore()
-            return
-        event.ignore()
-        self.win.showMinimized()
+        """The window is the app. X quits; hiding to tray looked like a crash."""
+        event.accept()
+        self.quit()
 
     def show(self) -> None:
         self.win.show()
@@ -1064,6 +1089,10 @@ class MainWindow:
                 pass
 
     def quit(self) -> None:
+        if getattr(self, "_quitting", False):
+            return
+        self._quitting = True
+        self.poll.stop()
         self.shutdown()
         self.app.quit()
 
@@ -1081,6 +1110,7 @@ class MainWindow:
         self.unexpected_review.show()
 
     def show_folder_error(self, err: SyncError, open_credit: bool = False) -> None:
+        self.folder_error.setStyleSheet("color: #8b1a1a;")
         self.folder_error.setText(err.banner())
         self.open_credit_btn.setVisible(open_credit)
 
@@ -1160,21 +1190,39 @@ class MainWindow:
 
     def _enter_main(self, state: str, detail: str) -> None:
         self._joined = True
-        self.status_chip.setText("%s  %s" % (state, detail))
+        st = self.tahoe.connection_status()
+        self.status_chip.setText(format_status_chip(st) if st.state else "%s  %s" % (state, detail))
         self.stack.setCurrentWidget(self.main_page)
         self.poll.start()
         self._refresh_share()
+        self._refresh_offer_line()
         self.refresh()
+
+    def _refresh_offer_line(self) -> None:
+        offering = storage_offered(self.tahoe.nodedir)
+        if offering:
+            self.offer_line.setText(
+                "This device is offering disk to the friendnet (same unpaid join)."
+            )
+        else:
+            self.offer_line.setText(
+                "This device is not offering disk (joined sync-only)."
+            )
 
     def refresh(self) -> None:
         if not self._joined:
             return
         status = self.tahoe.connection_status()
-        self.status_chip.setText("%s  %s" % (status.state, status.detail))
+        self.status_chip.setText(format_status_chip(status))
+        self._refresh_offer_line()
         try:
             rows = self.mf.list_folders()
         except SyncError as exc:
             self.show_folder_error(exc)
+            return
+        except Exception as exc:
+            self._log_exception("refresh", exc)
+            self.show_folder_error(unexpected_error(exc, "could not list folders."))
             return
         self._render_rows(rows)
         self._show_refusal_if_any()
@@ -1223,6 +1271,9 @@ class MainWindow:
         if gate == "review":
             if not self._review_expansion(need, remaining):
                 return
+        self.folder_error.setStyleSheet("")
+        self.folder_error.setText("Adding folder… first time can take a minute.")
+        self.QtWidgets.QApplication.processEvents()
         try:
             name = self.mf.add_folder(path)
         except SyncError as exc:
@@ -1230,6 +1281,10 @@ class MainWindow:
             # Folder 500; the spender's event tells the real story.
             if not self._show_refusal_if_any():
                 self.show_folder_error(exc)
+            return
+        except Exception as exc:
+            self._log_exception("on_add_folder", exc)
+            self.show_folder_error(unexpected_error(exc, "folder not added."))
             return
         self.refresh()
         self.folder_error.setText("Added folder %s" % name)

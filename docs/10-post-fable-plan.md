@@ -7,6 +7,8 @@
 
 Bots coordinate. Heavy fix/Design research → **Cursor cloud on PR #7 branch** (Fable continuity) or Grok Build on nimo. No Mark drip.
 
+**Plan commit:** `c406e1c` · file: this doc.
+
 ---
 
 ## UX north star (locked)
@@ -17,46 +19,34 @@ Like **old CrashPlan**: clean UI focused on **files/folders**, visualization tha
 
 ## P0 — Stop the bleeding (this week)
 
-| # | Work | Owner | DoD / exit |
-|---|------|-------|------------|
-| P0.1 | Crash matrix repro | Tester + Cursor/Build | Matrix: AppImage / venv `leasegrid-sync` / Windows if available; unpaid friendnet join; add folder; offer disk on/off. Log paths captured. Mark only if crash needs a fact only he has. |
-| P0.2 | Top-3 root causes + fix | Cursor on #7 branch (DevBot routes) | Crash logs harvested; ≤3 ranked causes; fix until **boots + sync one folder without crash** (dogfood bar). |
-| P0.3 | Operate-or-FAIL gate | Tester | Installer green ≠ PASS. Tip install must **operate**: join unpaid → add folder → sync once without crash. Else FAIL. |
+| # | Issue | Work | Owner | Exit |
+|---|-------|------|-------|------|
+| P0.1 | [#8](https://github.com/themark-net/leasegrid-c/issues/8) | Crash matrix repro | Tester + Cursor | AppImage / venv / Windows; join; add folder; offer on/off; logs |
+| P0.2 | [#10](https://github.com/themark-net/leasegrid-c/issues/10) | Top-3 crash fix | Cursor on #7 | Boots + sync one folder without crash |
+| P0.3 | [#9](https://github.com/themark-net/leasegrid-c/issues/9) | Operate-or-FAIL | Tester | Tip install operate path PASS |
 
 **Non-goals P0:** CrashPlan shell polish, payment lecture, 0c/0d live, mainnet XMR, Tahoe WUI.
 
-**Staff:** Prefer Cursor cloud resume on `bc-9d0fb5d5…` / PR #7. Sysadmin: plant/beelink VM for install dogfood when asked (not nimo).
+**Staff:** Resume Cursor on `bc-9d0fb5d5…` / PR #7. Sysadmin: plant/beelink VM when asked (not nimo).
 
 ---
 
 ## P1 — CrashPlan shell (after P0 green)
 
-| # | Work | Owner | DoD / exit |
-|---|------|-------|------------|
-| P1.1 | Files-first IA | Design | Folder list primary; credit/settings secondary. Disk pie for Offer storage %. Artifacts under `docs/design/`. |
-| P1.2 | Hide payment lecture | Design + Cursor | Unpaid path default; payment UI gated until `LEASEGRID_GATED` / friendnet charges. |
-| P1.3 | Single CTA path | Design + Cursor | join → folders → offer disk viz as one primary path. |
+| # | Issue | Work | Owner |
+|---|-------|------|-------|
+| P1 | [#11](https://github.com/themark-net/leasegrid-c/issues/11) (or next) | Files-first IA + disk pie + CTA path | Design → Cursor |
 
 ---
 
 ## P2 — Rails polish (later)
 
-| # | Work | Notes |
-|---|------|-------|
-| P2.1 | 0c/0d lab + XMR UI behind Advanced | Do not block files UX. Stress Test owns lab PASS dates. |
-
-U4–U5 “feature complete” claims stay deferred until P0 green + P1 shell.
+0c/0d lab + XMR UI behind Advanced. Stress Test owns lab dates. Do not block files UX.
 
 ---
 
 ## Constraints
 
-- Mark-free for P0 except crash repro facts only he has (batch via CEO).
-- Founder standing rule: bots = DoD/issues/MERGE-CLEAR; heavy implement = Cursor/Build.
+- Mark-free for P0 except crash facts only he has (batch via CEO).
+- Founder standing rule: bots = DoD/issues/MERGE-CLEAR; implement = Cursor/Build.
 - Escalate CEO only money/legal/irreversible/creds.
-
----
-
-## Ticket map
-
-See GitHub issues filed with labels / titles `P0.*` / `P1.*` from this plan. Update this file when P0 exits green.

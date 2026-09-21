@@ -33,9 +33,9 @@ Non-goals P0: CrashPlan polish, payment lecture, live 0c/0d, mainnet XMR, Tahoe 
 
 | Issue | Work |
 |-------|------|
-| [#11](https://github.com/themark-net/leasegrid-c/issues/11) | Design: files-first IA + disk pie + CTA path; unpaid default |
+| [#11](https://github.com/themark-net/leasegrid-c/issues/11) | Files-first shell: folder list primary; Offer = local disk pie (used/free/offered, % of this disk); single CTA join → folders → offer viz; payment lecture hidden until `LEASEGRID_GATED` |
 
-HOLD Design implement until P0 green.
+P0 is green @ `c308b958`. Design PASS: nimo `docs/design/` README + 25–29 (`29-P1-DEVBOT-HANDOFF.md`); plan tip `f06ef01`. AppImage stays [#12](https://github.com/themark-net/leasegrid-c/issues/12).
 
 ---
 

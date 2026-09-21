@@ -16,13 +16,16 @@ from typing import Optional
 from . import APP_NAME, __version__
 from .backend import (
     ConnectionStatus,
+    DiskSlices,
     FolderRow,
     MagicFolderCtl,
     SyncError,
     TahoeClient,
+    apply_offer_percent,
     default_home,
+    format_bytes,
     is_wormhole_code,
-    storage_offered,
+    read_disk_offer,
     write_probe_file,
     wait_for_file_status,
 )
@@ -110,6 +113,62 @@ def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     except OSError:
         pass
     return path
+
+
+def _make_disk_pie(parent):
+    """Paint used / offered / free as a pie. No Tahoe web view."""
+    _QtCore, QtGui, QtWidgets = _qt_api()
+
+    class DiskPie(QtWidgets.QWidget):
+        def __init__(self) -> None:
+            super().__init__(parent)
+            self.setObjectName("diskPie")
+            self.setMinimumSize(148, 148)
+            self.setMaximumSize(180, 180)
+            self._slices: Optional[DiskSlices] = None
+
+        def set_slices(self, slices: Optional[DiskSlices]) -> None:
+            self._slices = slices
+            self.update()
+
+        def paintEvent(self, _event) -> None:
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            side = min(self.width(), self.height()) - 8
+            rect = _QtCore.QRectF(
+                (self.width() - side) / 2.0,
+                (self.height() - side) / 2.0,
+                side,
+                side,
+            )
+            painter.setPen(_QtCore.Qt.NoPen)
+            slices = self._slices
+            parts: list[tuple[int, QtGui.QColor]] = []
+            if slices is not None:
+                parts = [
+                    (slices.used, QtGui.QColor("#6b7280")),
+                    (slices.offered, QtGui.QColor("#1f6feb")),
+                    (slices.kept, QtGui.QColor("#d1d5db")),
+                ]
+            total = sum(v for v, _c in parts)
+            if total <= 0:
+                painter.setBrush(QtGui.QColor("#e5e7eb"))
+                painter.drawEllipse(rect)
+                painter.end()
+                return
+            start = 90 * 16
+            for value, color in parts:
+                if value <= 0:
+                    continue
+                span = -int(round(360 * 16 * value / total))
+                if span == 0:
+                    continue
+                painter.setBrush(color)
+                painter.drawPie(rect, start, span)
+                start += span
+            painter.end()
+
+    return DiskPie()
 
 
 def unexpected_error(exc: BaseException, what: str) -> SyncError:
@@ -630,7 +689,9 @@ class MainWindow:
         self.stack.addWidget(self.main_page)
 
         self.tray = None
+        self.tray_credit_action = None
         self._init_tray()
+        self._sync_gated_chrome()
 
         self.poll = QtCore.QTimer(self.win)
         self.poll.setInterval(3000)
@@ -668,22 +729,26 @@ class MainWindow:
         v.addWidget(self.offer_storage_cb)
         self.join_btn = QtWidgets.QPushButton("Join friendnet")
         self.join_btn.setObjectName("joinButton")
+        self.join_btn.setAutoDefault(True)
         self.join_btn.setDefault(True)
         self.join_btn.clicked.connect(self.on_join_invite)
         v.addWidget(self.join_btn)
         self.existing_btn = QtWidgets.QPushButton("Use existing Tahoe node")
         self.existing_btn.setObjectName("existingButton")
         self.existing_btn.setFlat(True)
+        self.existing_btn.setAutoDefault(False)
         self.existing_btn.clicked.connect(self.on_join_existing)
         v.addWidget(self.existing_btn)
         self.import_key_btn = QtWidgets.QPushButton("Import recovery key instead…")
         self.import_key_btn.setObjectName("importKeyButton")
         self.import_key_btn.setFlat(True)
+        self.import_key_btn.setAutoDefault(False)
         self.import_key_btn.clicked.connect(self.on_import_recovery)
         v.addWidget(self.import_key_btn)
         self.details_btn = QtWidgets.QPushButton("What's a friendnet?")
         self.details_btn.setObjectName("joinDetails")
         self.details_btn.setFlat(True)
+        self.details_btn.setAutoDefault(False)
         self.details_btn.clicked.connect(self.on_join_details)
         v.addWidget(self.details_btn)
         self.join_progress = QtWidgets.QLabel("")
@@ -708,32 +773,55 @@ class MainWindow:
         self.status_chip.setObjectName("statusChip")
         chrome.addWidget(QtWidgets.QLabel(APP_NAME))
         chrome.addStretch(1)
+        self.back_btn = QtWidgets.QPushButton("Folders")
+        self.back_btn.setObjectName("backToFolders")
+        self.back_btn.setFlat(True)
+        self.back_btn.clicked.connect(lambda: self.show_place(self.folders_tab))
+        self.back_btn.hide()
+        chrome.addWidget(self.back_btn)
         chrome.addWidget(self.status_chip)
+        self.more_btn = QtWidgets.QToolButton()
+        self.more_btn.setText("More")
+        self.more_btn.setObjectName("moreButton")
+        self.more_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        more = QtWidgets.QMenu(self.more_btn)
+        more.setObjectName("moreMenu")
+        self.credit_action = more.addAction("Credit")
+        self.credit_action.setObjectName("creditPlaceAction")
+        self.credit_action.triggered.connect(self.open_credit_place)
+        self.recovery_action = more.addAction("Recovery")
+        self.recovery_action.triggered.connect(lambda: self.show_place(self.recovery_tab))
+        self.settings_action = more.addAction("Settings")
+        self.settings_action.triggered.connect(lambda: self.show_place(self.settings_tab))
+        self.more_btn.setMenu(more)
+        chrome.addWidget(self.more_btn)
         v.addLayout(chrome)
 
-        self.offer_line = QtWidgets.QLabel("")
-        self.offer_line.setObjectName("offerLine")
-        self.offer_line.setWordWrap(True)
-        v.addWidget(self.offer_line)
-
-        self.tabs = QtWidgets.QTabWidget()
-        self.tabs.setObjectName("places")
+        self.places = QtWidgets.QStackedWidget()
+        self.places.setObjectName("places")
         self.folders_tab = QtWidgets.QWidget()
+        self.folders_tab.setObjectName("foldersTab")
         self.credit_tab = QtWidgets.QWidget()
         self.credit_tab.setObjectName("creditTab")
         self.recovery_tab = QtWidgets.QWidget()
         self.recovery_tab.setObjectName("recoveryTab")
         self.settings_tab = QtWidgets.QWidget()
-        self.tabs.addTab(self.folders_tab, "Folders")
-        self.tabs.addTab(self.credit_tab, "Credit")
-        self.tabs.addTab(self.recovery_tab, "Recovery")
-        self.tabs.addTab(self.settings_tab, "Settings")
-        self.tabs.currentChanged.connect(self._on_place_changed)
-        v.addWidget(self.tabs)
+        self.places.addWidget(self.folders_tab)
+        self.places.addWidget(self.credit_tab)
+        self.places.addWidget(self.recovery_tab)
+        self.places.addWidget(self.settings_tab)
+        self.places.currentChanged.connect(self._on_place_changed)
+        v.addWidget(self.places)
 
         fl = QtWidgets.QVBoxLayout(self.folders_tab)
         head = QtWidgets.QHBoxLayout()
-        head.addWidget(QtWidgets.QLabel("Folders"))
+        folders_title = QtWidgets.QLabel("Folders")
+        folders_title.setObjectName("foldersTitle")
+        font = folders_title.font()
+        font.setPointSize(14)
+        font.setBold(True)
+        folders_title.setFont(font)
+        head.addWidget(folders_title)
         head.addStretch(1)
         self.add_btn = QtWidgets.QPushButton("Add folder")
         self.add_btn.setObjectName("addFolderButton")
@@ -753,7 +841,7 @@ class MainWindow:
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        fl.addWidget(self.table)
+        fl.addWidget(self.table, 1)
         self.folder_error = QtWidgets.QLabel("")
         self.folder_error.setObjectName("folderError")
         self.folder_error.setWordWrap(True)
@@ -764,11 +852,57 @@ class MainWindow:
         self.open_credit_btn.clicked.connect(self.open_credit_place)
         self.open_credit_btn.hide()
         fl.addWidget(self.open_credit_btn)
+        fl.addWidget(self._build_offer_box())
 
         self._build_credit_tab()
         self._build_recovery_tab()
         self._build_settings_tab()
+        self._sync_gated_chrome()
         return page
+
+    def _build_offer_box(self):
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QGroupBox("Offer storage on this disk")
+        box.setObjectName("offerBox")
+        lay = QtWidgets.QHBoxLayout(box)
+        self.disk_pie = _make_disk_pie(box)
+        self.disk_offer: Optional[DiskSlices] = None
+        lay.addWidget(self.disk_pie)
+        col = QtWidgets.QVBoxLayout()
+        self.offer_percent = QtWidgets.QLabel("Offering 0% of this disk")
+        self.offer_percent.setObjectName("offerPercent")
+        font = self.offer_percent.font()
+        font.setPointSize(13)
+        font.setBold(True)
+        self.offer_percent.setFont(font)
+        self.offer_percent.setWordWrap(True)
+        col.addWidget(self.offer_percent)
+        self.offer_legend = QtWidgets.QLabel("Used  ·  Free  ·  Offered")
+        self.offer_legend.setObjectName("offerLegend")
+        self.offer_legend.setWordWrap(True)
+        col.addWidget(self.offer_legend)
+        hint = QtWidgets.QLabel(
+            "Offered is free space on this disk that this device will store for the friendnet."
+        )
+        hint.setObjectName("offerHint")
+        hint.setWordWrap(True)
+        col.addWidget(hint)
+        slider_row = QtWidgets.QHBoxLayout()
+        slider_row.addWidget(QtWidgets.QLabel("Offer"))
+        self.offer_slider = QtWidgets.QSlider(self.QtCore.Qt.Horizontal)
+        self.offer_slider.setObjectName("offerSlider")
+        self.offer_slider.setRange(0, 100)
+        self.offer_slider.setValue(0)
+        self.offer_slider.sliderReleased.connect(self.on_offer_percent_chosen)
+        slider_row.addWidget(self.offer_slider, 1)
+        col.addLayout(slider_row)
+        self.offer_status = QtWidgets.QLabel("")
+        self.offer_status.setObjectName("offerStatus")
+        self.offer_status.setWordWrap(True)
+        col.addWidget(self.offer_status)
+        col.addStretch(1)
+        lay.addLayout(col, 1)
+        return box
 
     def _build_credit_tab(self) -> None:
         QtWidgets = self.QtWidgets
@@ -922,7 +1056,7 @@ class MainWindow:
             self._enter_main("Connected", result.grid)
         else:
             self.refresh()
-        self.tabs.setCurrentWidget(self.folders_tab)
+        self.show_place(self.folders_tab)
         self.folder_error.setText(note)
         self.recovery_status.setText(note)
 
@@ -965,20 +1099,25 @@ class MainWindow:
             "use LAN/WAN.\n\n"
             "Coming later\n"
             "· .deb package (AppImage / macOS / Windows installers ship now)\n\n"
-            "This device offers disk on Join unless you uncheck it. Reachable from other "
-            "machines only if LEASEGRID_STORAGE_HOSTNAME is a LAN name or IP "
-            "(lab default is 127.0.0.1).\n\n"
-            "Credit → Top up quotes XMR when this friendnet charges. Unpaid join and offer "
-            "do not need it.\n\n"
+            "This device offers disk on Join unless you uncheck it. The pie on Folders "
+            "is how much of this disk that is. Reachable from other machines only if "
+            "LEASEGRID_STORAGE_HOSTNAME is a LAN name or IP (lab default is 127.0.0.1).\n\n"
             "About\n"
             "%s (buyer) · version %s\n"
-            "Grid: lab-friendnet\n"
-            "Credit: open the Credit place to view balance / Top up."
+            "Grid: lab-friendnet"
             % (APP_NAME, __version__)
         )
         note.setWordWrap(True)
         note.setObjectName("settingsNote")
         sl.addWidget(note)
+        self.payment_lecture = QtWidgets.QLabel(
+            "This friendnet charges for storage.\n"
+            "Credit → Top up quotes XMR. Open Credit from More to see the balance."
+        )
+        self.payment_lecture.setWordWrap(True)
+        self.payment_lecture.setObjectName("paymentLecture")
+        self.payment_lecture.hide()
+        sl.addWidget(self.payment_lecture)
         sl.addStretch(1)
 
     def on_join_details(self) -> None:
@@ -1054,8 +1193,8 @@ class MainWindow:
         menu = QtWidgets.QMenu()
         open_act = menu.addAction("Open Sync")
         open_act.triggered.connect(self.show)
-        credit_act = menu.addAction("Credit")
-        credit_act.triggered.connect(self.open_credit_place)
+        self.tray_credit_action = menu.addAction("Credit")
+        self.tray_credit_action.triggered.connect(self.open_credit_place)
         quit_act = menu.addAction("Quit")
         quit_act.triggered.connect(self.quit)
         self.tray.setContextMenu(menu)
@@ -1193,28 +1332,87 @@ class MainWindow:
         st = self.tahoe.connection_status()
         self.status_chip.setText(format_status_chip(st) if st.state else "%s  %s" % (state, detail))
         self.stack.setCurrentWidget(self.main_page)
+        self.show_place(self.folders_tab)
+        self._sync_gated_chrome()
         self.poll.start()
         self._refresh_share()
-        self._refresh_offer_line()
         self.refresh()
 
-    def _refresh_offer_line(self) -> None:
-        offering = storage_offered(self.tahoe.nodedir)
-        if offering:
-            self.offer_line.setText(
-                "This device is offering disk to the friendnet (same unpaid join)."
+    def _sync_gated_chrome(self) -> None:
+        """Payment lecture stays hidden until this friendnet charges."""
+        gated = credit_enforced()
+        if getattr(self, "credit_action", None) is not None:
+            self.credit_action.setVisible(gated)
+        tray_act = getattr(self, "tray_credit_action", None)
+        if tray_act is not None:
+            tray_act.setVisible(gated)
+        lecture = getattr(self, "payment_lecture", None)
+        if lecture is not None:
+            lecture.setVisible(gated)
+
+    def _refresh_offer_viz(self) -> None:
+        try:
+            slices = read_disk_offer(self.tahoe.nodedir, self.home)
+        except SyncError as exc:
+            self._show_offer_fail(exc)
+            return
+        except Exception as exc:
+            self._log_exception("offer-pie", exc)
+            self._show_offer_fail(unexpected_error(exc, "could not read this disk."))
+            return
+        self._show_offer_slices(slices, saved=False)
+
+    def _show_offer_fail(self, err: SyncError) -> None:
+        self.disk_offer = None
+        self.disk_pie.set_slices(None)
+        self.offer_percent.setText("% of this disk")
+        self.offer_legend.setText("Used  ·  Free  ·  Offered")
+        self.offer_status.setStyleSheet("color: #8b1a1a;")
+        self.offer_status.setText(err.banner())
+
+    def _show_offer_slices(self, slices: DiskSlices, saved: bool) -> None:
+        self.disk_offer = slices
+        self.disk_pie.set_slices(slices)
+        self.offer_percent.setText("Offering %d%% of this disk" % slices.offered_percent)
+        self.offer_legend.setText(
+            "Used %s  ·  Free %s  ·  Offered %s"
+            % (format_bytes(slices.used), format_bytes(slices.kept), format_bytes(slices.offered))
+        )
+        if not self.offer_slider.isSliderDown():
+            self.offer_slider.blockSignals(True)
+            self.offer_slider.setValue(slices.offered_percent)
+            self.offer_slider.blockSignals(False)
+        self.offer_status.setStyleSheet("")
+        if saved:
+            self.offer_status.setText(
+                "Saved. This device will offer %d%% of this disk." % slices.offered_percent
             )
         else:
-            self.offer_line.setText(
-                "This device is not offering disk (joined sync-only)."
-            )
+            self.offer_status.setText("")
+
+    def on_offer_percent_chosen(self) -> None:
+        percent = self.offer_slider.value()
+        try:
+            slices = apply_offer_percent(self.tahoe.nodedir, self.home, percent)
+        except SyncError as exc:
+            self._refresh_offer_viz()
+            self.offer_status.setStyleSheet("color: #8b1a1a;")
+            self.offer_status.setText(exc.banner())
+            return
+        except Exception as exc:
+            self._log_exception("offer-percent", exc)
+            self._refresh_offer_viz()
+            self.offer_status.setStyleSheet("color: #8b1a1a;")
+            self.offer_status.setText(unexpected_error(exc, "could not offer disk.").banner())
+            return
+        self._show_offer_slices(slices, saved=True)
 
     def refresh(self) -> None:
         if not self._joined:
             return
         status = self.tahoe.connection_status()
         self.status_chip.setText(format_status_chip(status))
-        self._refresh_offer_line()
+        self._refresh_offer_viz()
         try:
             rows = self.mf.list_folders()
         except SyncError as exc:
@@ -1309,19 +1507,26 @@ class MainWindow:
             self.on_top_up()
         return False
 
+    def show_place(self, widget) -> None:
+        self.places.setCurrentWidget(widget)
+
     def open_credit_place(self) -> None:
         self.show()
         if self.stack.currentWidget() is not self.main_page:
             return
-        self.tabs.setCurrentWidget(self.credit_tab)
-        self.load_credit()
+        if self.places.currentWidget() is self.credit_tab:
+            self.load_credit()
+            return
+        self.show_place(self.credit_tab)
 
     def _on_place_changed(self, idx: int) -> None:
+        widget = self.places.widget(idx)
+        self.back_btn.setVisible(widget is not self.folders_tab)
         if not self._joined:
             return
-        if self.tabs.widget(idx) is self.credit_tab:
+        if widget is self.credit_tab:
             self.load_credit()
-        elif self.tabs.widget(idx) is self.settings_tab:
+        elif widget is self.settings_tab:
             self._refresh_share()
 
     def load_credit(self) -> None:

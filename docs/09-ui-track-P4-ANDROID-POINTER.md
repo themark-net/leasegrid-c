@@ -1,0 +1,3 @@
+# UI track pointer — P4 Android (Slice A)
+
+**P4 Android Slice A Design DoD** (read-first APK: join/import → folders → download/open; journey + IA + wireframes + DevBot handoff) lives in [`design/`](design/) — start at [`design/README.md`](design/README.md) (artifacts `35`–`39`). Cite: issue [#23](https://github.com/themark-net/leasegrid-c/issues/23) · tip ≥ `7837ef8` · `docs/03-roadmap.md` Phase 4 (mobile read, then write) · desktop Sync (U0–U4 + AppImage) stays primary. **Slice B** (write sync) is follow-on only and does not block Slice A Design PASS. U5 (XMR) deferred. Tester after implement: **And** (emulator dogfood).

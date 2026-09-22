@@ -1,0 +1,38 @@
+{
+  "bundle": {
+    "created": 1700000000.0,
+    "credit_seed": "",
+    "folders": [
+      {
+        "author_name": "x",
+        "collective_dircap": "URI:DIR2:zeymwpndqvrsklpcvovfywvoie:bi6j4lmtwnteznypa3ihn4m7nxm3uavbvdzjl544srrhzhyvj3uq",
+        "magic_path": "/home/x/Photos",
+        "name": "Photos",
+        "poll_interval": 5,
+        "scan_interval": 5,
+        "upload_dircap": "URI:DIR2:chob75vxeonzy43dca3icankum:oy4vcxdqlenb4p5c3s3hyoimpp3quz33wiaqxmagqflsi5rb2ena"
+      }
+    ],
+    "introducer_furl": "pb://hashhashhash@127.0.0.1:45001/swissnumswiss",
+    "issuer_url": "http://127.0.0.1:8700",
+    "nickname": "nimo",
+    "quote_counter": 0,
+    "shares": [
+      2,
+      3,
+      3
+    ],
+    "version": 1,
+    "wallet": {
+      "issuer-pubkey-id": "ab",
+      "tokens": [
+        {
+          "W": "2",
+          "t": "1"
+        }
+      ]
+    }
+  },
+  "encrypted": false,
+  "leasegrid-recovery": 1
+}

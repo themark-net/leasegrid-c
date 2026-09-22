@@ -17,5 +17,11 @@ build/
 inventory.yaml
 *.furl
 
+# Android Slice A local build
+android/.gradle/
+android/local.properties
+android/.cxx/
+android/**/build/
+
 # local 0c scratch (not for 0b tip)
 GATE0C_NETWORK_CONSTRAINT.md

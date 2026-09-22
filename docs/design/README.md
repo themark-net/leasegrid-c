@@ -92,3 +92,21 @@ U4 **adds** recovery-copy DoD (`30`–`34`). It does **not** replace U0–P1 art
 Tahoe WUI · “reset password” · rootcap paste as buyer path · payment lecture on unpaid export/import · Recovery as post-join primary · AppImage (#12) · U5/mainnet XMR · rewriting `10`–`29` · Mark drip from Design.
 
 See [33-U4-NON-GOALS.md](33-U4-NON-GOALS.md).
+
+---
+
+## P4 Android Slice A (added — `10`–`34` unchanged)
+
+**Status:** implement handoff landed. Design bodies `35`–`39` are the Design PASS package. This section only points at them.
+
+| File | Role |
+|------|------|
+| [35-P4-ANDROID-A-JOURNEY.md](35-P4-ANDROID-A-JOURNEY.md) | Join or import → folders → download/open; FAIL |
+| [36-P4-ANDROID-A-IA.md](36-P4-ANDROID-A-IA.md) | Places; Slice B parked |
+| [37-P4-ANDROID-A-WIREFRAMES.md](37-P4-ANDROID-A-WIREFRAMES.md) | M1–M8 |
+| [38-P4-ANDROID-A-NON-GOALS.md](38-P4-ANDROID-A-NON-GOALS.md) | WUI, Electron-on-Android, format v2, Play/iOS, Slice B writes |
+| [39-P4-ANDROID-A-DEVBOT-HANDOFF.md](39-P4-ANDROID-A-DEVBOT-HANDOFF.md) | Binding implement handoff · issue #23 · tip ≥ `7837ef8` |
+| [09-ui-track-P4-ANDROID-POINTER.md](09-ui-track-P4-ANDROID-POINTER.md) | Pointer beside the UI track |
+| [../ops/p4-android-dogfood.md](../ops/p4-android-dogfood.md) | And emulator install path |
+
+Module: `android/`. Debug APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Application id: `net.themark.leasegrid.sync`. CI artifact: `leasegrid-sync-android-slice-a-debug.apk`.

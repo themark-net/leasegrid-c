@@ -79,8 +79,8 @@ from the venv, then drives the bundle with the venv scrubbed from PATH
 5. `dev-grid.sh --invite` → a second Sync home joins with the short code via the
    grid's local wormhole relay; the joined `tahoe.cfg` carries the invite's
    nickname and encoding.
-6. `--export-recovery` from the paying home, `--restore-recovery` on a third
-   home → Credit re-collects the same XMR batch from the seed.
+6. `--export-recovery` (with `--ack-threat --ack-loss --ack-store`) from the paying home, `--restore-recovery --ack-threat` on a third
+   home → Credit re-collects the same XMR batch from the seed. Missing ACKs FAIL and write nothing.
 
 ## Evidence (CI run 35491091151, 2026-09-20)
 

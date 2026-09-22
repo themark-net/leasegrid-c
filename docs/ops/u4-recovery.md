@@ -1,6 +1,6 @@
 # U4 — Recovery key (export / import)
 
-**Cite:** `docs/09-ui-track.md` U4 · `docs/design/12-U0-WIREFRAMES.md` §4 · `docs/03-roadmap.md` Phase 1 “Recovery Key / capability backup”  
+**Cite:** `docs/design/34-U4-DEVBOT-HANDOFF.md` · issue #15 · tip `4e1e6bd` · `docs/09-ui-track.md` U4 · `docs/design/12-U0-WIREFRAMES.md` §4  
 **Not:** Tahoe WUI. Not a Tahoe rootcap you paste by hand. Not a “reset password”.
 
 Screenshots: [`u4-recovery.png`](u4-recovery.png) (Recovery place), [`u4-export-gate.png`](u4-export-gate.png) (scary gate).
@@ -40,17 +40,18 @@ The lost device stays listed as a participant. If it comes back, both keep synci
 
 ## Dogfood
 
-Window: **Recovery → Export recovery key…** (both ACKs, passphrase, path).
-Fresh device: join page → **Import recovery key instead…**.
+Window: first-run **Join** shows the four-point threat copy. **Join friendnet** stays disabled until **I understand the four points above.** Offer disk stays checked. After join the window is **Folders** with the offer pie. **More → Recovery** → **Export recovery key…** (STOP, both ACKs, optional passphrase, Write). Success says to store the file offline. A blank device uses **Import recovery key instead…** and lands on the Folders list. A dismissible “No recovery key exported yet” nudge may sit under the pie; it does not block Add folder.
 
-Headless (same as the e2e run on the dev grid):
+Headless (same as the e2e run on the dev grid). Export without the three ACKs FAILs and writes nothing:
 
 ```bash
 export LEASEGRID_RECOVERY_PASSPHRASE='correct horse'
 # device A
-leasegrid-sync --export-recovery ~/leasegrid-nimo.leasegrid-recovery
+leasegrid-sync --export-recovery ~/leasegrid-nimo.leasegrid-recovery \
+  --ack-threat --ack-loss --ack-store
 # device B (empty LEASEGRID_SYNC_HOME)
-LEASEGRID_RESTORE_LINGER=45 leasegrid-sync --restore-recovery ~/leasegrid-nimo.leasegrid-recovery
+LEASEGRID_RESTORE_LINGER=45 leasegrid-sync --restore-recovery ~/leasegrid-nimo.leasegrid-recovery \
+  --ack-threat
 ls ~/Leasegrid/<folder>       # files back from the friendnet
 ```
 

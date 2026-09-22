@@ -10,6 +10,7 @@ from pathlib import Path
 from . import APP_NAME, __version__
 from .backend import SyncError, TahoeClient, default_nodedir
 from .credit import CreditCtl, format_remaining
+from .recovery import EXPORT_ACK_MSG, EXPORT_ACK_NEXT, THREAT_ACK_MSG, THREAT_ACK_NEXT
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -92,10 +93,29 @@ def build_parser() -> argparse.ArgumentParser:
         "Host that file on your I2P eepsite.",
     )
     p.add_argument(
+        "--ack-threat",
+        action="store_true",
+        help="Acknowledge the friendnet threat copy. Required before --export-recovery "
+        "or --restore-recovery. Same as LEASEGRID_RECOVERY_ACK_THREAT=1.",
+    )
+    p.add_argument(
+        "--ack-loss",
+        action="store_true",
+        help="Acknowledge that losing the recovery key and this device can mean total loss. "
+        "Required before --export-recovery. Same as LEASEGRID_RECOVERY_ACK_LOSS=1.",
+    )
+    p.add_argument(
+        "--ack-store",
+        action="store_true",
+        help="Acknowledge the recovery key will be stored offline. "
+        "Required before --export-recovery. Same as LEASEGRID_RECOVERY_ACK_STORE=1.",
+    )
+    p.add_argument(
         "--export-recovery",
         metavar="PATH",
         default=None,
         help="Write a recovery key for the joined friendnet to PATH and exit (no window). "
+        "Requires --ack-threat, --ack-loss, and --ack-store. "
         "Passphrase from LEASEGRID_RECOVERY_PASSPHRASE (empty = plaintext).",
     )
     p.add_argument(
@@ -103,8 +123,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help="Restore folders from a recovery key on this device and exit (no window). "
-        "Passphrase from LEASEGRID_RECOVERY_PASSPHRASE. Folders land in "
-        "LEASEGRID_RESTORE_ROOT (default ~/Leasegrid).",
+        "Requires --ack-threat. Passphrase from LEASEGRID_RECOVERY_PASSPHRASE. "
+        "Folders land in LEASEGRID_RESTORE_ROOT (default ~/Leasegrid).",
     )
     return p
 
@@ -190,9 +210,24 @@ def _join_headless(args, nodedir: Path) -> int:
     return 0 if st.state == "Connected" else 1
 
 
+def _env_ack(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _recovery_headless(args, nodedir: Path) -> int:
     from .backend import MagicFolderCtl, default_home
     from .recovery import RecoveryCtl
+
+    if args.export_recovery:
+        threat = args.ack_threat or _env_ack("LEASEGRID_RECOVERY_ACK_THREAT")
+        loss = args.ack_loss or _env_ack("LEASEGRID_RECOVERY_ACK_LOSS")
+        store = args.ack_store or _env_ack("LEASEGRID_RECOVERY_ACK_STORE")
+        if not (threat and loss and store):
+            print(SyncError(EXPORT_ACK_MSG, EXPORT_ACK_NEXT).banner(), file=sys.stderr)
+            return 1
+    elif not (args.ack_threat or _env_ack("LEASEGRID_RECOVERY_ACK_THREAT")):
+        print(SyncError(THREAT_ACK_MSG, THREAT_ACK_NEXT).banner(), file=sys.stderr)
+        return 1
 
     home = default_home()
     tahoe = TahoeClient(nodedir=nodedir, home=home)

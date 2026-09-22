@@ -1,11 +1,11 @@
 # Leasegrid Sync — Design DoD index
 
-**Status:** **U4 Recovery — Design DoD ready** — 2026-09-21 PT  
+**Status:** **P4 Android Slice A — Design DoD ready** — 2026-09-22 PT  
 **Owner:** Design Bot (executor staged on box)  
-**Date:** 2026-09-21 PT  
-**Product lock:** CEO/PM RELEASE U4 Design + [`docs/09-ui-track.md`](../09-ui-track.md) U4 · issue [#15](https://github.com/themark-net/leasegrid-c/issues/15) · tip **`4e1e6bd`** (P0+P1 CrashPlan shell)  
+**Date:** 2026-09-22 PT  
+**Product lock:** CEO/PM RELEASE P4 Android Design · issue [#23](https://github.com/themark-net/leasegrid-c/issues/23) · tip **`7837ef8`** · roadmap Phase 4 (mobile read, then write) · desktop Sync (U0–U4 + AppImage) stays **primary**  
 **Install target (nimo):** `/home/mark/DEVELOP/leasegrid-c/docs/design/`  
-**Brand (provisional):** **Leasegrid Sync** — CrashPlan is a UX metaphor, not a product rename.
+**Brand (provisional):** **Leasegrid Sync** — CrashPlan is a UX metaphor, not a product rename. Phone app name: **Leasegrid Sync (Android)** / short **Sync Mobile**.
 
 ---
 
@@ -16,97 +16,83 @@
 | **U0** | Design DoD done (`10`–`14`) | Native Sync product lock; five surfaces wireframed |
 | **U1** | SHIP (Folders / Magic Folder / tray / join) | Preserve — no WUI |
 | **U2** | Design/SHIP Credit (`15`–`19`) | Credit secondary; unpaid default |
-| **U3** | Design DoD (`20`–`24`); AppImage **waived** for P0 CLEAR path | Installer polish not blocking |
-| **P0** | CLEAR path on tip (do not re-claim in U4 notes) | Honesty — cite separately if PASS |
-| **P1** | Design/SHIP CrashPlan shell (`25`–`29`) @ `4e1e6bd` | Folders-first + Offer pie; unpaid default |
-| **U4** | **Design DoD ready** (`30`–`34`) | Threat HITL + recovery key export/import; non-expert walkthrough PASS |
-| **U5** | Deferred | Faucet → XMR when 0c PASS |
+| **U3** | Design DoD (`20`–`24`); AppImage path separate | Installer polish not blocking P4 |
+| **P0** | CLEAR path on tip (do not re-claim here) | Honesty — cite separately if PASS |
+| **P1** | Design/SHIP CrashPlan shell (`25`–`29`) | Folders-first + Offer pie; unpaid default |
+| **U4** | Design/SHIP Recovery (`30`–`34`) | Threat HITL + recovery key export/import |
+| **U5** | Deferred | Faucet → XMR when 0c PASS — **not** P4 Slice A |
+| **P4-A** | **Design DoD ready** (`35`–`39`) | Android read-first APK: join/import → folders → download/open |
+| **P4-B** | Parked (follow-on only) | Write / Magic Folder–class sync on Android — does **not** block Slice A Design PASS |
 
-**U4 one-liner:** Recovery-copy UX on CrashPlan shell — first-run threat HITL, dual-ACK recovery key export, import-on-new-device restore to Folders — without Tahoe WUI or payment lecture.
+**P4-A one-liner:** Read-first Android APK — join friendnet **or** import U4 recovery key → folders list → download/open files on device — operate-or-FAIL in-app, no Tahoe WUI, no desktop regress.
 
 ---
 
-## Artifact index — U4 (this package)
+## Artifact index — P4 Android Slice A (this package)
 
 | File | Contents |
 |------|----------|
-| [30-U4-RECOVERY-JOURNEY.md](30-U4-RECOVERY-JOURNEY.md) | Threat → join → export; import → Folders restore; FAIL paths |
-| [31-U4-IA-RECOVERY.md](31-U4-IA-RECOVERY.md) | IA: Folders primary; Recovery under More; CTA ranks; copy layers |
-| [32-U4-WIREFRAMES.md](32-U4-WIREFRAMES.md) | ASCII: threat Join; Recovery place; export gate; import; FAIL |
-| [33-U4-NON-GOALS.md](33-U4-NON-GOALS.md) | WUI; reset-password; payment lecture; AppImage/U5 claims; rewrite 10–29 |
-| [34-U4-DEVBOT-HANDOFF.md](34-U4-DEVBOT-HANDOFF.md) | Tight DoD + tests; cite #15 + tip `4e1e6bd`; operate-or-FAIL |
-| [09-ui-track-U4-POINTER.md](09-ui-track-U4-POINTER.md) | Optional one-line pointer beside `09-ui-track.md` |
-| [INSTALL-ON-NIMO.sh](INSTALL-ON-NIMO.sh) | Extract/copy into nimo `docs/design/` (preserves U0–P1 bodies) |
+| [35-P4-ANDROID-A-JOURNEY.md](35-P4-ANDROID-A-JOURNEY.md) | Join/import → folders → download/open; FAIL paths |
+| [36-P4-ANDROID-A-IA.md](36-P4-ANDROID-A-IA.md) | Phone IA; folders-first; Offer/Credit N/A or secondary; Slice B park |
+| [37-P4-ANDROID-A-WIREFRAMES.md](37-P4-ANDROID-A-WIREFRAMES.md) | ASCII mobile frames |
+| [38-P4-ANDROID-A-NON-GOALS.md](38-P4-ANDROID-A-NON-GOALS.md) | Write sync, iOS, Play Store, WUI, desktop regress, U5, Slice B blocking |
+| [39-P4-ANDROID-A-DEVBOT-HANDOFF.md](39-P4-ANDROID-A-DEVBOT-HANDOFF.md) | Stack + rejects; APK path; emulator dogfood for And; tip ≥ `7837ef8` |
+| [09-ui-track-P4-ANDROID-POINTER.md](09-ui-track-P4-ANDROID-POINTER.md) | Pointer beside `09-ui-track.md` |
+| [INSTALL-ON-NIMO.sh](INSTALL-ON-NIMO.sh) | Extract/copy into nimo `docs/design/` (preserves U0–U4 bodies) |
 | [PARENT-INSTALL.md](PARENT-INSTALL.md) | CopyFromBox recipe for parent Design Bot |
-| [phase-u4-design.tar.gz](phase-u4-design.tar.gz) | Tar of README + 30–34 (+ pointer) |
+| [phase-p4-android-a-design.tar.gz](phase-p4-android-a-design.tar.gz) | Tar of README + 35–39 (+ pointer) |
 
 ---
 
 ## Prior design (preserve — do not rewrite)
 
-| Slice | Files | Role for U4 |
-|-------|-------|-------------|
-| U0 | `10`–`14` | Threat + Recovery baseline surfaces |
-| U2 | `15`–`19` | Credit secondary; wallet may ride in recovery key |
-| U3 | `20`–`24` | Installer must not claim recovery “done” until U4 PASS |
-| P1 | `25`–`29` | Folders-first chrome; Recovery under More; unpaid default |
+| Slice | Files | Role for P4-A |
+|-------|-------|---------------|
+| U0 | `10`–`14` | Threat + Recovery baseline |
+| U2 | `15`–`19` | Credit secondary — phone: N/A or deep-secondary |
+| P1 | `25`–`29` | Folders-first metaphor → phone folders list primary |
+| U4 | `30`–`34` | Recovery import path + honesty copy — **reuse**, do not invent a second format |
 
-U4 **adds** recovery-copy DoD (`30`–`34`). It does **not** replace U0–P1 artifact bodies.
+P4-A **adds** Android read-first DoD (`35`–`39`). It does **not** replace U0–U4 artifact bodies (`10`–`34`).
 
 ---
 
-## Binding constraints (U4)
+## Binding constraints (P4 Slice A)
 
 | Lock | Rule |
 |------|------|
-| Tip | main @ `4e1e6bd` (P0+P1 CrashPlan shell) |
-| Issue | [#15](https://github.com/themark-net/leasegrid-c/issues/15) Design DoD |
-| Threat HITL | First-run Join ACK required |
-| Recovery chrome | More → Recovery (secondary); Folders stay primary |
-| Export | Dual ACK + optional passphrase + plaintext warning + verified write |
-| Import | Join + Recovery entry; restore → Folders |
-| Operate-or-FAIL | In-window FAIL + Next |
-| No Tahoe WUI | Not product UI |
-| Unpaid default | No payment lecture on export/import |
-| Honesty | Do not claim AppImage (#12) or U5/mainnet done |
+| Tip | main ≥ **`7837ef8`** |
+| Issue | [#23](https://github.com/themark-net/leasegrid-c/issues/23) Design DoD |
+| Primary product | Desktop Sync (U0–U4 + AppImage) — **no regress** |
+| Slice A MVP | Read-only / restore: join **or** import recovery → folders → download/open |
+| Slice B | Document only; **must not** block Slice A Design PASS |
+| IA | Folders-first; Offer/Credit secondary or N/A on phone |
+| Payment / XMR | Not required for Slice A; unpaid default |
+| Recovery | Same `*.leasegrid-recovery` as U4; loss = total loss |
+| Operate-or-FAIL | In-app FAIL + Next (no WUI Next; no “use desktop only” as sole Next for open) |
+| No Tahoe WUI | Not product UI (including WebView-as-product) |
+| Honesty | Do not claim Play Store, iOS, write sync, or U5/mainnet done |
+| Tester | **And** (Android UI tester) dogfoods after implement |
 
 ---
 
-## Success check (U4 Design PASS)
+## Success check (P4-A Design PASS)
 
-- [x] Recovery journey documented (export + import + threat HITL)  
-- [x] IA fits CrashPlan shell (Folders primary; Recovery under More)  
-- [x] Wireframes: threat Join; export gate; import; FAIL  
-- [x] Non-goals explicit (WUI, reset-password, payment lecture, AppImage/U5)  
-- [x] DevBot handoff cites #15 + tip `4e1e6bd`  
+- [x] Journey documented (join/import → folders → download/open + FAIL)  
+- [x] Phone IA folders-first; Offer/Credit N/A or secondary; Slice B parked  
+- [x] Mobile ASCII wireframes  
+- [x] Non-goals explicit (write sync, iOS, Play Store, WUI, desktop regress, U5, Slice B blocking)  
+- [x] DevBot handoff: stack + reject list, APK path, emulator steps for And, tip ≥ `7837ef8`  
 - [x] Operate-or-FAIL on journey + handoff  
-- [x] U0–P1 bodies preserved (not rewritten)  
-- [x] Package staged under `/workspace/leasegrid-u4-out/`  
+- [x] U0–U4 rows preserved (not rewritten)  
+- [x] Package staged under `/workspace/leasegrid-p4-android-out/`  
 
-**U4 Design exit:** Artifacts under `docs/design/` + DevBot handoff ready for implement / walkthrough PASS.
+**P4-A Design exit:** Artifacts under `docs/design/` + DevBot handoff → PM RELEASE Cursor/Build for Slice A implement.
 
 ---
 
 ## Explicit non-goals (summary)
 
-Tahoe WUI · “reset password” · rootcap paste as buyer path · payment lecture on unpaid export/import · Recovery as post-join primary · AppImage (#12) · U5/mainnet XMR · rewriting `10`–`29` · Mark drip from Design.
+Full Magic Folder write sync · iOS · Play Store listing · Tahoe WUI / WebView-as-product · Electron-on-Android · requiring desktop for every open · inventing a second recovery format · operator Node kit · demoting desktop · U5/mainnet XMR · making Slice B block Slice A Design PASS · rewriting `10`–`34` · Mark drip from Design.
 
-See [33-U4-NON-GOALS.md](33-U4-NON-GOALS.md).
-
----
-
-## P4 Android Slice A (added — `10`–`34` unchanged)
-
-**Status:** implement handoff landed. Design bodies `35`–`39` are the Design PASS package. This section only points at them.
-
-| File | Role |
-|------|------|
-| [35-P4-ANDROID-A-JOURNEY.md](35-P4-ANDROID-A-JOURNEY.md) | Join or import → folders → download/open; FAIL |
-| [36-P4-ANDROID-A-IA.md](36-P4-ANDROID-A-IA.md) | Places; Slice B parked |
-| [37-P4-ANDROID-A-WIREFRAMES.md](37-P4-ANDROID-A-WIREFRAMES.md) | M1–M8 |
-| [38-P4-ANDROID-A-NON-GOALS.md](38-P4-ANDROID-A-NON-GOALS.md) | WUI, Electron-on-Android, format v2, Play/iOS, Slice B writes |
-| [39-P4-ANDROID-A-DEVBOT-HANDOFF.md](39-P4-ANDROID-A-DEVBOT-HANDOFF.md) | Binding implement handoff · issue #23 · tip ≥ `7837ef8` |
-| [09-ui-track-P4-ANDROID-POINTER.md](09-ui-track-P4-ANDROID-POINTER.md) | Pointer beside the UI track |
-| [../ops/p4-android-dogfood.md](../ops/p4-android-dogfood.md) | And emulator install path |
-
-Module: `android/`. Debug APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Application id: `net.themark.leasegrid.sync`. CI artifact: `leasegrid-sync-android-slice-a-debug.apk`.
+See [38-P4-ANDROID-A-NON-GOALS.md](38-P4-ANDROID-A-NON-GOALS.md).

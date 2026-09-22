@@ -20,7 +20,7 @@ A non-expert can **join a friendnet or import a U4 recovery key** on Android, **
        │
        ├─ Join friendnet (invite + threat ACK) ──► Folders list
        │                                              │
-       └─ Import recovery key (U4 file) ──────────────┤
+       └─ Import recovery key (U4 file) ─────────────┤
                                                       ▼
                                               Open folder → file list
                                                       │
@@ -86,7 +86,7 @@ A non-expert can **join a friendnet or import a U4 recovery key** on Android, **
        │               │
        │               ├─ Join friendnet (threat ACK + invite) ──► Folders
        │               │                                              │
-       │               └─ Import recovery key instead… ──► Unlock ────┤
+       │               └─ Import recovery key instead… ──► Unlock ─────┤
        │                                                              ▼
        └─ already joined ──► Folders ──► Folder ──► Download / Open
                                               │
@@ -113,7 +113,7 @@ Four points (buyer voice; phone-trimmed OK if all four remain):
 ## Download / open semantics (Design lock)
 
 | Topic | Rule |
-|-------|------|
+|------|------|
 | Metaphor | Folders-first CrashPlan / Sync — phone is a **reader**, not a second desktop writer |
 | Caps | Same friendnet / folder caps as desktop Sync (read path) |
 | Local write | Downloaded file lands in app-controlled or user-picked storage; then OS open-with |
@@ -127,7 +127,7 @@ Four points (buyer voice; phone-trimmed OK if all four remain):
 ## FAIL paths (operate-or-FAIL, in-app)
 
 | Action | Banner shape |
-|--------|----------------|
+|--------|--------------|
 | Join, bad invite / introducer down | FAIL — could not join this friendnet. Next: check invite / network; Retry. |
 | Threat ACK missing | Join stays disabled — not a silent skip |
 | Import, wrong passphrase / corrupt / incompatible | FAIL — could not import this recovery key. Wrong passphrase, corrupt file, or incompatible grid. Next: check passphrase; try backup; Retry. |

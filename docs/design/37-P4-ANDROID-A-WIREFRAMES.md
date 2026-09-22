@@ -11,7 +11,7 @@ ASCII only. Operate-or-FAIL banners stay in-app. Portrait phone (~360dp wide met
 ## M1 — Welcome / Join + threat HITL
 
 ```
-┌─────────────────────────────┐
+┌────────────────────────────┐
 │ Leasegrid Sync              │
 │                             │
 │ See your folders on this    │
@@ -52,7 +52,7 @@ ASCII only. Operate-or-FAIL banners stay in-app. Portrait phone (~360dp wide met
 ## M2 — Import recovery key
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │ ←  Import recovery key      │
 │                             │
 │ Use a *.leasegrid-recovery  │
@@ -66,7 +66,7 @@ ASCII only. Operate-or-FAIL banners stay in-app. Portrait phone (~360dp wide met
 │ File                        │
 │ ┌─────────────────────────┐ │
 │ │ Photos-backup.leasegrid │ │
-│ │ -recovery          [‥]  │ │
+│ │ -recovery          […]  │ │
 │ └─────────────────────────┘ │
 │                             │
 │ Passphrase (if any)         │
@@ -115,7 +115,7 @@ Optional one-line note after import: “Restored from recovery key. Folders may 
 ## M4 — Folder detail (file list)
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │ ← Photos                    │
 │                             │
 │ ┌─────────────────────────┐ │
@@ -128,7 +128,7 @@ Optional one-line note after import: “Restored from recovery key. Folders may 
 │ │ 📁  2024/               │ │
 │ │     Folder              │ │
 │ └─────────────────────────┘ │
-└─────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 Tap file → sheet: **Download** · **Open** (download-then-open OK as one action).
@@ -138,7 +138,7 @@ Tap file → sheet: **Download** · **Open** (download-then-open OK as one actio
 ## M5 — Download / open in progress
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │ ← beach.jpg                 │
 │                             │
 │ Downloading…                │
@@ -147,7 +147,7 @@ Tap file → sheet: **Download** · **Open** (download-then-open OK as one actio
 │ [ Cancel ]                  │
 │                             │
 │ When finished: Open with…   │
-└─────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 Success: system chooser or in-app “Open”. Local copy retained for offline reopen when possible.
@@ -157,7 +157,7 @@ Success: system chooser or in-app “Open”. Local copy retained for offline re
 ## M6 — FAIL banner (operate-or-FAIL)
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │ Folders              [⋮]    │
 │                             │
 │ ┌─ FAIL ──────────────────┐ │
@@ -172,7 +172,7 @@ Success: system chooser or in-app “Open”. Local copy retained for offline re
 │ └─────────────────────────┘ │
 │                             │
 │ (folder list still visible) │
-└─────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 Same shape for join / import / list failures. No “Open Tahoe WUI” Next.
@@ -182,7 +182,7 @@ Same shape for join / import / list failures. No “Open Tahoe WUI” Next.
 ## M7 — More → Recovery note (secondary)
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │ ← About / Recovery          │
 │                             │
 │ Recovery keys are exported  │
@@ -202,7 +202,7 @@ Same shape for join / import / list failures. No “Open Tahoe WUI” Next.
 │                             │
 │ To add folders or export a  │
 │ new key, use desktop Sync.  │
-└─────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 ---
@@ -210,7 +210,7 @@ Same shape for join / import / list failures. No “Open Tahoe WUI” Next.
 ## M8 — Empty Folders (edge)
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │ Folders              [⋮]    │
 │                             │
 │ No folders yet.             │
@@ -220,7 +220,7 @@ Same shape for join / import / list failures. No “Open Tahoe WUI” Next.
 │ folders here.               │
 │                             │
 │ [ Join / Import… ]          │
-└─────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 ---

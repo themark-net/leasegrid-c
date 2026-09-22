@@ -9,7 +9,7 @@ import pytest
 
 zfec = pytest.importorskip("zfec")
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "android/app/src/main/python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app/src/main/python"))
 
 from lg_fec import decode_blocks, encode_blocks  # noqa: E402
 

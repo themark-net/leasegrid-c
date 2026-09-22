@@ -1,8 +1,9 @@
 """Slice A read client against a real Tahoe 1.20 grid.
 
-Skipped when ``tahoe`` is not on PATH. Desktop CI installs tahoe-lafs.
-Windows and macOS stay on the lighter Slice A checks; this grid is the
-Linux proof that learn / list / download match Tahoe.
+Not part of host pytest (``testpaths = tests`` and ``norecursedirs`` includes
+``android``). Run with ``pytest android/pytests/test_live_grid.py`` in its own
+process. Importing this module registers nothing until ``learn`` runs, and
+that Foolscap name collides with Tahoe if both load in one pytest session.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1] / "android/app/src/main/python"
+ROOT = Path(__file__).resolve().parents[1] / "app/src/main/python"
 sys.path.insert(0, str(ROOT))
 
 from leasegrid_read import dispatch  # noqa: E402

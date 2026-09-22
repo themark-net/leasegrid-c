@@ -38,9 +38,24 @@ _SUBSCRIBER_V2 = None
 
 
 def _subscriber_v2():
+    """Reuse Tahoe's interface when it is already registered.
+
+    Defining a second class with the same ``__remote_name__`` raises
+    DuplicateRemoteInterfaceError. The phone does not import allmydata, so
+    the local class is what the APK uses. A process that already loaded
+    Tahoe keeps that registration.
+    """
     global _SUBSCRIBER_V2
-    if _SUBSCRIBER_V2 is None:
-        _SUBSCRIBER_V2 = _subscriber_interface()
+    if _SUBSCRIBER_V2 is not None:
+        return _SUBSCRIBER_V2
+    from foolscap.remoteinterface import getRemoteInterfaceByName
+
+    name = "RIIntroducerSubscriberClient_v2.tahoe.allmydata.com"
+    existing = getRemoteInterfaceByName(name)
+    if existing is not None:
+        _SUBSCRIBER_V2 = existing
+        return existing
+    _SUBSCRIBER_V2 = _subscriber_interface()
     return _SUBSCRIBER_V2
 
 

@@ -27,6 +27,17 @@ def test_design_docs_landed():
         assert "7837ef8" in text or "Slice A" in text or "leasegrid" in text.lower()
 
 
+def test_host_pytest_does_not_import_phone_reader():
+    """Desktop CI must not import the embedded Foolscap stub."""
+    for path in (ROOT / "tests").rglob("*.py"):
+        if path.name == "test_android_slice_a.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert "lg_intro" not in text, path
+        assert "leasegrid_read" not in text, path
+        assert "app/src/main/python" not in text, path
+
+
 def test_no_webview_and_no_wui_next():
     android = ROOT / "android"
     assert android.is_dir()

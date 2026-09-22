@@ -13,7 +13,7 @@ name: Installers
 on:
   push:
     tags: ["v*"]
-    branches: [main]
+    branches: [main, "cursor/**"]
     paths:
       - "packaging/**"
       - "scripts/dev-grid.sh"

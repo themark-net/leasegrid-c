@@ -49,6 +49,9 @@ packages = ["leasegrid_zkap", "leasegrid_sync", "twisted.plugins"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Phone read-client sources live under android/ and register a Foolscap
+# remote name that Tahoe also registers. Host pytest must not import them.
+norecursedirs = ["android", "build", "dist", "*.egg-info", ".*"]
 
 [tool.ruff]
 line-length = 100

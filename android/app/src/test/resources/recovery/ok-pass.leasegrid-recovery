@@ -1,0 +1,12 @@
+{
+  "ciphertext": "gAAAAABqsoeCIkwBUBDMwHNVEHaZDgKVelsPa00jGURN2gbHDJNq_4zD0QX-Lq2fYYyBWxTHPRSRPzB6fIaWVlylC6M6dhYcPRkwnvJyDPot2UURdN9UO-eBJDBoSR8q7Dhj264a-FJFj_sixl05iJCPyp1rC0-a87xyaotMhRXQel0awXSzMJW-ixAXhYBV2Njf2FQJPnK2wb1m8zNyp5tQQnifw_2OXCmO8LOtP07vs7AH005dL5NRmMLxR6l4hmgNbz9MDdLfva9lAyPhs0M4CfGpI-n9XkkqHq4kdgrQ4vNkUNERx5P2rvUovDNIK28gKIYtbYvnswuHex9UfPFjw36TEmfR32NHn_JDA5WoSyc4pTa2PhSZzpbpw5_zJQCTZotw8jt9hAv2FdwdWjfoaFKOKR7AcslnRzgE6Q-MZzsnZWNsiOle_gc3j3E0nJYnEZk1wUUhfI7-JghSdave9O82dl1zc8yEHdG_YQeFOaOvZl9XRd4S36LTBrMkNIs_CDImPb6y1pRI13ebeyUn29hKHFQMtp59o5EB8jpsUs8YfvhiKn3WyaWBTYyoJXotq8LBPtnxpVM0oyIY6cpu8FW1YOGUVTywLIxtt0isKFZ2W4Be0pR8S4Roj_NwW1dNiCoRji7ETDvlM97oVG9fWmaxTJ98NWM0pTDy6LDhT1BpkS-qfb6f6Dvyml0A6EzXRs1SR53s3NlhjghkB8yokGHD270ezicK5H-T2Cg1LnDkJAtLtng016i85JZ9uPFOc7TZraczdnE1LW2jqoE0bKTlOiSpchA-HaTNUjTD0boMXiLXVsoyRiGnBNJ8ZpJVucKcnGeZT_kcXB98Fptx15LeVTVh4mRnhAb362vWnluoHwHRMGE7hVQAuwwGLhFAqzUBuDT51fR6jMqSd_b-Pi15UL311aT_3HhsVs3WyhG-HmMa_FxFDgghSOcjO2umMRUGUFol9l-E7r069zPQM_fS-iUyVECrnutLE7rpB_LUQc0MeoezE8CoirawCO7_EeJZ8B_g4KCKUXgfNf1dPtliU-03giHPVWcSpmV-cJXillmSXdGCa2GMpRIFbnrhzWXBeRomJivN8NHRKEQimIIzRFVb6tJtqU2xjJ_wjYwWyy8NBT8=",
+  "encrypted": true,
+  "kdf": {
+    "n": 32768,
+    "name": "scrypt",
+    "p": 1,
+    "r": 8,
+    "salt": "kdG4yr8oR9aB/g9/6GqAnQ=="
+  },
+  "leasegrid-recovery": 1
+}

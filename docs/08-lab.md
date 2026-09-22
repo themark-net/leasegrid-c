@@ -124,7 +124,7 @@ Secrets (furls, keys, wallet files) stay **off git**.
 |---|---|
 | Gate 0a PASS | ✅ 2026-09-17 |
 | Gate 0b PASS | ✅ 2026-09-17 |
-| Gate 0c PASS | ☐ |
+| Gate 0c PASS | ✅ 2026-09-22 |
 | Gate 0d PASS | ☐ |
 | Results dated below (or linked private operator notes — no secrets) | ✅ partial (0a, 0b) |
 
@@ -138,6 +138,7 @@ Append rows; never paste furls, caps, seed phrases, or view keys.
 |---|---|---|---|---|
 | 2026-09-17 ~7:44pm PT | 0a | Leasegrid Stress Test (via nimo) | **PASS** | Tahoe 1.20.0. Introducer `leasegrid-1` (10.42.0.70). Storage `leasegrid-2` (10.42.0.40), `leasegrid-3` (10.42.0.161), `maximum` (10.42.0.238). Client `nimo`. shares needed/happy/total = 1/3/3. `smoke-put-get` PASS. Nodes kept alive with tmux/screen (`tahoe run`). Lab notes: pin cryptography 41.0.7 + pyOpenSSL 23.3.0 + service-identity 23.1.0 (VMs lack PyPI DNS); nimo needs `legacy-cgi` on Python 3.14. `deploy/friendnet/` still local-only. No furls/caps in git. |
 | 2026-09-17 ~9:10pm PT | 0b | Leasegrid Stress Test (via nimo) | **PASS** | Thin lab authorizer `leasegrid-zkap-lab` 0.1.0 + `python-challenge-bypass-ristretto` 2022.6.30 (not PyPI ZKAPAuthorizer; Tahoe 1.20). Issuer on nimo; pubkey id `09e9633f194ba8bf2df91e69c0e497619a24ebd6a4fa7814406c836796995ab5`. Plugin wrap on storage `leasegrid-2` only (`spend-listen` 10.42.0.40:8701). Denomination: 1 token = 1 GiB-share × 30 days on one node. `leasegrid-zkap check-0b --live` GATE 0b PASS (0b.1–0b.5). Unpaid non-LIT `tahoe put` → `UploadUnhappinessError` (GBS allocate 500/`ZKAPRequired` on leasegrid-2; 2/3 servers placed shares). LIT puts still skip allocate. Issuer rejects settlement JSON that contains `R`. Signing key off-git (`~/DEVELOP/leasegrid-lab-private/`). Restore unpaid: `enable-storage-plugin.sh --disable` + restart `tahoe run`. |
+| 2026-09-22 ~1:16am PT | 0c | Leasegrid Stress Test (via nimo) | **PASS** | stagenet via remote daemon `node.monerodevs.org:38089` (mainnet monerod untouched). Issuer `--chain wallet-rpc` on nimo; pubkey id `09e9633f194ba8bf2df91e69c0e497619a24ebd6a4fa7814406c836796995ab5`. Quote→stagenet pay→redeem issued 1 token; unpaid NoCredit; paid spend on leasegrid-2 `:8701`. Attribution: fresh subaddress/quote (ADR-0002). Caveat: live underpay (0c.4) not re-proven (funds exhausted after pay); FakeChain underpay PASS stands. No tx secrets/view keys in git. Tip `6e3ed95`. |
 
 ## First implementation slice (after this doc)
 

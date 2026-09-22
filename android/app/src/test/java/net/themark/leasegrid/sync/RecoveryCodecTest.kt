@@ -66,6 +66,38 @@ class RecoveryCodecTest {
 
 class InviteTest {
     @Test
+    fun extraRecoveryKeyReopensImportAndSeedsFile() {
+        val welcome = DogfoodIntents.deliveryKey("android.intent.action.MAIN", null, null, null)
+        val pass = DogfoodIntents.deliveryKey(
+            "android.intent.action.MAIN",
+            null,
+            "ok-pass.leasegrid-recovery",
+            null,
+        )
+        assertTrue(DogfoodIntents.shouldDeliver(null, welcome))
+        assertTrue(DogfoodIntents.shouldDeliver(welcome, pass))
+        assertFalse(DogfoodIntents.shouldDeliver(pass, pass))
+        assertTrue(DogfoodIntents.opensImport("ok-pass.leasegrid-recovery"))
+        assertFalse(DogfoodIntents.opensImport(null))
+        assertFalse(DogfoodIntents.opensImport("  "))
+        val dir = java.io.File.createTempFile("lg-files", "").also {
+            it.delete()
+            it.mkdirs()
+        }
+        val relative = DogfoodIntents.recoveryFile(dir, "ok-pass.leasegrid-recovery")
+        val missing = DogfoodIntents.readRecoverySeed(relative)
+        assertFalse(missing.readable)
+        assertNull(missing.bytes)
+        relative.writeBytes("mock-recovery".toByteArray())
+        val seed = DogfoodIntents.readRecoverySeed(relative)
+        assertTrue(seed.readable)
+        assertEquals("ok-pass.leasegrid-recovery", seed.name)
+        assertEquals("mock-recovery", seed.bytes!!.decodeToString())
+        val absolute = DogfoodIntents.recoveryFile(dir, relative.absolutePath)
+        assertEquals(relative.absolutePath, absolute.path)
+    }
+
+    @Test
     fun debugInviteExtraDoesNotSkipThreatAck() {
         val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
         val text = DogfoodIntents.inviteText(furl, null)

@@ -49,6 +49,7 @@ def test_dogfood_hooks_are_named():
         "import_recovery_button",
         "passphrase_field",
         "import_confirm",
+        "import_screen",
     ):
         assert f'"{tag}"' in ui, tag
     assert "clearAndSetSemantics" in ui
@@ -65,7 +66,9 @@ def test_dogfood_hooks_are_named():
     activity = (ROOT / "android/app/src/main/java/net/themark/leasegrid/sync/MainActivity.kt").read_text(
         encoding="utf-8"
     )
-    assert "decorView.post" in activity
+    assert "beginRecoveryImport" in activity
+    assert "deliveryKey" in activity
+    assert "postDelayed" in activity
     assert "EXTRA_INVITE" in activity
     assert "acknowledged = true" not in activity
     manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
@@ -75,6 +78,7 @@ def test_dogfood_hooks_are_named():
     assert "EXTRA_INVITE" in note
     assert "invite_field" in note
     assert "EXTRA_RECOVERY_FILE" in note
+    assert "import_screen" in note
 
 
 def test_no_webview_and_no_wui_next():

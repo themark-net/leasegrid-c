@@ -152,6 +152,18 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
 
 @Composable
 private fun Import(model: AppModel, onPickRecovery: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { dogfoodField("import_screen") },
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        ImportBody(model, onPickRecovery)
+    }
+}
+
+@Composable
+private fun ImportBody(model: AppModel, onPickRecovery: () -> Unit) {
     TextButton(onClick = { model.goWelcome() }) { Text("←  Import recovery key") }
     Text("Use a *.leasegrid-recovery file exported from desktop Sync (U4). Same format.")
     Text(SCARY_LOSS, fontWeight = FontWeight.Medium)

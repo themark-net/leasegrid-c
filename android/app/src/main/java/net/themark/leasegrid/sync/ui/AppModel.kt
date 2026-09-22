@@ -95,6 +95,18 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         place = Place.Import
     }
 
+    /** Drop any joined home and show Import before the recovery file is read. */
+    fun beginRecoveryImport() {
+        store.clear()
+        session = null
+        pickedName = ""
+        pickedBytes = null
+        passphrase = ""
+        fail = null
+        busy = false
+        place = Place.Import
+    }
+
     fun goFolders() {
         fail = null
         place = Place.Folders

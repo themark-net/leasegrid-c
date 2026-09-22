@@ -31,11 +31,14 @@ class MainActivity : ComponentActivity() {
         pickRecovery.launch(arrayOf("*/*"))
     }
 
-    /** Each incoming Intent is applied once, after the first frame, so Import is composed. */
-    private var delivered: Intent? = null
+    /** Fingerprint of the last applied dogfood payload. Not Intent identity. */
+    private var appliedKey: String? = null
+    private var readGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Before setContent, so a cold-start EXTRA_RECOVERY_FILE composes Import first.
+        noteIntent(intent)
         setContent {
             SyncApp(model, ::openRecoveryPicker)
         }
@@ -43,43 +46,84 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        window.decorView.post { deliverLatest(intent) }
+        noteIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        noteIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        window.decorView.post { deliverLatest(intent) }
+        noteIntent(intent)
     }
 
-    private fun deliverLatest(incoming: Intent?) {
-        if (incoming == null || incoming === delivered) return
-        delivered = incoming
-        deliver(incoming)
+    private fun noteIntent(incoming: Intent?) {
+        if (incoming == null) return
+        val recoveryExtra = if (BuildConfig.DEBUG) {
+            incoming.getStringExtra(DogfoodIntents.EXTRA_RECOVERY_FILE)
+        } else {
+            null
+        }
+        val inviteExtra = if (BuildConfig.DEBUG) {
+            incoming.getStringExtra(DogfoodIntents.EXTRA_INVITE)
+        } else {
+            null
+        }
+        val key = DogfoodIntents.deliveryKey(incoming.action, inviteExtra, recoveryExtra, incoming.dataString)
+        if (!DogfoodIntents.shouldDeliver(appliedKey, key)) return
+        appliedKey = key
+        deliver(incoming, recoveryExtra, inviteExtra)
     }
 
-    private fun deliver(intent: Intent?) {
-        if (intent == null) return
+    private fun deliver(intent: Intent, recoveryExtra: String?, inviteExtra: String?) {
+        val recoveryPath = recoveryExtra?.trim().orEmpty()
         if (BuildConfig.DEBUG) {
-            val invite = DogfoodIntents.inviteText(
-                intent.getStringExtra(DogfoodIntents.EXTRA_INVITE),
-                inviteQuery(intent.data),
-            )
-            if (invite != null) {
-                model.inviteText = invite
-                if (model.session == null) model.goWelcome()
-            }
-            val recoveryPath = intent.getStringExtra(DogfoodIntents.EXTRA_RECOVERY_FILE)?.trim().orEmpty()
-            if (recoveryPath.isNotEmpty()) {
-                val file = if (recoveryPath.startsWith("/")) File(recoveryPath) else File(filesDir, recoveryPath)
-                readRecovery(Uri.fromFile(file), file.name)
-            }
+            val invite = DogfoodIntents.inviteText(inviteExtra, inviteQuery(intent.data))
+            if (invite != null) model.inviteText = invite
+            if (invite != null && recoveryPath.isEmpty() && model.session == null) model.goWelcome()
+        }
+        if (DogfoodIntents.opensImport(recoveryPath)) {
+            model.beginRecoveryImport()
+            val generation = ++readGeneration
+            readRecoveryFile(recoveryPath, attempt = 0, generation = generation)
+            return
         }
         if (intent.action == Intent.ACTION_VIEW) {
             val uri = intent.data
             if (uri != null && uri.scheme != "leasegrid") {
+                model.beginRecoveryImport()
                 readRecovery(uri, uri.lastPathSegment ?: "recovery.leasegrid-recovery")
             }
+        }
+    }
+
+    private fun readRecoveryFile(rawPath: String, attempt: Int, generation: Int) {
+        if (generation != readGeneration) return
+        val file = DogfoodIntents.recoveryFile(filesDir, rawPath)
+        val seed = DogfoodIntents.readRecoverySeed(file)
+        if (seed.readable && seed.bytes != null) {
+            model.onPicked(seed.name, seed.bytes)
+            model.goImport()
+            return
+        }
+        if (attempt < 5) {
+            window.decorView.postDelayed(
+                { readRecoveryFile(rawPath, attempt + 1, generation) },
+                200L * (attempt + 1),
+            )
+            return
+        }
+        model.goImport()
+        model.reportFail(
+            "could not import this recovery key. The file could not be read.",
+            "check the path and storage permission; Retry.",
+        ) {
+            model.beginRecoveryImport()
+            val again = ++readGeneration
+            readRecoveryFile(rawPath, 0, again)
         }
     }
 

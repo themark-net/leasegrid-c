@@ -51,7 +51,8 @@ Do not treat a zero-size node as enabled. The Join control does not fire while t
 | `invite_field` | Invite `OutlinedTextField`. After the box is checked it requests focus so `input text` can land. |
 | `join_button` | Join friendnet. Enabled only when the box is checked and the invite is non-blank. |
 | `import_recovery_button` | Opens the system document picker (`ACTION_OPEN_DOCUMENT`). |
-| `passphrase_field` | Passphrase. Requests focus after a file is loaded. |
+| `import_screen` | Import place. Present only after a recovery file is chosen or seeded. |
+| `passphrase_field` | Passphrase. On Import, with non-zero bounds, before confirm. |
 | `import_confirm` | Import. Enabled only when a file was read. |
 
 `adb shell input text` mangles `:` and `/`. Prefer the debug invite extra. It fills the field and does **not** check the threat box.
@@ -101,15 +102,17 @@ adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
 
 An absolute path in `EXTRA_RECOVERY_FILE` is also accepted (`/data/user/0/net.themark.leasegrid.sync/files/…` or any other readable path). A path that is not absolute is resolved under the app files dir. Import does not run by itself.
 
-Cold-start the extra so it is applied after the first frame (a running activity can swallow it):
+Cold-start after a data wipe. Seed the file only after `pm clear`, then start. The extra opens Import before the first frame and retries the read if the file is not visible yet. A miss still shows Import with FAIL and Retry — not Welcome.
 
 ```bash
 adb shell am force-stop net.themark.leasegrid.sync
+adb shell pm clear net.themark.leasegrid.sync
+# seed ok-pass.leasegrid-recovery into the app files dir, then:
 adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
   --es net.themark.leasegrid.sync.EXTRA_RECOVERY_FILE ok-pass.leasegrid-recovery
 ```
 
-Wait until Import is up. `passphrase_field` must be on screen with non-zero bounds **before** confirm. `ok-pass` needs `correct horse` in that field (`adb shell input text 'correct%s horse'`), then `import_confirm`. `ok-plain` confirms with an empty passphrase. `corrupt` confirms and must show FAIL + Next without writing `session.json`. A file that cannot be read shows FAIL and Retry and does not write a session.
+Wait for content-desc `import_screen` and `passphrase_field`. Welcome (`threat_ack`, `invite_field`, `join_button`) means the extra did not apply. `ok-pass` needs `correct horse` in `passphrase_field` (`adb shell input text 'correct%s horse'`), then `import_confirm`. `ok-plain` confirms with an empty passphrase. `corrupt` confirms and must show FAIL + Next without writing `session.json`. A file that cannot be read shows FAIL and Retry on Import and does not write a session. An introducer that does not answer is the environment; an empty Folders list after a successful import or join is OK.
 
 ## FAIL
 

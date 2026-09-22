@@ -50,12 +50,22 @@ def test_dogfood_hooks_are_named():
         "passphrase_field",
         "import_confirm",
     ):
-        assert f'testTag("{tag}")' in ui, tag
-        assert f'contentDescription = "{tag}"' in ui, tag
+        assert f'"{tag}"' in ui, tag
+    assert "clearAndSetSemantics" in ui
+    assert "mergeDescendants = true" in ui
+    assert "heightIn(min = 48.dp)" in ui
+    assert "BringIntoViewRequester" in ui
+    probe = (ROOT / "android/app/src/main/java/net/themark/leasegrid/sync/ui/DogfoodProbe.kt").read_text(
+        encoding="utf-8"
+    )
+    assert "contentDescription = name" in probe
+    assert "disabled()" in probe
+    assert "joinControlEnabled" in probe
     assert "FocusRequester" in ui
     activity = (ROOT / "android/app/src/main/java/net/themark/leasegrid/sync/MainActivity.kt").read_text(
         encoding="utf-8"
     )
+    assert "decorView.post" in activity
     assert "EXTRA_INVITE" in activity
     assert "acknowledged = true" not in activity
     manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")

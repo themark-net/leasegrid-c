@@ -1,11 +1,16 @@
 package net.themark.leasegrid.sync
 
+import androidx.compose.ui.semantics.SemanticsConfiguration
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import net.themark.leasegrid.sync.invite.Invite
 import net.themark.leasegrid.sync.invite.InviteFail
 import net.themark.leasegrid.sync.recovery.ImportFail
 import net.themark.leasegrid.sync.recovery.RecoveryCodec
 import net.themark.leasegrid.sync.session.Session
 import net.themark.leasegrid.sync.session.SessionStore
+import net.themark.leasegrid.sync.ui.dogfoodProbe
+import net.themark.leasegrid.sync.ui.joinControlEnabled
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -76,6 +81,35 @@ class InviteTest {
         assertFalse(Invite.joinEnabled(false, "pb://abcabcdefghij/swissnumswiss"))
         assertFalse(Invite.joinEnabled(true, "  "))
         assertTrue(Invite.joinEnabled(true, "pb://abcabcdefghij/swissnumswiss"))
+    }
+
+    @Test
+    fun uncheckedJoinControlIsDisabled() {
+        assertFalse(joinControlEnabled(false, "", busy = false))
+        assertFalse(joinControlEnabled(false, "pb://abcabcdefghij/swissnumswiss", busy = false))
+        assertTrue(probeDisabled(false, ""))
+    }
+
+    @Test
+    fun checkedEmptyJoinControlIsDisabled() {
+        assertFalse(joinControlEnabled(true, "", busy = false))
+        assertFalse(joinControlEnabled(true, "   ", busy = false))
+        assertTrue(probeDisabled(true, "   "))
+    }
+
+    @Test
+    fun checkedNonblankJoinControlIsEnabled() {
+        assertTrue(joinControlEnabled(true, "pb://abcabcdefghij/swissnumswiss", busy = false))
+        assertFalse(joinControlEnabled(true, "pb://abcabcdefghij/swissnumswiss", busy = true))
+        assertFalse(probeDisabled(true, "pb://abcabcdefghij/swissnumswiss"))
+    }
+
+    private fun probeDisabled(acknowledged: Boolean, invite: String): Boolean {
+        val config = SemanticsConfiguration()
+        val enabled = joinControlEnabled(acknowledged, invite, busy = false)
+        config.dogfoodProbe("join_button", enabled) {}
+        assertEquals(listOf("join_button"), config[SemanticsProperties.ContentDescription])
+        return config.getOrNull(SemanticsProperties.Disabled) != null
     }
 
     @Test

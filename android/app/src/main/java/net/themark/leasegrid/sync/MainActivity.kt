@@ -31,18 +31,31 @@ class MainActivity : ComponentActivity() {
         pickRecovery.launch(arrayOf("*/*"))
     }
 
+    /** Each incoming Intent is applied once, after the first frame, so Import is composed. */
+    private var delivered: Intent? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        deliver(intent)
         setContent {
             SyncApp(model, ::openRecoveryPicker)
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        window.decorView.post { deliverLatest(intent) }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        deliver(intent)
+        window.decorView.post { deliverLatest(intent) }
+    }
+
+    private fun deliverLatest(incoming: Intent?) {
+        if (incoming == null || incoming === delivered) return
+        delivered = incoming
+        deliver(incoming)
     }
 
     private fun deliver(intent: Intent?) {

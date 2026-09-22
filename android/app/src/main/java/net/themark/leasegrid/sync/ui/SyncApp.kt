@@ -1,8 +1,15 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+)
 
 package net.themark.leasegrid.sync.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
@@ -37,8 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -103,9 +109,9 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
         Checkbox(
             checked = model.acknowledged,
             onCheckedChange = { model.acknowledged = it },
-            modifier = Modifier
-                .testTag("threat_ack")
-                .semantics { contentDescription = "threat_ack" },
+            modifier = Modifier.semantics(mergeDescendants = true) {
+                dogfoodField("threat_ack")
+            },
         )
         Text("I understand the four points above.")
     }
@@ -114,9 +120,9 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
         onValueChange = { model.inviteText = it },
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("invite_field")
+            .heightIn(min = 56.dp)
             .focusRequester(inviteFocus)
-            .semantics { contentDescription = "invite_field" },
+            .semantics(mergeDescendants = true) { dogfoodField("invite_field") },
         label = { Text("Invite") },
         placeholder = { Text("paste invite…") },
         singleLine = true,
@@ -126,20 +132,20 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
         ),
         keyboardActions = KeyboardActions(onDone = { if (model.joinEnabled()) model.join() }),
     )
-    Button(
+    val joinOn = joinControlEnabled(model.acknowledged, model.inviteText, model.busy)
+    ProbeButton(
+        name = "join_button",
+        enabled = joinOn,
         onClick = { model.join() },
-        enabled = model.joinEnabled() && !model.busy,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("join_button")
-            .semantics { contentDescription = "join_button" },
-    ) { Text(if (model.busy) "Joining…" else "Join friendnet") }
-    TextButton(
+        label = if (model.busy) "Joining…" else "Join friendnet",
+    )
+    ProbeButton(
+        name = "import_recovery_button",
+        enabled = true,
         onClick = onPickRecovery,
-        modifier = Modifier
-            .testTag("import_recovery_button")
-            .semantics { contentDescription = "import_recovery_button" },
-    ) { Text("Import recovery key instead…") }
+        label = "Import recovery key instead…",
+        filled = false,
+    )
     FailCard(model)
     if (model.busy) CircularProgressIndicator()
 }
@@ -153,9 +159,11 @@ private fun Import(model: AppModel, onPickRecovery: () -> Unit) {
         Text(if (model.pickedName.isBlank()) "Choose recovery file" else model.pickedName)
     }
     val passphraseFocus = remember { FocusRequester() }
-    LaunchedEffect(model.pickedName) {
+    val passphraseBring = remember { BringIntoViewRequester() }
+    LaunchedEffect(model.pickedBytes) {
         if (model.pickedBytes == null) return@LaunchedEffect
         kotlinx.coroutines.delay(50)
+        runCatching { passphraseBring.bringIntoView() }
         runCatching { passphraseFocus.requestFocus() }
     }
     OutlinedTextField(
@@ -163,22 +171,21 @@ private fun Import(model: AppModel, onPickRecovery: () -> Unit) {
         onValueChange = { model.passphrase = it },
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("passphrase_field")
+            .heightIn(min = 56.dp)
             .focusRequester(passphraseFocus)
-            .semantics { contentDescription = "passphrase_field" },
+            .bringIntoViewRequester(passphraseBring)
+            .semantics(mergeDescendants = true) { dogfoodField("passphrase_field") },
         label = { Text("Passphrase (if any)") },
         visualTransformation = PasswordVisualTransformation(),
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
     )
-    Button(
-        onClick = { model.importRecovery() },
+    ProbeButton(
+        name = "import_confirm",
         enabled = !model.busy && model.pickedBytes != null,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("import_confirm")
-            .semantics { contentDescription = "import_confirm" },
-    ) { Text(if (model.busy) "Importing…" else "Import recovery key") }
+        onClick = { model.importRecovery() },
+        label = if (model.busy) "Importing…" else "Import recovery key",
+    )
     OutlinedButton(onClick = { model.goWelcome() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
     FailCard(model)
 }
@@ -283,6 +290,34 @@ private fun Settings(model: AppModel) {
         Text("Forget this phone’s session")
     }
     FailCard(model)
+}
+
+@Composable
+private fun ProbeButton(
+    name: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    filled: Boolean = true,
+) {
+    // Size lives on this node. clearAndSetSemantics keeps a single content-desc
+    // whose enabled bit matches [enabled], instead of a zero-bounds sibling.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clearAndSetSemantics { dogfoodProbe(name, enabled, onClick) },
+    ) {
+        if (filled) {
+            Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                Text(label)
+            }
+        } else {
+            TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                Text(label)
+            }
+        }
+    }
 }
 
 @Composable

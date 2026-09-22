@@ -33,7 +33,17 @@ Loopback friendnets (`127.0.0.1` / `localhost` in an invite or storage furl) are
 
 ## Operate from adb
 
-UiAutomator matches **content-desc**, not Compose `testTag`. Each hook sets both to the same name. The debug APK is debuggable. Do not `adb root` (that breaks package and storage on this emulator).
+UiAutomator matches **content-desc**, not Compose `testTag`. Each hook sets both to the same name on **one** node. The debug APK is debuggable. Do not `adb root` (that breaks package and storage on this emulator).
+
+Probe `join_button` by content-desc. The node’s bounds must be non-zero — `[0,0][0,0]` is a failed probe. Its `enabled` attribute is the product gate:
+
+| threat box | invite text | `join_button` enabled |
+|---|---|---|
+| unchecked | empty or filled | false |
+| checked | blank | false |
+| checked | non-blank | true (false while a join is already running) |
+
+Do not treat a zero-size node as enabled. The Join control does not fire while that attribute is false.
 
 | content-desc / testTag | Control |
 |---|---|
@@ -89,7 +99,17 @@ adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
   --es net.themark.leasegrid.sync.EXTRA_RECOVERY_FILE ok-plain.leasegrid-recovery
 ```
 
-An absolute path in `EXTRA_RECOVERY_FILE` is also accepted. Then confirm `passphrase_field` / `import_confirm`. Import does not run by itself.
+An absolute path in `EXTRA_RECOVERY_FILE` is also accepted (`/data/user/0/net.themark.leasegrid.sync/files/…` or any other readable path). A path that is not absolute is resolved under the app files dir. Import does not run by itself.
+
+Cold-start the extra so it is applied after the first frame (a running activity can swallow it):
+
+```bash
+adb shell am force-stop net.themark.leasegrid.sync
+adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
+  --es net.themark.leasegrid.sync.EXTRA_RECOVERY_FILE ok-pass.leasegrid-recovery
+```
+
+Wait until Import is up. `passphrase_field` must be on screen with non-zero bounds **before** confirm. `ok-pass` needs `correct horse` in that field (`adb shell input text 'correct%s horse'`), then `import_confirm`. `ok-plain` confirms with an empty passphrase. `corrupt` confirms and must show FAIL + Next without writing `session.json`. A file that cannot be read shows FAIL and Retry and does not write a session.
 
 ## FAIL
 

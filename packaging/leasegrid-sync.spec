@@ -59,6 +59,9 @@ hiddenimports = (
         "PyQt5.sip",
         "sqlite3",
         "segno",
+        # Py≥3.13: stdlib cgi gone; legacy-cgi provides it for Tahoe
+        "cgi",
+        "legacy_cgi",
     ]
 )
 

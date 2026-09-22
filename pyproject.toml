@@ -34,6 +34,8 @@ tahoe = [
   "service-identity<25",
   # local magic-wormhole relay for dev-grid `--invite` (short codes offline)
   "magic-wormhole-mailbox-server>=0.5",
+  # Py≥3.13 removed stdlib cgi; Tahoe still imports it (AppImage freeze)
+  "legacy-cgi>=2.6",
 ]
 
 [tool.setuptools]

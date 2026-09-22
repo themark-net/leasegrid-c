@@ -38,6 +38,35 @@ def test_host_pytest_does_not_import_phone_reader():
         assert "app/src/main/python" not in text, path
 
 
+def test_dogfood_hooks_are_named():
+    ui = (ROOT / "android/app/src/main/java/net/themark/leasegrid/sync/ui/SyncApp.kt").read_text(
+        encoding="utf-8"
+    )
+    for tag in (
+        "threat_ack",
+        "invite_field",
+        "join_button",
+        "import_recovery_button",
+        "passphrase_field",
+        "import_confirm",
+    ):
+        assert f'testTag("{tag}")' in ui, tag
+        assert f'contentDescription = "{tag}"' in ui, tag
+    assert "FocusRequester" in ui
+    activity = (ROOT / "android/app/src/main/java/net/themark/leasegrid/sync/MainActivity.kt").read_text(
+        encoding="utf-8"
+    )
+    assert "EXTRA_INVITE" in activity
+    assert "acknowledged = true" not in activity
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+    assert "leasegrid-recovery" in manifest
+    assert 'android:scheme="leasegrid"' in manifest
+    note = (ROOT / "docs/ops/p4-android-dogfood.md").read_text(encoding="utf-8")
+    assert "EXTRA_INVITE" in note
+    assert "invite_field" in note
+    assert "EXTRA_RECOVERY_FILE" in note
+
+
 def test_no_webview_and_no_wui_next():
     android = ROOT / "android"
     assert android.is_dir()

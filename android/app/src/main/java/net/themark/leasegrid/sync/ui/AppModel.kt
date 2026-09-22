@@ -115,6 +115,11 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         retry = null
     }
 
+    /** In-app FAIL. Does not write a session. [again] is the Retry action. */
+    fun reportFail(message: String, next: String, again: (() -> Unit)? = null) {
+        show(FailBanner(message, next), again)
+    }
+
     fun retryFail() {
         val action = retry
         fail = null

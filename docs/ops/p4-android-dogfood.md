@@ -31,21 +31,65 @@ API 34 or newer image (x86_64 is fine). Launch **Leasegrid Sync**. The product U
 
 Loopback friendnets (`127.0.0.1` / `localhost` in an invite or storage furl) are also tried as `10.0.2.2`, the emulator’s alias for the host. A grid running on the dogfood machine is reachable that way. A physical phone cannot use that alias; use a LAN address in the invite.
 
+## Operate from adb
+
+UiAutomator matches **content-desc**, not Compose `testTag`. Each hook sets both to the same name. The debug APK is debuggable. Do not `adb root` (that breaks package and storage on this emulator).
+
+| content-desc / testTag | Control |
+|---|---|
+| `threat_ack` | Threat checkbox. Join stays disabled until this is checked. |
+| `invite_field` | Invite `OutlinedTextField`. After the box is checked it requests focus so `input text` can land. |
+| `join_button` | Join friendnet. Enabled only when the box is checked and the invite is non-blank. |
+| `import_recovery_button` | Opens the system document picker (`ACTION_OPEN_DOCUMENT`). |
+| `passphrase_field` | Passphrase. Requests focus after a file is loaded. |
+| `import_confirm` | Import. Enabled only when a file was read. |
+
+`adb shell input text` mangles `:` and `/`. Prefer the debug invite extra. It fills the field and does **not** check the threat box.
+
+```bash
+adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
+  --es net.themark.leasegrid.sync.EXTRA_INVITE 'pb://hashhashhash@10.0.2.2:45001/swissnumswiss'
+# or a deep link (URL-encode the furl):
+adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
+  -a android.intent.action.VIEW \
+  -d 'leasegrid://dogfood?invite=pb%3A%2F%2Fhashhashhash%4010.0.2.2%3A45001%2Fswissnumswiss'
+```
+
+Then tap `threat_ack` (uiautomator content-desc). The invite field takes focus. **Join friendnet** enables. A wormhole short code still fails in-app and asks for the full link.
+
+If you would rather type: check `threat_ack` first (focus moves to `invite_field`), then `adb shell input text` a furl that needs no colon escaping, or tap the field and paste. The field is a normal outlined text field, single line, URI keyboard.
+
 ## Path A — join
 
 1. Read the four threat points.
 2. Leave the box unchecked and confirm **Join friendnet** stays disabled.
-3. Check **I understand the four points above.**
+3. Check **I understand the four points above.** The invite field takes focus.
 4. Paste a `pb://` introducer furl or a full `leasegrid:join#…` / `http(s)://…#v=1&i=pb://…` link. A wormhole short code (`7-word-word`) fails in-app and asks for the full link. This phone does not offer storage.
 5. Join. You land on **Folders** with status **Online · unpaid** when the introducer answered. A join by itself has no folder caps, so the list can be empty until you import a recovery key. That empty state is the home, not a half-created node.
 
 ## Path B — import U4 recovery
 
-1. From Welcome, **Import recovery key instead…** (or About → Import).
+1. From Welcome, **Import recovery key instead…** (or About → Import). The picker is `ACTION_OPEN_DOCUMENT`.
 2. Pick a `*.leasegrid-recovery` file exported by desktop Sync (format v1, same file `recovery.py` writes).
-3. Enter the passphrase if the file is encrypted. Empty passphrase is valid for a plaintext key.
-4. Import. Folder names come from the bundle. Wrong passphrase or a corrupt file shows **FAIL** and **Next** on the phone and does not write `session.json`.
+3. Enter the passphrase if the file is encrypted. Empty passphrase is valid for a plaintext key. `ok-pass` uses `correct horse` (`adb shell input text 'correct%s horse'` once `passphrase_field` is focused). `ok-plain` uses an empty passphrase.
+4. Tap `import_confirm`. Folder names come from the bundle. Wrong passphrase or a corrupt file shows **FAIL** and **Next** on the phone and does not write `session.json`.
 5. Open a folder, tap a file, wait for **Open with…**, and hand it to a system viewer.
+
+Pixel Launcher and DocumentsUI ANRs on TCG+lavapipe are the emulator, not the import result. Skip the picker with `ACTION_VIEW` or the debug file extra. Pass `-t application/octet-stream` so the filter matches a `file://` URI that has no host. A read that fails (scoped storage on API 34 often returns EACCES for `/sdcard`) shows **FAIL** and **Retry** and does not write a session.
+
+```bash
+adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
+  -a android.intent.action.VIEW -t application/octet-stream \
+  -d file:///sdcard/Download/leasegrid-dogfood/ok-plain.leasegrid-recovery
+
+# If that FAIL is EACCES, copy into the debug app files dir (no adb root) and pass a filesDir-relative path.
+# shell can read /sdcard; run-as writes as the app.
+adb shell "cat /sdcard/Download/leasegrid-dogfood/ok-plain.leasegrid-recovery | run-as net.themark.leasegrid.sync sh -c 'cat > files/ok-plain.leasegrid-recovery'"
+adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
+  --es net.themark.leasegrid.sync.EXTRA_RECOVERY_FILE ok-plain.leasegrid-recovery
+```
+
+An absolute path in `EXTRA_RECOVERY_FILE` is also accepted. Then confirm `passphrase_field` / `import_confirm`. Import does not run by itself.
 
 ## FAIL
 

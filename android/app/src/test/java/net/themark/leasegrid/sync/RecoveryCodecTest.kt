@@ -61,6 +61,17 @@ class RecoveryCodecTest {
 
 class InviteTest {
     @Test
+    fun debugInviteExtraDoesNotSkipThreatAck() {
+        val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        val text = DogfoodIntents.inviteText(furl, null)
+        assertEquals(furl, text)
+        assertFalse(Invite.joinEnabled(false, text!!))
+        assertTrue(Invite.joinEnabled(true, text))
+        assertEquals("from-query", DogfoodIntents.inviteText(null, "from-query"))
+        assertEquals(null, DogfoodIntents.inviteText("  ", "  "))
+    }
+
+    @Test
     fun joinStaysDisabledUntilAckAndText() {
         assertFalse(Invite.joinEnabled(false, "pb://abcabcdefghij/swissnumswiss"))
         assertFalse(Invite.joinEnabled(true, "  "))

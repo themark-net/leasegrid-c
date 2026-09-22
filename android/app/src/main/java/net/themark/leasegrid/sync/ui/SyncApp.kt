@@ -3,6 +3,8 @@
 package net.themark.leasegrid.sync.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,13 +28,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import net.themark.leasegrid.sync.recovery.SCARY_LOSS
@@ -82,24 +92,54 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
             }
         }
     }
+    val inviteFocus = remember { FocusRequester() }
+    LaunchedEffect(model.acknowledged) {
+        if (!model.acknowledged) return@LaunchedEffect
+        // After the checkbox, the field must own the IME so adb `input text` lands.
+        kotlinx.coroutines.delay(50)
+        runCatching { inviteFocus.requestFocus() }
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = model.acknowledged, onCheckedChange = { model.acknowledged = it })
+        Checkbox(
+            checked = model.acknowledged,
+            onCheckedChange = { model.acknowledged = it },
+            modifier = Modifier
+                .testTag("threat_ack")
+                .semantics { contentDescription = "threat_ack" },
+        )
         Text("I understand the four points above.")
     }
     OutlinedTextField(
         value = model.inviteText,
         onValueChange = { model.inviteText = it },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("invite_field")
+            .focusRequester(inviteFocus)
+            .semantics { contentDescription = "invite_field" },
         label = { Text("Invite") },
         placeholder = { Text("paste invite…") },
-        minLines = 2,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Uri,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { if (model.joinEnabled()) model.join() }),
     )
     Button(
         onClick = { model.join() },
         enabled = model.joinEnabled() && !model.busy,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("join_button")
+            .semantics { contentDescription = "join_button" },
     ) { Text(if (model.busy) "Joining…" else "Join friendnet") }
-    TextButton(onClick = onPickRecovery) { Text("Import recovery key instead…") }
+    TextButton(
+        onClick = onPickRecovery,
+        modifier = Modifier
+            .testTag("import_recovery_button")
+            .semantics { contentDescription = "import_recovery_button" },
+    ) { Text("Import recovery key instead…") }
     FailCard(model)
     if (model.busy) CircularProgressIndicator()
 }
@@ -112,18 +152,32 @@ private fun Import(model: AppModel, onPickRecovery: () -> Unit) {
     OutlinedButton(onClick = onPickRecovery, modifier = Modifier.fillMaxWidth()) {
         Text(if (model.pickedName.isBlank()) "Choose recovery file" else model.pickedName)
     }
+    val passphraseFocus = remember { FocusRequester() }
+    LaunchedEffect(model.pickedName) {
+        if (model.pickedBytes == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(50)
+        runCatching { passphraseFocus.requestFocus() }
+    }
     OutlinedTextField(
         value = model.passphrase,
         onValueChange = { model.passphrase = it },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("passphrase_field")
+            .focusRequester(passphraseFocus)
+            .semantics { contentDescription = "passphrase_field" },
         label = { Text("Passphrase (if any)") },
         visualTransformation = PasswordVisualTransformation(),
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
     )
     Button(
         onClick = { model.importRecovery() },
         enabled = !model.busy && model.pickedBytes != null,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("import_confirm")
+            .semantics { contentDescription = "import_confirm" },
     ) { Text(if (model.busy) "Importing…" else "Import recovery key") }
     OutlinedButton(onClick = { model.goWelcome() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
     FailCard(model)

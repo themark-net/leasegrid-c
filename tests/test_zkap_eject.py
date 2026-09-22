@@ -154,7 +154,7 @@ def test_plugin_client_skips_forwarding_to_ejected_node(two_nodes, tmp_path: Pat
     pytest.importorskip("allmydata")
     from leasegrid_zkap.eject import Ejected, EjectSet
     from leasegrid_zkap.plugin import plugin
-    from tests.test_zkap_spender import _FakeRref, _wait
+    from test_zkap_spender import _FakeRref, _wait
 
     wallet = tmp_path / "credit-wallet.json"
     save_wallet(wallet, _mint_wallet(two_nodes["key"], 2))

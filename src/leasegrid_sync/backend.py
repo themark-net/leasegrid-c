@@ -58,6 +58,8 @@ class ConnectionStatus:
     introducer_ok: bool = False
     servers_connected: int = 0
     server_nicknames: list[str] = field(default_factory=list)
+    # Introducer-announced storage servers (nickname / nodeid / connection_status).
+    announced_servers: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -755,6 +757,22 @@ class TahoeClient:
     def owns_process(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
+    def reload_static_servers(self) -> None:
+        """Restart a node this process started so ``servers.yaml`` is picked up.
+
+        A node Sync did not launch is left alone (we do not kill an external client).
+        """
+        if not self.owns_process():
+            return
+        self.stop()
+        try:
+            self.start()
+        except SyncError as exc:
+            raise SyncError(
+                "could not reload storage servers. The storage client did not restart.",
+                "Retry.",
+            ) from exc
+
     def wait_connected(self, timeout: float = TAHOE_CONNECT_TIMEOUT) -> ConnectionStatus:
         """Poll until the introducer reports connected; return the last status otherwise."""
         deadline = time.time() + timeout
@@ -844,16 +862,25 @@ class TahoeClient:
         )
         servers = data.get("servers") or []
         nicknames = []
+        announced: list[dict[str, Any]] = []
         connected = 0
         for srv in servers:
             if not isinstance(srv, dict):
                 continue
             nick = str(srv.get("nickname") or "")
-            st = str(srv.get("connection_status") or "").lower()
+            raw_status = str(srv.get("connection_status") or "")
+            st = raw_status.lower()
             if nick:
                 nicknames.append(nick)
             if st.startswith("connected"):
                 connected += 1
+            announced.append(
+                {
+                    "nickname": nick,
+                    "nodeid": str(srv.get("nodeid") or ""),
+                    "connection_status": raw_status,
+                }
+            )
         if introducer_ok:
             state = "Connected"
             detail = "introducer up · %d storage" % connected
@@ -869,6 +896,7 @@ class TahoeClient:
             introducer_ok=introducer_ok,
             servers_connected=connected,
             server_nicknames=nicknames,
+            announced_servers=announced,
         )
 
     def has_nodedir(self) -> bool:

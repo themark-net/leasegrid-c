@@ -57,6 +57,15 @@ from .recovery import (
     RecoveryCtl,
     RestoreResult,
 )
+from .servers import (
+    SERVERS_HONESTY,
+    ServerRow,
+    add_storage_server,
+    disconnect_copy,
+    disconnect_server,
+    roster,
+    use_available_server,
+)
 
 THREAT_COPY = (
     "You are joining a friendnet you trust — not Dropbox-the-company and not Filecoin.\n"
@@ -638,6 +647,159 @@ class ImportRecoveryDialog:
         self.dlg.accept()
 
 
+class AddStorageServerDialog:
+    """Add storage: invite someone to Offer disk, or paste a storage furl."""
+
+    def __init__(self, parent, window: "MainWindow", qt) -> None:
+        QtWidgets = qt
+        self.QtWidgets = QtWidgets
+        self.window = window
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Add storage server")
+        self.dlg.setObjectName("addStorageDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        prompt = QtWidgets.QLabel("How do you want to add storage?")
+        prompt.setObjectName("addStoragePrompt")
+        v.addWidget(prompt)
+
+        self.invite_radio = QtWidgets.QRadioButton("Invite someone to Offer disk")
+        self.invite_radio.setObjectName("addPathInvite")
+        self.invite_radio.setChecked(True)
+        v.addWidget(self.invite_radio)
+        invite_hint = QtWidgets.QLabel(
+            "Share an invite so their computer can store shares."
+        )
+        invite_hint.setWordWrap(True)
+        invite_hint.setObjectName("addInviteHint")
+        v.addWidget(invite_hint)
+        self.copy_invite_btn = QtWidgets.QPushButton("Create invite / Copy invite")
+        self.copy_invite_btn.setObjectName("copyInviteButton")
+        self.copy_invite_btn.setAutoDefault(False)
+        self.copy_invite_btn.clicked.connect(self.on_copy_invite)
+        v.addWidget(self.copy_invite_btn)
+        wait = QtWidgets.QLabel(
+            "Wait for them to Join + Offer, then they appear in Storage servers."
+        )
+        wait.setWordWrap(True)
+        wait.setObjectName("addInviteWait")
+        v.addWidget(wait)
+        self.invite_status = QtWidgets.QLabel("")
+        self.invite_status.setObjectName("addInviteStatus")
+        self.invite_status.setWordWrap(True)
+        v.addWidget(self.invite_status)
+
+        self.paste_radio = QtWidgets.QRadioButton("Paste a server link")
+        self.paste_radio.setObjectName("addPathPaste")
+        v.addWidget(self.paste_radio)
+        self.paste_hint = QtWidgets.QLabel(
+            "Paste a storage server link (pb://…) from a host you trust."
+        )
+        self.paste_hint.setWordWrap(True)
+        self.paste_hint.setObjectName("addPasteHint")
+        v.addWidget(self.paste_hint)
+        v.addWidget(QtWidgets.QLabel("Server link"))
+        self.furl_edit = QtWidgets.QLineEdit()
+        self.furl_edit.setObjectName("storageFurlEdit")
+        self.furl_edit.setPlaceholderText("pb://…")
+        v.addWidget(self.furl_edit)
+        v.addWidget(QtWidgets.QLabel("Nickname (optional)"))
+        self.nick_edit = QtWidgets.QLineEdit()
+        self.nick_edit.setObjectName("storageNickEdit")
+        self.nick_edit.setPlaceholderText("home-nas")
+        v.addWidget(self.nick_edit)
+        self.error = QtWidgets.QLabel("")
+        self.error.setObjectName("addStorageError")
+        self.error.setWordWrap(True)
+        self.error.setStyleSheet("color: #8b1a1a;")
+        v.addWidget(self.error)
+        brow = QtWidgets.QHBoxLayout()
+        cancel = QtWidgets.QPushButton("Cancel")
+        cancel.setObjectName("addStorageCancel")
+        cancel.setAutoDefault(False)
+        cancel.clicked.connect(self.dlg.reject)
+        self.add_btn = QtWidgets.QPushButton("Add server")
+        self.add_btn.setObjectName("addServerButton")
+        self.add_btn.setAutoDefault(False)
+        self.add_btn.clicked.connect(self.on_add)
+        brow.addWidget(cancel)
+        brow.addStretch(1)
+        brow.addWidget(self.add_btn)
+        v.addLayout(brow)
+
+    def on_copy_invite(self) -> None:
+        url = self.window.current_share_url()
+        if not url:
+            self.invite_status.setStyleSheet("color: #8b1a1a;")
+            self.invite_status.setText(
+                SyncError(
+                    "could not make a join link. No friendnet joined yet.",
+                    "join a friendnet first, then copy the invite.",
+                ).banner()
+            )
+            return
+        self.QtWidgets.QApplication.clipboard().setText(url)
+        self.invite_status.setStyleSheet("")
+        self.invite_status.setText(
+            "Invite copied. Wait for them to Join + Offer, then they appear in Storage servers."
+        )
+
+    def on_add(self) -> None:
+        self.error.setText("")
+        furl = self.furl_edit.text()
+        self.add_btn.setEnabled(False)
+        self.QtWidgets.QApplication.processEvents()
+        try:
+            add_storage_server(
+                self.window.home,
+                self.window.tahoe.nodedir,
+                furl,
+                self.nick_edit.text(),
+            )
+            self.window.tahoe.reload_static_servers()
+        except SyncError as exc:
+            self.error.setText(exc.banner())
+            self.add_btn.setText("Retry")
+            self.add_btn.setEnabled(True)
+            return
+        except Exception as exc:
+            self.window._log_exception("add-storage", exc)
+            self.error.setText(unexpected_error(exc, "could not add this storage server.").banner())
+            self.add_btn.setText("Retry")
+            self.add_btn.setEnabled(True)
+            return
+        self.dlg.accept()
+
+
+class DisconnectServerDialog:
+    """Confirm Disconnect. Copy is local to this Sync home."""
+
+    def __init__(self, parent, qt, name: str) -> None:
+        QtWidgets = qt
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Disconnect storage server?")
+        self.dlg.setObjectName("disconnectServerDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        self.copy = QtWidgets.QLabel(disconnect_copy(name))
+        self.copy.setObjectName("disconnectCopy")
+        self.copy.setWordWrap(True)
+        v.addWidget(self.copy)
+        brow = QtWidgets.QHBoxLayout()
+        cancel = QtWidgets.QPushButton("Cancel")
+        cancel.setObjectName("disconnectCancel")
+        cancel.setAutoDefault(False)
+        cancel.clicked.connect(self.dlg.reject)
+        ok = QtWidgets.QPushButton("Disconnect")
+        ok.setObjectName("confirmDisconnect")
+        ok.setAutoDefault(False)
+        ok.clicked.connect(self.dlg.accept)
+        brow.addWidget(cancel)
+        brow.addStretch(1)
+        brow.addWidget(ok)
+        v.addLayout(brow)
+
+
 class MainWindow:
     """Thin wrapper so tests can construct the window without exec_."""
 
@@ -787,10 +949,21 @@ class MainWindow:
         v = QtWidgets.QVBoxLayout(page)
         v.setContentsMargins(12, 8, 12, 8)
         chrome = QtWidgets.QHBoxLayout()
-        self.status_chip = QtWidgets.QLabel("Connecting…")
+        self.status_chip = QtWidgets.QPushButton("Connecting…")
         self.status_chip.setObjectName("statusChip")
+        self.status_chip.setFlat(True)
+        self.status_chip.setAutoDefault(False)
+        self.status_chip.setCursor(self.QtCore.Qt.PointingHandCursor)
+        self.status_chip.setToolTip("Open Storage servers")
+        self.status_chip.clicked.connect(self.open_storage_servers)
         chrome.addWidget(QtWidgets.QLabel(APP_NAME))
         chrome.addStretch(1)
+        self.servers_nav_btn = QtWidgets.QPushButton("Storage servers")
+        self.servers_nav_btn.setObjectName("storageServersNav")
+        self.servers_nav_btn.setFlat(True)
+        self.servers_nav_btn.setAutoDefault(False)
+        self.servers_nav_btn.clicked.connect(self.open_storage_servers)
+        chrome.addWidget(self.servers_nav_btn)
         self.back_btn = QtWidgets.QPushButton("Folders")
         self.back_btn.setObjectName("backToFolders")
         self.back_btn.setFlat(True)
@@ -819,12 +992,15 @@ class MainWindow:
         self.places.setObjectName("places")
         self.folders_tab = QtWidgets.QWidget()
         self.folders_tab.setObjectName("foldersTab")
+        self.servers_tab = QtWidgets.QWidget()
+        self.servers_tab.setObjectName("storageServersTab")
         self.credit_tab = QtWidgets.QWidget()
         self.credit_tab.setObjectName("creditTab")
         self.recovery_tab = QtWidgets.QWidget()
         self.recovery_tab.setObjectName("recoveryTab")
         self.settings_tab = QtWidgets.QWidget()
         self.places.addWidget(self.folders_tab)
+        self.places.addWidget(self.servers_tab)
         self.places.addWidget(self.credit_tab)
         self.places.addWidget(self.recovery_tab)
         self.places.addWidget(self.settings_tab)
@@ -846,6 +1022,17 @@ class MainWindow:
         self.add_btn.clicked.connect(self.on_add_folder)
         head.addWidget(self.add_btn)
         fl.addLayout(head)
+        host_row = QtWidgets.QHBoxLayout()
+        self.hosts_line = QtWidgets.QLabel("Hosts: none connected yet")
+        self.hosts_line.setObjectName("hostsLine")
+        self.manage_servers_btn = QtWidgets.QPushButton("Manage storage servers")
+        self.manage_servers_btn.setObjectName("manageServersButton")
+        self.manage_servers_btn.setAutoDefault(False)
+        self.manage_servers_btn.clicked.connect(self.open_storage_servers)
+        host_row.addWidget(self.hosts_line)
+        host_row.addWidget(self.manage_servers_btn)
+        host_row.addStretch(1)
+        fl.addLayout(host_row)
         self.empty_label = QtWidgets.QLabel(
             "No folders on this device yet.\n"
             "Add a local folder to keep in sync here."
@@ -873,11 +1060,201 @@ class MainWindow:
         fl.addWidget(self._build_offer_box())
         fl.addWidget(self._build_recovery_nudge())
 
+        self._build_servers_tab()
         self._build_credit_tab()
         self._build_recovery_tab()
         self._build_settings_tab()
         self._sync_gated_chrome()
         return page
+
+    def _build_servers_tab(self) -> None:
+        QtWidgets = self.QtWidgets
+        sl = QtWidgets.QVBoxLayout(self.servers_tab)
+        title = QtWidgets.QLabel("Storage servers")
+        title.setObjectName("storageServersTitle")
+        font = title.font()
+        font.setPointSize(14)
+        font.setBold(True)
+        title.setFont(font)
+        sl.addWidget(title)
+        sub = QtWidgets.QLabel("Where your files' shares are stored.")
+        sub.setObjectName("storageServersSubtitle")
+        sub.setWordWrap(True)
+        sl.addWidget(sub)
+        self.add_storage_btn = QtWidgets.QPushButton("+ Add storage server")
+        self.add_storage_btn.setObjectName("addStorageButton")
+        self.add_storage_btn.setAutoDefault(False)
+        self.add_storage_btn.clicked.connect(self.on_add_storage)
+        sl.addWidget(self.add_storage_btn)
+        self.servers_empty = QtWidgets.QLabel(
+            "No storage servers connected yet.\n\n"
+            "Add a computer that stores your files' shares."
+        )
+        self.servers_empty.setObjectName("serversEmpty")
+        self.servers_empty.setWordWrap(True)
+        self.servers_empty.hide()
+        sl.addWidget(self.servers_empty)
+        self.servers_used_title = QtWidgets.QLabel("Used by this Sync home")
+        self.servers_used_title.setObjectName("serversUsedTitle")
+        sl.addWidget(self.servers_used_title)
+        self.servers_used_box = QtWidgets.QWidget()
+        self.servers_used_box.setObjectName("serversUsed")
+        self.servers_used_lay = QtWidgets.QVBoxLayout(self.servers_used_box)
+        self.servers_used_lay.setContentsMargins(0, 0, 0, 0)
+        sl.addWidget(self.servers_used_box)
+        self.servers_avail_title = QtWidgets.QLabel("Available on friendnet (not used yet)")
+        self.servers_avail_title.setObjectName("serversAvailableTitle")
+        sl.addWidget(self.servers_avail_title)
+        self.servers_avail_box = QtWidgets.QWidget()
+        self.servers_avail_box.setObjectName("serversAvailable")
+        self.servers_avail_lay = QtWidgets.QVBoxLayout(self.servers_avail_box)
+        self.servers_avail_lay.setContentsMargins(0, 0, 0, 0)
+        sl.addWidget(self.servers_avail_box)
+        self.servers_error = QtWidgets.QLabel("")
+        self.servers_error.setObjectName("serversError")
+        self.servers_error.setWordWrap(True)
+        self.servers_error.setStyleSheet("color: #8b1a1a;")
+        sl.addWidget(self.servers_error)
+        honesty = QtWidgets.QLabel(SERVERS_HONESTY)
+        honesty.setObjectName("serversHonesty")
+        honesty.setWordWrap(True)
+        sl.addWidget(honesty)
+        sl.addStretch(1)
+
+    def _clear_layout(self, layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+
+    def _add_server_row(self, layout, row: ServerRow) -> None:
+        QtWidgets = self.QtWidgets
+        wrap = QtWidgets.QWidget()
+        wrap.setObjectName("serverRow")
+        outer = QtWidgets.QVBoxLayout(wrap)
+        outer.setContentsMargins(0, 4, 0, 4)
+        top = QtWidgets.QHBoxLayout()
+        name = QtWidgets.QLabel(row.name)
+        name.setObjectName("serverName")
+        status = QtWidgets.QLabel(row.status)
+        status.setObjectName("serverStatus")
+        source = QtWidgets.QLabel(row.source)
+        source.setObjectName("serverSource")
+        top.addWidget(name)
+        top.addWidget(status)
+        top.addWidget(source)
+        top.addStretch(1)
+        if row.section == "used":
+            btn = QtWidgets.QPushButton("Disconnect")
+            btn.setObjectName("disconnectServerButton")
+            btn.setAutoDefault(False)
+            btn.clicked.connect(
+                lambda _checked=False, key=row.key, label=row.name: self.on_disconnect_storage(
+                    key, label
+                )
+            )
+        else:
+            btn = QtWidgets.QPushButton("Add")
+            btn.setObjectName("pinServerButton")
+            btn.setAutoDefault(False)
+            btn.clicked.connect(
+                lambda _checked=False, key=row.key, label=row.name: self.on_use_available(
+                    key, label
+                )
+            )
+        top.addWidget(btn)
+        outer.addLayout(top)
+        if row.note:
+            note = QtWidgets.QLabel(row.note)
+            note.setObjectName("serverNote")
+            note.setWordWrap(True)
+            outer.addWidget(note)
+        layout.addWidget(wrap)
+
+    def _refresh_hosts_line(self, status: ConnectionStatus) -> None:
+        n = int(status.servers_connected or 0)
+        if n <= 0:
+            match = re.search(r"(\d+)\s+storage", status.detail or "")
+            n = int(match.group(1)) if match else 0
+        if n <= 0:
+            self.hosts_line.setText("Hosts: none connected yet")
+        elif n == 1:
+            self.hosts_line.setText("Hosts: 1 connected")
+        else:
+            self.hosts_line.setText("Hosts: %d connected" % n)
+
+    def _refresh_servers(self, status: Optional[ConnectionStatus] = None) -> None:
+        if not hasattr(self, "servers_used_lay"):
+            return
+        if status is None:
+            status = self.tahoe.connection_status() if self._joined else ConnectionStatus(state="Offline")
+        self._refresh_hosts_line(status)
+        try:
+            used, available = roster(self.home, list(status.announced_servers or []))
+        except SyncError as exc:
+            self.servers_error.setText(exc.banner())
+            return
+        self.servers_error.setText("")
+        self._clear_layout(self.servers_used_lay)
+        self._clear_layout(self.servers_avail_lay)
+        for row in used:
+            self._add_server_row(self.servers_used_lay, row)
+        for row in available:
+            self._add_server_row(self.servers_avail_lay, row)
+        empty = not used and not available
+        self.servers_empty.setVisible(empty)
+        self.servers_used_title.setVisible(bool(used))
+        self.servers_used_box.setVisible(bool(used))
+        self.servers_avail_title.setVisible(bool(available))
+        self.servers_avail_box.setVisible(bool(available))
+
+    def open_storage_servers(self) -> None:
+        """Folders → Storage servers. No-op before this home has joined."""
+        if not self._joined or self.stack.currentWidget() is not self.main_page:
+            return
+        self.show_place(self.servers_tab)
+
+    def on_add_storage(self) -> None:
+        if not self._joined:
+            return
+        dlg = AddStorageServerDialog(self.win, self, self.QtWidgets)
+        if dlg.dlg.exec_() == self.QtWidgets.QDialog.Accepted:
+            self.refresh()
+
+    def on_disconnect_storage(self, key: str, name: str) -> None:
+        dlg = DisconnectServerDialog(self.win, self.QtWidgets, name)
+        if dlg.dlg.exec_() != self.QtWidgets.QDialog.Accepted:
+            return
+        try:
+            disconnect_server(self.home, self.tahoe.nodedir, key, name=name)
+            self.tahoe.reload_static_servers()
+        except SyncError as exc:
+            self.servers_error.setText(exc.banner())
+            return
+        except Exception as exc:
+            self._log_exception("disconnect-storage", exc)
+            self.servers_error.setText(
+                unexpected_error(exc, "could not disconnect this storage server.").banner()
+            )
+            return
+        self.refresh()
+
+    def on_use_available(self, key: str, name: str) -> None:
+        try:
+            use_available_server(self.home, self.tahoe.nodedir, key, name)
+            self.tahoe.reload_static_servers()
+        except SyncError as exc:
+            self.servers_error.setText(exc.banner())
+            return
+        except Exception as exc:
+            self._log_exception("use-available", exc)
+            self.servers_error.setText(
+                unexpected_error(exc, "could not add this storage server.").banner()
+            )
+            return
+        self.refresh()
 
     def _build_offer_box(self):
         QtWidgets = self.QtWidgets
@@ -1492,6 +1869,7 @@ class MainWindow:
             return
         status = self.tahoe.connection_status()
         self.status_chip.setText(format_status_chip(status))
+        self._refresh_servers(status)
         self._refresh_offer_viz()
         try:
             rows = self.mf.list_folders()
@@ -1606,6 +1984,8 @@ class MainWindow:
             return
         if widget is self.credit_tab:
             self.load_credit()
+        elif widget is self.servers_tab:
+            self._refresh_servers()
         elif widget is self.settings_tab:
             self._refresh_share()
 

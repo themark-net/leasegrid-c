@@ -14,7 +14,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 PyQt5 = pytest.importorskip("PyQt5")
 
 from leasegrid_sync import APP_NAME  # noqa: E402
-from leasegrid_sync.app import MainWindow, TopUpDialog  # noqa: E402
+from leasegrid_sync.app import (  # noqa: E402
+    AddStorageServerDialog,
+    DisconnectServerDialog,
+    MainWindow,
+    TopUpDialog,
+)
 from leasegrid_sync.backend import ConnectionStatus, SyncError  # noqa: E402
 from leasegrid_sync.credit import (  # noqa: E402
     CreditBalance,
@@ -120,6 +125,34 @@ def ui(tmp_path: Path, fake_credit: FakeCredit):
     window.win.hide()
     if window.tray is not None:
         window.tray.hide()
+
+
+def test_clean_home_is_join_first_without_online_chrome(tmp_path: Path, fake_credit: FakeCredit):
+    """Fresh home: Welcome/Join only. No Online — N computers chrome."""
+    home = tmp_path / "fresh-home"
+    nodedir = home / "tahoe"
+    window = MainWindow(nodedir=nodedir, home=home, credit=fake_credit, autoload=True)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert window.stack.currentWidget() is window.join_page
+        assert not window._joined
+        assert not (nodedir / "tahoe.cfg").exists()
+        assert not (home / "servers.json").exists()
+        assert not window.status_chip.isVisible()
+        assert "computers storing files" not in window.status_chip.text()
+        labels = window.join_page.findChildren(PyQt5.QtWidgets.QLabel)
+        buttons = window.join_page.findChildren(PyQt5.QtWidgets.QPushButton)
+        blob = " ".join(w.text() for w in list(labels) + list(buttons))
+        assert "Join friendnet" in blob
+        assert "Online —" not in blob
+        assert "computers storing files" not in blob
+        assert "Storage servers" not in blob
+    finally:
+        window.poll.stop()
+        window.win.hide()
+        if window.tray is not None:
+            window.tray.hide()
 
 
 def test_window_title_is_leasegrid_sync(ui: MainWindow):
@@ -537,6 +570,72 @@ def test_enter_main_shows_folders_tab(ui: MainWindow):
     assert ui.settings_action.text() == "Settings"
     assert not ui.credit_action.isVisible()
     assert ui.status_chip.text().startswith("Online")
+    assert ui.servers_nav_btn.text() == "Storage servers"
+    assert ui.manage_servers_btn.isVisibleTo(ui.folders_tab)
+
+
+def test_joined_home_keeps_servers_and_both_add_paths(ui: MainWindow):
+    """After connect, Storage servers and both Add paths stay reachable."""
+    st = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+        server_nicknames=["friend-laptop"],
+        announced_servers=[
+            {
+                "nickname": "friend-laptop",
+                "nodeid": "v0-abc",
+                "connection_status": "connected",
+            }
+        ],
+    )
+    with patch.object(ui.tahoe, "connection_status", return_value=st):
+        with patch.object(ui.mf, "list_folders", return_value=[]):
+            ui._enter_main("Connected", st.detail)
+            ui.win.show()
+            ui.status_chip.click()
+            assert ui.places.currentWidget() is ui.servers_tab
+            names = [
+                w.text()
+                for w in ui.servers_tab.findChildren(PyQt5.QtWidgets.QLabel, "serverName")
+            ]
+            assert "friend-laptop" in names
+            assert ui.add_storage_btn.isVisible()
+            honesty = ui.servers_tab.findChild(PyQt5.QtWidgets.QLabel, "serversHonesty")
+            assert honesty is not None
+            assert "forever" not in honesty.text().lower()
+            assert "this home only" in honesty.text()
+            dlg = AddStorageServerDialog(ui.win, ui, ui.QtWidgets)
+            dlg.dlg.show()
+            ui.QtWidgets.QApplication.processEvents()
+            assert dlg.invite_radio.text() == "Invite someone to Offer disk"
+            assert dlg.paste_radio.text() == "Paste a server link"
+            assert dlg.invite_radio.isVisible()
+            assert dlg.paste_radio.isVisible()
+            assert dlg.furl_edit.isVisible()
+            assert dlg.copy_invite_btn.isVisible()
+            assert "pb://" in dlg.paste_hint.text()
+            dlg.furl_edit.setText("not-a-furl")
+            dlg.on_add()
+            assert "FAIL" in dlg.error.text()
+            assert "could not add this storage server" in dlg.error.text()
+            assert "Retry" in dlg.error.text()
+            assert dlg.add_btn.text() == "Retry"
+            assert "forever" not in dlg.error.text().lower()
+            assert "web UI" not in dlg.error.text()
+            assert not (ui.home / "servers.json").exists()
+            dlg.dlg.close()
+            confirm = DisconnectServerDialog(ui.win, ui.QtWidgets, "friend-laptop")
+            copy = confirm.copy.text().lower()
+            assert "forever" not in copy
+            assert "this sync home" in copy
+            assert "for everyone" in copy
+            confirm.dlg.reject()
+            ui.back_btn.click()
+            assert ui.places.currentWidget() is ui.folders_tab
+            ui.manage_servers_btn.click()
+            assert ui.places.currentWidget() is ui.servers_tab
 
 
 def test_payment_lecture_hidden_until_gated(ui: MainWindow, monkeypatch):

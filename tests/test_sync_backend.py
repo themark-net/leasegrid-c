@@ -115,6 +115,8 @@ def test_join_existing_connected(tmp_path: Path):
     assert st.state == "Connected"
     assert st.introducer_ok
     assert st.servers_connected == 2
+    assert st.announced_servers[0]["nickname"] == "maximum"
+    assert st.announced_servers[1]["connection_status"] == "connected"
 
 
 def test_join_invite_garbage(tmp_path: Path):

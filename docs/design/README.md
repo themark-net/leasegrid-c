@@ -1,98 +1,102 @@
 # Leasegrid Sync — Design DoD index
 
-**Status:** **P4 Android Slice A — Design DoD ready** — 2026-09-22 PT  
+**Status:** **#27 Buyer storage — Design DoD ready** — 2026-09-22 PT (~10:15pm PT)  
 **Owner:** Design Bot (executor staged on box)  
 **Date:** 2026-09-22 PT  
-**Product lock:** CEO/PM RELEASE P4 Android Design · issue [#23](https://github.com/themark-net/leasegrid-c/issues/23) · tip **`7837ef8`** · roadmap Phase 4 (mobile read, then write) · desktop Sync (U0–U4 + AppImage) stays **primary**  
+**Product lock:** CEO/PM RELEASE Buyer storage Design · issue [#27](https://github.com/themark-net/leasegrid-c/issues/27) · tip ≥ **`5b752c7`** (`5b752c70dda4f5b4857c97556ace8881a8fed8f1`) · Mark/CEO lock 2026-09-22 · CrashPlan folders-first + Offer pie stand · public v* HOLD until Design then implement  
 **Install target (nimo):** `/home/mark/DEVELOP/leasegrid-c/docs/design/`  
-**Brand (provisional):** **Leasegrid Sync** — CrashPlan is a UX metaphor, not a product rename. Phone app name: **Leasegrid Sync (Android)** / short **Sync Mobile**.
+**Brand (provisional):** **Leasegrid Sync** — CrashPlan is a UX metaphor, not a product rename.
 
 ---
 
 ## Design index (post-Fable + UI track)
 
-| Slice | Status | Exit / cite |
-|-------|--------|-------------|
-| **U0** | Design DoD done (`10`–`14`) | Native Sync product lock; five surfaces wireframed |
-| **U1** | SHIP (Folders / Magic Folder / tray / join) | Preserve — no WUI |
-| **U2** | Design/SHIP Credit (`15`–`19`) | Credit secondary; unpaid default |
-| **U3** | Design DoD (`20`–`24`); AppImage path separate | Installer polish not blocking P4 |
-| **P0** | CLEAR path on tip (do not re-claim here) | Honesty — cite separately if PASS |
-| **P1** | Design/SHIP CrashPlan shell (`25`–`29`) | Folders-first + Offer pie; unpaid default |
-| **U4** | Design/SHIP Recovery (`30`–`34`) | Threat HITL + recovery key export/import |
-| **U5** | Deferred | Faucet → XMR when 0c PASS — **not** P4 Slice A |
-| **P4-A** | **Design DoD ready** (`35`–`39`) | Android read-first APK: join/import → folders → download/open |
-| **P4-B** | Parked (follow-on only) | Write / Magic Folder–class sync on Android — does **not** block Slice A Design PASS |
+|| Slice | Status | Exit / cite |
+||-------|--------|-------------|
+|| **U0** | Design DoD done (`10`–`14`) | Native Sync product lock; Join-first intent |
+|| **U1** | SHIP (Folders / Magic Folder / tray / join) | Preserve — no WUI |
+|| **U2** | Design/SHIP Credit (`15`–`19`) | Credit secondary; unpaid default |
+|| **U3** | Design DoD (`20`–`24`); AppImage path separate | Installer polish not blocking #27 |
+|| **P0** | CLEAR path on tip (do not re-claim here) | Honesty — cite separately if PASS |
+|| **P1** | Design/SHIP CrashPlan shell (`25`–`29`) | Folders-first + Offer pie; unpaid default |
+|| **U4** | Design/SHIP Recovery (`30`–`34`) | Threat HITL + recovery key export/import |
+|| **U5** | Deferred | Faucet → XMR when 0c PASS — **not** #27 |
+|| **P4-A** | Design DoD / Slice A shipped on tip (`35`–`39`) | Android read-first — **leave bodies alone**; desktop Sync still primary |
+|| **P4-B** | Parked | Android write — not this slice |
+|| **#27 Buyer storage** | **Design DoD ready** (`40`–`44`) | Empty Join-first + Storage servers Add/Disconnect |
 
-**P4-A one-liner:** Read-first Android APK — join friendnet **or** import U4 recovery key → folders list → download/open files on device — operate-or-FAIL in-app, no Tahoe WUI, no desktop regress.
+**#27 one-liner:** Clean Sync home = Join-first empty; after join, **Storage servers** lists hosts with **Add** (invite-to-Offer **and** paste storage furl) and honest **Disconnect**; Join/Add always reachable; tip ≥ `5b752c7`.
 
 ---
 
-## Artifact index — P4 Android Slice A (this package)
+## Artifact index — Buyer storage #27 (this package)
 
-| File | Contents |
-|------|----------|
-| [35-P4-ANDROID-A-JOURNEY.md](35-P4-ANDROID-A-JOURNEY.md) | Join/import → folders → download/open; FAIL paths |
-| [36-P4-ANDROID-A-IA.md](36-P4-ANDROID-A-IA.md) | Phone IA; folders-first; Offer/Credit N/A or secondary; Slice B park |
-| [37-P4-ANDROID-A-WIREFRAMES.md](37-P4-ANDROID-A-WIREFRAMES.md) | ASCII mobile frames |
-| [38-P4-ANDROID-A-NON-GOALS.md](38-P4-ANDROID-A-NON-GOALS.md) | Write sync, iOS, Play Store, WUI, desktop regress, U5, Slice B blocking |
-| [39-P4-ANDROID-A-DEVBOT-HANDOFF.md](39-P4-ANDROID-A-DEVBOT-HANDOFF.md) | Stack + rejects; APK path; emulator dogfood for And; tip ≥ `7837ef8` |
-| [09-ui-track-P4-ANDROID-POINTER.md](09-ui-track-P4-ANDROID-POINTER.md) | Pointer beside `09-ui-track.md` |
-| [INSTALL-ON-NIMO.sh](INSTALL-ON-NIMO.sh) | Extract/copy into nimo `docs/design/` (preserves U0–U4 bodies) |
-| [PARENT-INSTALL.md](PARENT-INSTALL.md) | CopyFromBox recipe for parent Design Bot |
-| [phase-p4-android-a-design.tar.gz](phase-p4-android-a-design.tar.gz) | Tar of README + 35–39 (+ pointer) |
+|| File | Contents |
+||------|----------|
+|| [40-BUYER-STORAGE-JOURNEY.md](40-BUYER-STORAGE-JOURNEY.md) | Empty→Join; Servers; Add (both paths); Disconnect; FAIL; founder problem cite |
+|| [41-BUYER-STORAGE-IA.md](41-BUYER-STORAGE-IA.md) | Places; Storage servers list; CTA ranks; introducer honesty |
+|| [42-BUYER-STORAGE-WIREFRAMES.md](42-BUYER-STORAGE-WIREFRAMES.md) | ASCII: empty Join; Folders; Servers; Add both paths; Disconnect; FAIL |
+|| [43-BUYER-STORAGE-NON-GOALS.md](43-BUYER-STORAGE-NON-GOALS.md) | Non-goals + explicit in-scope (roster + both Add paths) |
+|| [44-BUYER-STORAGE-DEVBOT-HANDOFF.md](44-BUYER-STORAGE-DEVBOT-HANDOFF.md) | Files/areas; dogfood; tip ≥ `5b752c7`; operate-or-FAIL |
+|| [09-ui-track-BUYER-STORAGE-POINTER.md](09-ui-track-BUYER-STORAGE-POINTER.md) | Pointer beside `09-ui-track.md` |
+|| [INSTALL-ON-NIMO.sh](INSTALL-ON-NIMO.sh) | Extract/copy into nimo `docs/design/` (preserves `10`–`39`) |
+|| [PARENT-INSTALL.md](PARENT-INSTALL.md) | CopyFromBox recipe for parent Design Bot |
+|| [phase-buyer-storage-design.tar.gz](phase-buyer-storage-design.tar.gz) | Tar of README + 40–44 (+ pointer) |
 
 ---
 
 ## Prior design (preserve — do not rewrite)
 
-| Slice | Files | Role for P4-A |
-|-------|-------|---------------|
-| U0 | `10`–`14` | Threat + Recovery baseline |
-| U2 | `15`–`19` | Credit secondary — phone: N/A or deep-secondary |
-| P1 | `25`–`29` | Folders-first metaphor → phone folders list primary |
-| U4 | `30`–`34` | Recovery import path + honesty copy — **reuse**, do not invent a second format |
+|| Slice | Files | Role for #27 |
+||------|-------|--------------|
+|| U0 | `10`–`14` | Join-first intent + threat baseline |
+|| P1 | `25`–`29` | Folders-first CrashPlan shell + Offer pie |
+|| U4 | `30`–`34` | Recovery import alternate path |
+|| P4-A | `35`–`39` | Android — **untouched**; desktop Sync primary |
 
-P4-A **adds** Android read-first DoD (`35`–`39`). It does **not** replace U0–U4 artifact bodies (`10`–`34`).
-
----
-
-## Binding constraints (P4 Slice A)
-
-| Lock | Rule |
-|------|------|
-| Tip | main ≥ **`7837ef8`** |
-| Issue | [#23](https://github.com/themark-net/leasegrid-c/issues/23) Design DoD |
-| Primary product | Desktop Sync (U0–U4 + AppImage) — **no regress** |
-| Slice A MVP | Read-only / restore: join **or** import recovery → folders → download/open |
-| Slice B | Document only; **must not** block Slice A Design PASS |
-| IA | Folders-first; Offer/Credit secondary or N/A on phone |
-| Payment / XMR | Not required for Slice A; unpaid default |
-| Recovery | Same `*.leasegrid-recovery` as U4; loss = total loss |
-| Operate-or-FAIL | In-app FAIL + Next (no WUI Next; no “use desktop only” as sole Next for open) |
-| No Tahoe WUI | Not product UI (including WebView-as-product) |
-| Honesty | Do not claim Play Store, iOS, write sync, or U5/mainnet done |
-| Tester | **And** (Android UI tester) dogfoods after implement |
+#27 **adds** buyer storage DoD (`40`–`44`). It does **not** replace U0–U4 or P4 artifact bodies (`10`–`39`).
 
 ---
 
-## Success check (P4-A Design PASS)
+## Binding constraints (#27)
 
-- [x] Journey documented (join/import → folders → download/open + FAIL)  
-- [x] Phone IA folders-first; Offer/Credit N/A or secondary; Slice B parked  
-- [x] Mobile ASCII wireframes  
-- [x] Non-goals explicit (write sync, iOS, Play Store, WUI, desktop regress, U5, Slice B blocking)  
-- [x] DevBot handoff: stack + reject list, APK path, emulator steps for And, tip ≥ `7837ef8`  
-- [x] Operate-or-FAIL on journey + handoff  
-- [x] U0–U4 rows preserved (not rewritten)  
-- [x] Package staged under `/workspace/leasegrid-p4-android-out/`  
-
-**P4-A Design exit:** Artifacts under `docs/design/` + DevBot handoff → PM RELEASE Cursor/Build for Slice A implement.
+|| Lock | Rule |
+||------|------|
+|| Tip | main ≥ **`5b752c7`** |
+|| Issue | [#27](https://github.com/themark-net/leasegrid-c/issues/27) Design DoD |
+|| Founder problem | Mark ~10:11pm PT: Online-N with no Join on already-joined home — rejects “comes populated”; needs host control |
+|| Empty Join-first | Clean home → Join only; no Online-N before join; no pre-baked buyer lab home |
+|| Servers screen ★ | Primary host UX: list / status / Add / Disconnect (Mark 2026-09-22) |
+|| Join/Add always reachable | Post-connect; Join-once-and-gone = FAIL |
+|| Add paths | **Both** in Design: invite-to-Offer **and** paste storage furl |
+|| Disconnect | This home’s used set only; no forever-remove from grid |
+|| IA | Folders-first; Offer/Credit rank unchanged; no WUI |
+|| Public v* | HOLD until Design then implement |
+|| Android | Slice B not this slice; P4-A bodies preserved |
 
 ---
+
+## Success check (#27 Design PASS)
+
+- [x] Journey: empty→Join; Add both paths; Disconnect; FAIL; founder cite  
+- [x] IA: Storage servers place; CTA ranks; introducer honesty  
+- [x] Wireframes: Join empty; Folders; Servers; Add both; Disconnect; FAIL  
+- [x] Non-goals + in-scope roster/furl stated  
+- [x] DevBot handoff: files, dogfood, tip ≥ `5b752c7`, operate-or-FAIL  
+- [x] Both Add paths required in Design (invite + paste furl)  
+- [x] U0–U4 + P4-A rows preserved (not rewritten)  
+- [x] Package staged under `/workspace/leasegrid-buyer-storage-out/`  
+
+**#27 Design exit:** Artifacts under `docs/design/` + DevBot handoff → PM RELEASE Cursor/Build implement.
+
+---
+
+## Related (not this slice)
+
+Issue [#28](https://github.com/themark-net/leasegrid-c/issues/28) Offer usage ↔ payment — log only; **out of #27**.
 
 ## Explicit non-goals (summary)
 
-Full Magic Folder write sync · iOS · Play Store listing · Tahoe WUI / WebView-as-product · Electron-on-Android · requiring desktop for every open · inventing a second recovery format · operator Node kit · demoting desktop · U5/mainnet XMR · making Slice B block Slice A Design PASS · rewriting `10`–`34` · Mark drip from Design.
+Implement in Design pass · Mark drip · mainnet XMR · Android Slice B as this slice · baking public friendnet into AppImage · demoting Folders/Offer · waiting on Mark Invite-vs-paste widget to ship Design · rewriting `10`–`39` · Tahoe WUI · fake forever-remove.
 
-See [38-P4-ANDROID-A-NON-GOALS.md](38-P4-ANDROID-A-NON-GOALS.md).
+See [43-BUYER-STORAGE-NON-GOALS.md](43-BUYER-STORAGE-NON-GOALS.md).

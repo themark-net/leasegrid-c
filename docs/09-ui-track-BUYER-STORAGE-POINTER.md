@@ -1,0 +1,3 @@
+# UI track pointer — Buyer storage (#27)
+
+**Buyer storage Design DoD** (empty Join-first + Storage servers Add/Disconnect; desktop Sync) lives in [`design/`](design/) — start at [`design/README.md`](design/README.md) (artifacts `40`–`44`). Cite: issue [#27](https://github.com/themark-net/leasegrid-c/issues/27) · tip ≥ **`5b752c7`** · Mark/CEO lock 2026-09-22 (Servers screen primary; Join/Add always reachable; both Add paths in Design) · CrashPlan folders-first + Offer pie stand · public v* HOLD until Design then implement · P4 Android `35`–`39` untouched · U5 deferred.

@@ -24,8 +24,11 @@ from .backend import (
     apply_offer_percent,
     default_home,
     format_bytes,
+    format_hosted_strip,
     is_wormhole_code,
     read_disk_offer,
+    read_hosted_shares,
+    read_local_accepted,
     write_probe_file,
     wait_for_file_status,
 )
@@ -40,9 +43,12 @@ from .credit import (
     ZERO_FOLDER_NEXT,
     CreditCtl,
     CreditSnapshot,
+    HostSettlement,
     credit_enforced,
     credit_gate,
+    format_host_settlement,
     format_remaining,
+    load_host_settlement,
     underpaid_copy,
 )
 from .recovery import (
@@ -138,7 +144,7 @@ def log_exception(home: Path, where: str, exc: BaseException) -> Path:
 
 
 def _make_disk_pie(parent):
-    """Paint used / offered / free as a pie. No Tahoe web view."""
+    """Paint disk-local used / offered / kept. Hosted-for-others is not a slice."""
     _QtCore, QtGui, QtWidgets = _qt_api()
 
     class DiskPie(QtWidgets.QWidget):
@@ -147,6 +153,9 @@ def _make_disk_pie(parent):
             self.setObjectName("diskPie")
             self.setMinimumSize(148, 148)
             self.setMaximumSize(180, 180)
+            self.setToolTip(
+                "Used, kept free, and offered are this disk. Not shares hosted for others."
+            )
             self._slices: Optional[DiskSlices] = None
 
         def set_slices(self, slices: Optional[DiskSlices]) -> None:
@@ -1441,9 +1450,11 @@ class MainWindow:
         QtWidgets = self.QtWidgets
         box = QtWidgets.QGroupBox("Offer storage on this disk")
         box.setObjectName("offerBox")
-        lay = QtWidgets.QHBoxLayout(box)
+        outer = QtWidgets.QVBoxLayout(box)
+        lay = QtWidgets.QHBoxLayout()
         self.disk_pie = _make_disk_pie(box)
         self.disk_offer: Optional[DiskSlices] = None
+        self._hosted_last = None
         lay.addWidget(self.disk_pie)
         col = QtWidgets.QVBoxLayout()
         self.offer_percent = QtWidgets.QLabel("Offering 0% of this disk")
@@ -1454,7 +1465,7 @@ class MainWindow:
         self.offer_percent.setFont(font)
         self.offer_percent.setWordWrap(True)
         col.addWidget(self.offer_percent)
-        self.offer_legend = QtWidgets.QLabel("Used  ·  Free  ·  Offered")
+        self.offer_legend = QtWidgets.QLabel("Used  ·  Kept free  ·  Offered")
         self.offer_legend.setObjectName("offerLegend")
         self.offer_legend.setWordWrap(True)
         col.addWidget(self.offer_legend)
@@ -1479,7 +1490,41 @@ class MainWindow:
         col.addWidget(self.offer_status)
         col.addStretch(1)
         lay.addLayout(col, 1)
+        outer.addLayout(lay)
+        outer.addWidget(self._build_hosted_strip(box))
         return box
+
+    def _build_hosted_strip(self, box):
+        """Hosted-for-others meter. Separate from the disk pie."""
+        QtWidgets = self.QtWidgets
+        strip = QtWidgets.QWidget(box)
+        strip.setObjectName("offerHostedStrip")
+        lay = QtWidgets.QVBoxLayout(strip)
+        lay.setContentsMargins(0, 8, 0, 0)
+        title = QtWidgets.QLabel("Hosted for others")
+        title.setObjectName("offerHostedTitle")
+        font = title.font()
+        font.setBold(True)
+        title.setFont(font)
+        lay.addWidget(title)
+        self.offer_hosted_body = QtWidgets.QLabel("Nothing hosted for others yet.")
+        self.offer_hosted_body.setObjectName("offerHostedBody")
+        self.offer_hosted_body.setWordWrap(True)
+        lay.addWidget(self.offer_hosted_body)
+        self.offer_hosted_retry = QtWidgets.QPushButton("Retry")
+        self.offer_hosted_retry.setObjectName("offerHostedRetry")
+        self.offer_hosted_retry.setAutoDefault(False)
+        _style_primary(self.offer_hosted_retry)
+        self._hosted_retry_mode = "hosted"
+        self.offer_hosted_retry.clicked.connect(self._on_hosted_retry)
+        self.offer_hosted_retry.hide()
+        lay.addWidget(self.offer_hosted_retry)
+        self.offer_settlement_chip = QtWidgets.QPushButton("Credit & settlement")
+        self.offer_settlement_chip.setObjectName("offerSettlementChip")
+        self.offer_settlement_chip.setAutoDefault(False)
+        self.offer_settlement_chip.clicked.connect(self.on_settlement_chip)
+        lay.addWidget(self.offer_settlement_chip)
+        return strip
 
     def _build_recovery_nudge(self):
         """Dismissible export reminder. Does not block Add folder or the Offer slider."""
@@ -1579,6 +1624,29 @@ class MainWindow:
         body.addWidget(self.credit_recent)
         body.addStretch(1)
         cl.addWidget(self.credit_body)
+
+        self.host_settlement_box = QtWidgets.QGroupBox("Host settlement")
+        self.host_settlement_box.setObjectName("hostSettlementBox")
+        self.host_settlement_box.setFocusPolicy(self.QtCore.Qt.StrongFocus)
+        hb = QtWidgets.QVBoxLayout(self.host_settlement_box)
+        self.host_settlement_body = QtWidgets.QLabel("")
+        self.host_settlement_body.setObjectName("hostSettlementBody")
+        self.host_settlement_body.setWordWrap(True)
+        hb.addWidget(self.host_settlement_body)
+        self.host_settlement_refresh = QtWidgets.QPushButton("Refresh settlement")
+        self.host_settlement_refresh.setObjectName("hostSettlementRefresh")
+        self.host_settlement_refresh.setAutoDefault(False)
+        self.host_settlement_refresh.clicked.connect(self._load_host_settlement)
+        hb.addWidget(self.host_settlement_refresh)
+        self.host_settlement_retry = QtWidgets.QPushButton("Retry")
+        self.host_settlement_retry.setObjectName("hostSettlementRetry")
+        self.host_settlement_retry.setAutoDefault(False)
+        _style_primary(self.host_settlement_retry)
+        self.host_settlement_retry.clicked.connect(self._load_host_settlement)
+        self.host_settlement_retry.hide()
+        hb.addWidget(self.host_settlement_retry)
+        self.host_settlement_box.hide()
+        cl.addWidget(self.host_settlement_box)
         cl.addStretch(1)
 
     def _build_recovery_tab(self) -> None:
@@ -2024,18 +2092,18 @@ class MainWindow:
             slices = read_disk_offer(self.tahoe.nodedir, self.home)
         except SyncError as exc:
             self._show_offer_fail(exc)
-            return
         except Exception as exc:
             self._log_exception("offer-pie", exc)
             self._show_offer_fail(unexpected_error(exc, "could not read this disk."))
-            return
-        self._show_offer_slices(slices, saved=False)
+        else:
+            self._show_offer_slices(slices, saved=False)
+        self._refresh_hosted()
 
     def _show_offer_fail(self, err: SyncError) -> None:
         self.disk_offer = None
         self.disk_pie.set_slices(None)
         self.offer_percent.setText("% of this disk")
-        self.offer_legend.setText("Used  ·  Free  ·  Offered")
+        self.offer_legend.setText("Used  ·  Kept free  ·  Offered")
         self.offer_status.setStyleSheet("color: #8b1a1a;")
         self.offer_status.setText(err.banner())
 
@@ -2044,7 +2112,7 @@ class MainWindow:
         self.disk_pie.set_slices(slices)
         self.offer_percent.setText("Offering %d%% of this disk" % slices.offered_percent)
         self.offer_legend.setText(
-            "Used %s  ·  Free %s  ·  Offered %s"
+            "Used %s  ·  Kept free %s  ·  Offered %s"
             % (format_bytes(slices.used), format_bytes(slices.kept), format_bytes(slices.offered))
         )
         if not self.offer_slider.isSliderDown():
@@ -2075,6 +2143,103 @@ class MainWindow:
             self.offer_status.setText(unexpected_error(exc, "could not offer disk.").banner())
             return
         self._show_offer_slices(slices, saved=True)
+        self._refresh_hosted()
+
+    def _refresh_hosted(self) -> None:
+        """Reload the hosted strip. Disk pie and the Offer slider stay as they are."""
+        try:
+            shares = read_hosted_shares(self.tahoe.nodedir)
+        except SyncError as exc:
+            self._show_hosted_fail(exc)
+            return
+        except Exception as exc:
+            self._log_exception("offer-hosted", exc)
+            self._show_hosted_fail(
+                unexpected_error(exc, "could not load how much you are hosting for others.")
+            )
+            return
+        self._hosted_last = shares
+        settlement_error = ""
+        accepted = None
+        try:
+            local = read_local_accepted(self.tahoe.nodedir)
+        except SyncError as exc:
+            settlement_error = exc.banner()
+        except Exception as exc:
+            self._log_exception("offer-hosted-settlement", exc)
+            settlement_error = unexpected_error(exc, "could not load settlement status.").banner()
+        else:
+            if local is not None:
+                accepted = local[0]
+        self._hosted_retry_mode = "hosted"
+        self.offer_hosted_body.setStyleSheet("")
+        self.offer_hosted_body.setText(
+            format_hosted_strip(shares, accepted=accepted, settlement_error=settlement_error)
+        )
+        self.offer_hosted_retry.setVisible(bool(settlement_error))
+
+    def _on_hosted_retry(self) -> None:
+        if self._hosted_retry_mode == "nav":
+            self.on_settlement_chip()
+            return
+        self._refresh_hosted()
+
+    def _show_hosted_fail(self, err: SyncError) -> None:
+        text = err.banner()
+        last = self._hosted_last
+        if last is not None:
+            if last.bytes_hosted > 0:
+                text += "\nLast known: Hosting %s for the friendnet." % format_bytes(
+                    last.bytes_hosted
+                )
+            else:
+                text += "\nLast known: Nothing hosted for others yet."
+        self._hosted_retry_mode = "hosted"
+        self.offer_hosted_body.setStyleSheet("color: #8b1a1a;")
+        self.offer_hosted_body.setText(text)
+        self.offer_hosted_retry.show()
+
+    def on_settlement_chip(self) -> None:
+        """Open the existing Credit place under More. Does not add a primary tab."""
+        if not self._joined or self.stack.currentWidget() is not self.main_page:
+            self._show_settlement_nav_fail()
+            return
+        self.open_credit_place()
+        if self.places.currentWidget() is not self.credit_tab:
+            self._show_settlement_nav_fail()
+            return
+        if self._hosted_retry_mode == "nav":
+            self._refresh_hosted()
+        if self.host_settlement_box.isVisible():
+            self.host_settlement_box.setFocus(self.QtCore.Qt.OtherFocusReason)
+
+    def _show_settlement_nav_fail(self) -> None:
+        err = SyncError(
+            "Credit place could not open.",
+            "use More → Credit; Retry.",
+        )
+        self._hosted_retry_mode = "nav"
+        self.offer_hosted_body.setStyleSheet("color: #8b1a1a;")
+        self.offer_hosted_body.setText(err.banner())
+        self.offer_hosted_retry.show()
+
+    def _load_host_settlement(self) -> None:
+        """Optional Credit strip. Hidden unless this home offers disk."""
+        issuer_url = getattr(self.credit, "issuer_url", "") or ""
+        try:
+            row = load_host_settlement(self.tahoe.nodedir, issuer_url=issuer_url)
+        except Exception as exc:
+            self._log_exception("host-settlement", exc)
+            row = HostSettlement(kind="fail")
+        self.host_settlement_body.setText(format_host_settlement(row))
+        if row.kind == "hidden":
+            self.host_settlement_box.hide()
+            return
+        failed = row.kind == "fail"
+        self.host_settlement_body.setStyleSheet("color: #8b1a1a;" if failed else "")
+        self.host_settlement_retry.setVisible(failed)
+        self.host_settlement_refresh.setVisible(not failed)
+        self.host_settlement_box.show()
 
     def refresh(self) -> None:
         if not self._joined:
@@ -2226,12 +2391,15 @@ class MainWindow:
             snap = self.credit.load_balance()
         except SyncError as exc:
             self._show_credit_error(exc)
+            self._load_host_settlement()
             return
         except Exception as exc:  # a slot must never let this reach Qt (PyQt5 aborts)
             self._log_exception("load_credit", exc)
             self._show_credit_error(unexpected_error(exc, "could not load credit balance."))
+            self._load_host_settlement()
             return
         self.apply_credit_snapshot(snap)
+        self._load_host_settlement()
 
     def _show_credit_error(self, exc: SyncError) -> None:
         self.credit_loading.hide()

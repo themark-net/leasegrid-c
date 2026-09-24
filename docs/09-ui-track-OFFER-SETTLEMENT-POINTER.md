@@ -1,0 +1,3 @@
+# UI track pointer — Offer Used → settlement (#28)
+
+**Offer Used → payment/settlement Design DoD** (disk Used ≠ Hosted-for-others; Offer strip + deep-link to Credit/ZKAP settlement visibility under More; honest empty/missing/FAIL; no new rails; desktop Sync) lives in [`design/`](design/) — start at [`design/README.md`](design/README.md) (artifacts `50`–`54`). Cite: issue [#28](https://github.com/themark-net/leasegrid-c/issues/28) · tip ≥ **`83b3e66`** · CEO RELEASE 2026-09-24 · #27 Servers primary + Join-first preserved · #34 Credit Top up unchanged under More · #38 lead journey preserved · no new payment rails · Marketing silent · no Mark ops · out: #33/#26/#30 · supersedes #27 pack `43` footnote · DevBot Build-first on nimo after Design PASS.

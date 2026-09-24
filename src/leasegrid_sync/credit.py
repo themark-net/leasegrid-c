@@ -27,7 +27,16 @@ from leasegrid_zkap.client import (
 )
 from leasegrid_zkap.constants import DENOMINATION, GIB
 
-from .backend import SyncError, default_home
+from .backend import (
+    SETTLEMENT_FAIL_MSG,
+    SETTLEMENT_FAIL_NEXT,
+    SyncError,
+    default_home,
+    read_local_accepted,
+    storage_offered,
+    zkap_plugin_issuer,
+    zkap_plugin_nodeid,
+)
 
 DEFAULT_ISSUER_URL = "http://127.0.0.1:8700"
 EXPAND_FACTOR = 3.2  # shares span nodes; upload size is not credit 1:1
@@ -256,6 +265,182 @@ def credit_enforced() -> bool:
     add a folder. Payment complexity stays behind this flag.
     """
     return os.environ.get("LEASEGRID_GATED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@dataclass(frozen=True)
+class HostSettlement:
+    """Read-only host settlement for the Credit strip.
+
+    ``hidden`` — this home is not offering disk.
+    ``missing`` — offering, but this network did not provide per-node figures.
+    ``data`` — figures taken from the local spent set and/or a per-node ledger.
+    ``fail`` — a configured source was unreadable or the issuer did not answer.
+    """
+
+    kind: str
+    accepted: Optional[int] = None
+    settled: Optional[int] = None
+    pending: Optional[int] = None
+    same_epoch: bool = False
+    detail: str = ""
+
+
+def settlement_rails_expected(nodedir: Path) -> bool:
+    """True when this build has named an issuer or the grid charges for writes.
+
+    The default lab URL alone is not a rail: an unpaid friendnet must stay
+    missing, not FAIL, when nothing is listening there.
+    """
+    if zkap_plugin_issuer(nodedir):
+        return True
+    if os.environ.get("LEASEGRID_ISSUER_URL", "").strip():
+        return True
+    return credit_enforced()
+
+
+def per_node_settled(ledger: Any, nodeid: str) -> Optional[int]:
+    """Settled tokens for this nodeid only.
+
+    ``GET /v0/ledger`` epoch totals are the whole issuer. They are not this
+    host's payout and are ignored.
+    """
+    if not nodeid or not isinstance(ledger, dict):
+        return None
+    for key in ("nodes", "by_node", "node_ledger"):
+        block = ledger.get(key)
+        if isinstance(block, dict) and nodeid in block:
+            return _coerce_settled(block[nodeid])
+    return None
+
+
+def _coerce_settled(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, dict):
+        return None
+    direct = value.get("tokens_settled")
+    if isinstance(direct, int) and not isinstance(direct, bool):
+        return direct
+    if not value:
+        return None
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in value.values()):
+        return None
+    try:
+        latest = max(value, key=lambda k: int(k))
+    except (TypeError, ValueError):
+        return None
+    return int(value[latest])
+
+
+def _fetch_ledger(url: str) -> Any:
+    return http_json(url, timeout=5.0)
+
+
+def load_host_settlement(
+    nodedir: Path,
+    *,
+    issuer_url: str,
+    fetch: Optional[Callable[..., Any]] = None,
+) -> HostSettlement:
+    """Host settlement from the local spent set and, when a rail is configured, the issuer.
+
+    Does not settle, quote, or invent XMR. Global ledger totals are not shown
+    as this node's settled count.
+    """
+    nodedir = Path(nodedir)
+    if not storage_offered(nodedir):
+        return HostSettlement(kind="hidden")
+    try:
+        local = read_local_accepted(nodedir)
+    except SyncError as exc:
+        return HostSettlement(kind="fail", detail=exc.message or SETTLEMENT_FAIL_MSG)
+    accepted = None
+    same_epoch = False
+    if local is not None:
+        accepted, same_epoch = local
+    settled: Optional[int] = None
+    if settlement_rails_expected(nodedir):
+        plugin_issuer = zkap_plugin_issuer(nodedir)
+        url = (plugin_issuer or issuer_url or default_issuer_url()).rstrip("/")
+        getter = fetch or _fetch_ledger
+        try:
+            ledger = getter(url + "/v0/ledger")
+        except (ClientError, OSError, ValueError):
+            return HostSettlement(
+                kind="fail",
+                accepted=accepted,
+                same_epoch=same_epoch,
+                detail=SETTLEMENT_FAIL_MSG,
+            )
+        if not isinstance(ledger, dict):
+            return HostSettlement(
+                kind="fail",
+                accepted=accepted,
+                same_epoch=same_epoch,
+                detail=SETTLEMENT_FAIL_MSG,
+            )
+        settled = per_node_settled(ledger, zkap_plugin_nodeid(nodedir))
+    return _settlement_from_figures(accepted, settled, same_epoch)
+
+
+def _settlement_from_figures(
+    accepted: Optional[int],
+    settled: Optional[int],
+    same_epoch: bool,
+) -> HostSettlement:
+    show_accepted = accepted if accepted else None
+    pending = None
+    if show_accepted is not None and settled is not None and show_accepted >= settled:
+        pending = show_accepted - settled
+    if show_accepted is None and settled is None:
+        return HostSettlement(kind="missing")
+    return HostSettlement(
+        kind="data",
+        accepted=show_accepted,
+        settled=settled,
+        pending=pending,
+        same_epoch=same_epoch,
+    )
+
+
+def format_host_settlement(row: HostSettlement) -> str:
+    """Operator copy. No XMR amount and no paid state without a per-node figure."""
+    if row.kind == "hidden":
+        return ""
+    if row.kind == "fail":
+        lines = []
+        if row.accepted:
+            lines.append(_accepted_line(row))
+        lines.append(SyncError(row.detail or SETTLEMENT_FAIL_MSG, SETTLEMENT_FAIL_NEXT).banner())
+        lines.append("Buyer Credit above may still be valid.")
+        return "\n".join(lines)
+    if row.kind == "missing":
+        return (
+            "Settlement status: not available on this network yet.\n"
+            "Offer consumed still shows local hosted capacity when known.\n"
+            "Next: use Credit for buyer balance; ask your friendnet operator if settlement should be on."
+        )
+    lines = ["This device Offers disk."]
+    if row.accepted:
+        lines.append(_accepted_line(row))
+    if row.settled is not None:
+        if row.pending is None:
+            lines.append("Settled on ledger: %d" % row.settled)
+        elif row.pending == 0:
+            lines.append("Settled on ledger: %d · Pending: none" % row.settled)
+        else:
+            lines.append("Settled on ledger: %d · Pending: %d" % (row.settled, row.pending))
+    else:
+        lines.append("Settlement status: not available on this network yet.")
+    lines.append("Payout: out-of-band (not shown in Sync).")
+    return "\n".join(lines)
+
+
+def _accepted_line(row: HostSettlement) -> str:
+    epoch = " (this epoch)" if row.same_epoch else ""
+    return "Accepted toward settlement%s: %d tokens" % (epoch, int(row.accepted or 0))
 
 
 def credit_gate(remaining: int, need: int) -> str:

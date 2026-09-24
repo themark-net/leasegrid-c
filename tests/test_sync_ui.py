@@ -885,7 +885,7 @@ def test_offer_pie_shows_percent_of_this_disk(ui: MainWindow):
     assert ui.offer_percent.text() == "Offering 50% of this disk"
     legend = ui.offer_legend.text()
     assert legend.startswith("Used ")
-    assert "Free " in legend
+    assert "Kept free " in legend
     assert "Offered " in legend
     assert ui.offer_slider.value() == 50
     assert "Open web UI" not in legend
@@ -932,7 +932,7 @@ def test_offer_slider_saves_percent_of_this_disk(ui: MainWindow):
     assert "enabled = true" in cfg
     assert "reserved_space = 550" in cfg  # free 800 − 25% of 1000
     assert "Used" in ui.offer_legend.text()
-    assert "Free" in ui.offer_legend.text()
+    assert "Kept free" in ui.offer_legend.text()
     assert "Offered" in ui.offer_legend.text()
 
 
@@ -942,6 +942,158 @@ def _enter(ui: MainWindow) -> None:
     with patch.object(ui.tahoe, "connection_status", return_value=st):
         with patch.object(ui.mf, "list_folders", return_value=[]):
             ui._enter_main("Connected", "lab")
+
+
+def test_hosted_strip_empty_missing_and_distinct_from_pie(ui: MainWindow):
+    """Disk legend stays disk-local. Zero shares is empty, not FAIL and not earnings."""
+    from collections import namedtuple
+
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[storage]\nenabled = true\nreserved_space = 100\n", encoding="utf-8"
+    )
+    usage = namedtuple("usage", "total used free")(1000, 400, 600)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        _enter(ui)
+    legend = ui.offer_legend.text()
+    hosted = ui.offer_hosted_body.text()
+    assert "Used 400 B" in legend
+    assert "Kept free" in legend
+    assert "Offered" in legend
+    assert "Hosting" not in legend
+    assert "hosted" not in legend.lower()
+    assert hosted.startswith("Nothing hosted for others yet.")
+    assert "FAIL" not in hosted
+    assert "XMR" not in hosted
+    assert "Earned" not in hosted
+    assert ui.offer_hosted_retry.isHidden()
+    assert ui.offer_slider.isEnabled()
+    assert ui.disk_pie._slices is not None
+    assert ui.disk_pie._slices.used == 400
+
+
+def test_hosted_strip_shows_share_bytes_and_missing_settlement(ui: MainWindow):
+    from collections import namedtuple
+
+    nodedir = ui.tahoe.nodedir
+    (nodedir / "tahoe.cfg").write_text(
+        "[storage]\nenabled = true\nreserved_space = 100\n", encoding="utf-8"
+    )
+    share = nodedir / "storage" / "shares" / "aa"
+    share.mkdir(parents=True)
+    (share / "0").write_bytes(b"x" * 12)
+    usage = namedtuple("usage", "total used free")(1000, 400, 600)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        _enter(ui)
+    hosted = ui.offer_hosted_body.text()
+    assert hosted.startswith("Hosting 12 B for the friendnet")
+    assert "400" not in hosted
+    assert "not available on this network yet" in hosted
+    assert "XMR" not in hosted
+    assert "Earned" not in hosted
+    assert "Used 400 B" in ui.offer_legend.text()
+
+
+def test_hosted_fail_retry_leaves_pie_and_slider_operable(ui: MainWindow):
+    from collections import namedtuple
+
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[storage]\nenabled = true\n", encoding="utf-8"
+    )
+    usage = namedtuple("usage", "total used free")(1000, 400, 600)
+    with patch("leasegrid_sync.backend.shutil.disk_usage", return_value=usage):
+        with patch(
+            "leasegrid_sync.app.read_hosted_shares",
+            side_effect=SyncError(
+                "could not load how much you are hosting for others.",
+                "Retry. Disk Offer slider and pie still work.",
+            ),
+        ):
+            _enter(ui)
+        assert "FAIL" in ui.offer_hosted_body.text()
+        assert "how much you are hosting" in ui.offer_hosted_body.text()
+        assert ui.offer_hosted_retry.isVisible()
+        assert ui.offer_slider.isEnabled()
+        assert ui.disk_pie._slices is not None
+        assert ui.disk_pie._slices.used == 400
+        assert "Offering" in ui.offer_percent.text()
+        ui.offer_hosted_retry.click()
+    assert ui.offer_hosted_body.text().startswith("Nothing hosted for others yet.")
+    assert "FAIL" not in ui.offer_hosted_body.text()
+    assert ui.offer_slider.isEnabled()
+
+
+def test_settlement_chip_opens_credit_under_more(ui: MainWindow, monkeypatch):
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    _enter(ui)
+    nav = [ui.back_btn.text(), ui.servers_nav_btn.text(), ui.more_btn.text()]
+    assert nav == ["Folders", "Storage servers", "More"]
+    assert "Credit" not in nav
+    assert not ui.credit_action.isVisible()
+    assert ui.offer_settlement_chip.text() == "Credit & settlement"
+    offer_buttons = [
+        b.text() for b in ui.folders_tab.findChildren(PyQt5.QtWidgets.QPushButton)
+    ]
+    assert "Top up" not in offer_buttons
+    ui.offer_settlement_chip.click()
+    assert ui.places.currentWidget() is ui.credit_tab
+    assert ui.credit_topup_btn.text() == "Top up"
+    assert ui.credit_action.text() == "Credit"
+    assert "Credit" not in [ui.back_btn.text(), ui.servers_nav_btn.text(), ui.more_btn.text()]
+    assert ui.host_settlement_box.isHidden()
+
+
+def test_credit_host_strip_missing_and_fail_without_fake_paid(ui: MainWindow, monkeypatch):
+    from leasegrid_zkap.client import ClientError
+
+    monkeypatch.delenv("LEASEGRID_ISSUER_URL", raising=False)
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[storage]\nenabled = true\n"
+        "[storageserver.plugins.leasegrid-zkap-v0]\n"
+        "issuer-url = http://127.0.0.1:9\n"
+        "nodeid = node-a\n",
+        encoding="utf-8",
+    )
+    with patch(
+        "leasegrid_sync.credit.http_json",
+        return_value={"epochs": {"0": {"tokens_settled": 99}}},
+    ):
+        _enter(ui)
+        ui.open_credit_place()
+    body = ui.host_settlement_body.text()
+    assert not ui.host_settlement_box.isHidden()
+    assert "not available on this network yet" in body
+    assert "99" not in body
+    assert "Settled on ledger" not in body
+    assert "Pending: none" not in body
+    assert "XMR" not in body
+    assert "Earned" not in body
+    assert ui.credit_topup_btn.text() == "Top up"
+    assert ui.host_settlement_refresh.isVisible()
+
+    with patch("leasegrid_sync.credit.http_json", side_effect=ClientError("down")):
+        ui.host_settlement_refresh.click()
+    failed = ui.host_settlement_body.text()
+    assert "FAIL" in failed
+    assert "could not load settlement status" in failed
+    assert "do not assume you were paid" in failed.lower()
+    assert "XMR" not in failed
+    assert "Earned" not in failed
+    assert ui.host_settlement_retry.isVisible()
+    assert ui.credit_body.isVisible()
+    assert ui.credit_topup_btn.text() == "Top up"
+
+    def ledger(_url, timeout=5.0):
+        return {"nodes": {"node-a": {"tokens_settled": 4}}}
+
+    with patch("leasegrid_sync.credit.http_json", side_effect=ledger):
+        ui.host_settlement_retry.click()
+    restored = ui.host_settlement_body.text()
+    assert "Settled on ledger: 4" in restored
+    assert "99" not in restored
+    assert "XMR" not in restored
+    assert "Earned" not in restored
+    assert "Pending: none" not in restored
 
 
 def test_gated_credit_is_secondary_place(ui: MainWindow, monkeypatch):

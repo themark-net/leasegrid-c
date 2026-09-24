@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -309,6 +310,164 @@ def compute_slices(total: int, used: int, free: int, *, offering: bool, reserved
         return DiskSlices(total=total, used=used, free=free, offered=0, kept=free)
     kept = min(free, max(0, int(reserved)))
     return DiskSlices(total=total, used=used, free=free, offered=free - kept, kept=kept)
+
+
+HOSTED_FAIL_MSG = "could not load how much you are hosting for others."
+HOSTED_FAIL_NEXT = "Retry. Disk Offer slider and pie still work."
+SETTLEMENT_FAIL_MSG = "could not load settlement status."
+SETTLEMENT_FAIL_NEXT = "Retry; check network / issuer; do not assume you were paid."
+
+
+@dataclass(frozen=True)
+class HostedShares:
+    """Share files this node stores under Tahoe ``storage/shares``.
+
+    Not disk-pie Used. ``bytes_hosted`` is the sum of regular files in that
+    tree; zero files is an honest empty, not a failure.
+    """
+
+    bytes_hosted: int
+    files: int
+
+
+def read_hosted_shares(nodedir: Path) -> HostedShares:
+    """Local shares hosted for the grid. Does not read ``disk_usage``."""
+    root = Path(nodedir) / "storage" / "shares"
+    if not root.exists():
+        return HostedShares(bytes_hosted=0, files=0)
+    if not root.is_dir():
+        raise SyncError(HOSTED_FAIL_MSG, HOSTED_FAIL_NEXT)
+    total = 0
+    files = 0
+    try:
+        for dirpath, dirnames, names in os.walk(root):
+            dirnames.sort()
+            for name in sorted(names):
+                path = Path(dirpath) / name
+                try:
+                    st = path.lstat()
+                except OSError as exc:
+                    raise SyncError(HOSTED_FAIL_MSG, HOSTED_FAIL_NEXT) from exc
+                if not stat.S_ISREG(st.st_mode):
+                    continue
+                total += st.st_size
+                files += 1
+    except SyncError:
+        raise
+    except OSError as exc:
+        raise SyncError(HOSTED_FAIL_MSG, HOSTED_FAIL_NEXT) from exc
+    return HostedShares(bytes_hosted=total, files=files)
+
+
+def format_hosted_strip(
+    shares: HostedShares,
+    *,
+    accepted: Optional[int] = None,
+    settlement_error: str = "",
+) -> str:
+    """Operator copy for the Offer hosted strip. Never a disk-used figure."""
+    if shares.files <= 0 and shares.bytes_hosted <= 0:
+        empty = (
+            "Nothing hosted for others yet.\n"
+            "When buyers store shares here, usage shows up for settlement."
+        )
+        if settlement_error:
+            return settlement_error + "\n" + empty
+        return empty
+    lines = ["Hosting %s for the friendnet" % format_bytes(shares.bytes_hosted)]
+    if settlement_error:
+        lines.append(settlement_error)
+    elif accepted is not None and accepted > 0:
+        # One spent ZKAP token is one GiB-share-month (v0 denomination).
+        lines.append("(%d GiB·share·mo accepted toward settlement)" % accepted)
+    else:
+        lines.append("Settlement status: not available on this network yet.")
+        lines.append("Hosted size still shown from local storage.")
+    return "\n".join(lines)
+
+
+def _ini_section(nodedir: Path, section: str) -> dict[str, str]:
+    """Keys in one ``tahoe.cfg`` section. Missing file or section → empty."""
+    path = Path(nodedir) / "tahoe.cfg"
+    if not path.is_file():
+        return {}
+    want = "[" + section.strip().lower() + "]"
+    in_section = False
+    out: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise SyncError(SETTLEMENT_FAIL_MSG, SETTLEMENT_FAIL_NEXT) from exc
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_section = stripped.lower() == want
+            continue
+        if not in_section or not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, val = stripped.split("=", 1)
+        out[key.strip().lower()] = val.strip()
+    return out
+
+
+def zkap_storage_plugin(nodedir: Path) -> dict[str, str]:
+    """``[storageserver.plugins.leasegrid-zkap-v0]`` as written. No defaults invented."""
+    return _ini_section(nodedir, "storageserver.plugins.%s" % CREDIT_PLUGIN_NAME)
+
+
+def read_my_nodeid(nodedir: Path) -> str:
+    path = Path(nodedir) / "my_nodeid"
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def zkap_plugin_issuer(nodedir: Path) -> str:
+    plugin = zkap_storage_plugin(nodedir)
+    return (plugin.get("issuer-url") or plugin.get("issuer_url") or "").strip()
+
+
+def zkap_plugin_nodeid(nodedir: Path) -> str:
+    plugin = zkap_storage_plugin(nodedir)
+    node = (plugin.get("nodeid") or plugin.get("node-id") or "").strip()
+    if node:
+        return node
+    return read_my_nodeid(nodedir)
+
+
+def read_local_accepted(nodedir: Path) -> Optional[tuple[int, bool]]:
+    """Spent-set token count on this node, or None when no path is configured.
+
+    ``(count, same_epoch)``. A missing file at a configured path is zero
+    accepted, not an error. Unreadable or malformed JSON raises ``SyncError``.
+    """
+    plugin = zkap_storage_plugin(nodedir)
+    raw = (plugin.get("spent-set-path") or plugin.get("spent_set_path") or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        path = Path(nodedir) / path
+    if not path.exists():
+        return (0, True)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SyncError(SETTLEMENT_FAIL_MSG, SETTLEMENT_FAIL_NEXT) from exc
+    spent = data.get("spent") if isinstance(data, dict) else None
+    if not isinstance(spent, list):
+        raise SyncError(SETTLEMENT_FAIL_MSG, SETTLEMENT_FAIL_NEXT)
+    epochs: list[Any] = []
+    for row in spent:
+        if not isinstance(row, dict) or not isinstance(row.get("t"), str) or not row.get("t"):
+            raise SyncError(SETTLEMENT_FAIL_MSG, SETTLEMENT_FAIL_NEXT)
+        if "token_epoch" in row:
+            epochs.append(row.get("token_epoch"))
+    same = len(set(epochs)) <= 1
+    return (len(spent), same)
 
 
 def read_disk_offer(nodedir: Path, home: Path) -> DiskSlices:

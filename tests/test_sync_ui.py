@@ -59,6 +59,23 @@ class FakeCredit:
             recent=[],
         )
 
+    def pay_quote(self, quote: dict) -> dict:
+        """External stagenet pay unless a test sets ``paid``."""
+        if getattr(self, "fail_pay", False):
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not accept the lab payment. Payments already sent are safe; retry later.",
+                "Retry later.",
+            )
+        if getattr(self, "auto_pay", False):
+            self.poll = {
+                "vid": (quote or {}).get("vid"),
+                "state": "issued",
+                "tokens_added": int((quote or {}).get("tokens_quoted") or 0),
+            }
+            self.tokens += int((quote or {}).get("tokens_quoted") or 0)
+            return {"ok": True, "skipped": False, "chain": "fake"}
+        return {"ok": False, "skipped": True, "chain": "wallet-rpc"}
+
     def redeem_faucet(self, tier: str = "medium", count=None) -> CreditSnapshot:
         if self.fail_redeem:
             raise SyncError(
@@ -831,7 +848,8 @@ def test_gated_credit_is_secondary_place(ui: MainWindow, monkeypatch):
     assert "expand" in denom.text().lower()
     lab = ui.credit_tab.findChild(PyQt5.QtWidgets.QLabel, "creditLabNote")
     assert lab is not None
-    assert "faucet" in lab.text().lower()
+    assert "xmr" in lab.text().lower()
+    assert "faucet" not in lab.text().lower()
     assert "opaque" in lab.text().lower()
 
 
@@ -917,31 +935,109 @@ def test_excepthook_keeps_window_alive_and_shows_review(ui: MainWindow):
         sys.excepthook = saved
 
 
-def test_balance_updates_after_redeem(ui: MainWindow, fake_credit: FakeCredit):
+def test_dialog_fake_chain_topup_increases_balance(tmp_path: Path, monkeypatch):
+    """Window Top up against a FakeChain issuer: Continue pays and the balance rises."""
+    from leasegrid_sync.credit import CreditCtl
+    from leasegrid_zkap.crypto import generate_signing_key
+    from leasegrid_zkap.issuer import start_issuer
+    from leasegrid_zkap.payment import FakeChain, PricePolicy
+
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
+    state, httpd = start_issuer(
+        generate_signing_key(),
+        "127.0.0.1:0",
+        chain=FakeChain(),
+        policy=PricePolicy(price_piconero=6 * 10**9),
+        faucet=False,
+    )
+    home = tmp_path / "sync-home"
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    ctl = CreditCtl(home=home, issuer_url=state.listen)
+    try:
+        with patch(
+            "leasegrid_sync.app.TahoeClient.join_existing",
+            side_effect=SyncError("could not join this friendnet. No Tahoe.", "Retry."),
+        ):
+            window = MainWindow(nodedir=nodedir, home=home, credit=ctl)
+        try:
+            assert ctl.remaining_tokens() == 0
+            dlg = TopUpDialog(window.win, ctl, window.QtWidgets)
+            dlg._tokens = lambda: 2
+            dlg.on_continue()
+            assert dlg.page == "pay"
+            assert "faucet" not in dlg.status.text().lower()
+            dlg.on_poll()
+            assert dlg.page == "done"
+            assert dlg.snapshot is not None
+            assert dlg.snapshot.balance.tokens == 2
+            assert "+2" in dlg.status.text()
+            dlg.dlg.close()
+        finally:
+            window.poll.stop()
+            window.win.hide()
+            if window.tray is not None:
+                window.tray.hide()
+    finally:
+        httpd.shutdown()
+
+
+def test_topup_dialog_has_no_faucet_button(ui: MainWindow):
+    dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
+    labels = " ".join(b.text().lower() for b in dlg.dlg.findChildren(PyQt5.QtWidgets.QPushButton))
+    assert "faucet" not in labels
+    assert dlg.continue_btn.text() == "Continue"
+    assert dlg.dlg.findChild(PyQt5.QtWidgets.QPushButton, "requestFaucetButton") is None
+
+
+def test_balance_updates_after_topup(ui: MainWindow, fake_credit: FakeCredit, monkeypatch):
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
     fake_credit.tokens = 0
+    fake_credit.auto_pay = True
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "7stagenetAddressExample",
+        "amount_xmr": "0.06",
+        "amount_piconero": 6 * 10**10,
+        "tokens_quoted": 10,
+        "state": "quoted",
+        "confirmations_required": 2,
+    }
     _enter(ui)
     ui.load_credit()
     assert "none" in ui.credit_remaining.text().lower()
     dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
     dlg.radios["small"].setChecked(True)
-    dlg.on_request()
+    dlg._tokens = lambda: 10
+    dlg.on_continue()
+    dlg.on_poll()
+    assert dlg.page == "done"
     assert dlg.snapshot is not None
     assert dlg.snapshot.balance.tokens == 10
     ui.apply_credit_snapshot(dlg.snapshot, success_note="Top-up complete.\n" + dlg.snapshot.remaining_text)
     assert "About 10 GiB" in ui.credit_remaining.text()
     assert "Top-up complete" in ui.credit_success.text()
+    dlg.dlg.close()
 
 
-def test_redeem_fail_in_dialog(ui: MainWindow, fake_credit: FakeCredit):
-    fake_credit.fail_redeem = True
+def test_pay_fail_in_dialog(ui: MainWindow, fake_credit: FakeCredit):
+    fake_credit.fail_pay = True
+    fake_credit.quote = {
+        "vid": "aabbccddeeff0011",
+        "address": "4addr",
+        "amount_xmr": "0.06",
+        "tokens_quoted": 10,
+        "state": "quoted",
+    }
     _enter(ui)
     dlg = TopUpDialog(ui.win, ui.credit, ui.QtWidgets)
-    dlg.on_request()
-    assert "FAIL" in dlg.status.text()
-    assert "Next:" in dlg.status.text()
-    assert dlg.request_btn.text() == "Retry"
-    assert dlg.cancel_btn.text() == "Close"
+    dlg.on_continue()
+    assert "REVIEW" in dlg.status.text()
+    assert "localhost" not in dlg.status.text()
+    assert "http://" not in dlg.status.text()
     assert fake_credit.tokens == 8
+    dlg.dlg.close()
 
 
 def test_topup_continue_quotes_and_shows_pay(ui: MainWindow, fake_credit: FakeCredit):

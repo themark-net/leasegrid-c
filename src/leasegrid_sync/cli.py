@@ -58,13 +58,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--credit-dogfood",
         action="store_true",
-        help="Join existing node, redeem lab faucet, screenshot Credit, exit.",
+        help="Join existing node, quote → pay → redeem XMR credit, screenshot Credit, exit.",
     )
     p.add_argument(
         "--credit-tier",
         default="medium",
         choices=("small", "medium", "large"),
-        help="Faucet amount tier for --credit-dogfood (default: medium).",
+        help="XMR top-up tier for --credit-dogfood (default: medium).",
     )
     p.add_argument(
         "--join",

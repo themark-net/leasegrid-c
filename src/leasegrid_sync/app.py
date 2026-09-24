@@ -213,7 +213,7 @@ def install_excepthook(ui: "MainWindow") -> None:
 
 
 class TopUpDialog:
-    """U5: quote XMR → pay URI → poll → collect. Lab faucet stays as a second button."""
+    """U5 (§11): choose a tier → quote → pay → poll → redeem. No faucet button."""
 
     def __init__(self, parent, credit: CreditCtl, qt) -> None:
         from PyQt5 import QtCore
@@ -308,14 +308,10 @@ class TopUpDialog:
         self.continue_btn = QtWidgets.QPushButton("Continue")
         self.continue_btn.setObjectName("topUpContinue")
         self.continue_btn.clicked.connect(self.on_continue)
-        self.request_btn = QtWidgets.QPushButton("Request faucet credit")
-        self.request_btn.setObjectName("requestFaucetButton")
-        self.request_btn.clicked.connect(self.on_request)
         self.cancel_btn = QtWidgets.QPushButton("Cancel")
         self.cancel_btn.setObjectName("topUpCancel")
         self.cancel_btn.clicked.connect(self.dlg.reject)
         row.addWidget(self.continue_btn)
-        row.addWidget(self.request_btn)
         row.addWidget(self.cancel_btn)
         row.addStretch(1)
         v.addLayout(row)
@@ -354,10 +350,10 @@ class TopUpDialog:
         self.pay_address.setText(str(q.get("address") or ""))
         self.stack.setCurrentWidget(self.pay_page)
         self.continue_btn.hide()
-        self.request_btn.hide()
         self.cancel_btn.setText("Close")
         self.status.setText("Waiting for payment…")
         self._start_poll()
+        self._submit_lab_payment()
 
     def _start_poll(self) -> None:
         if self._timer is None:
@@ -426,21 +422,31 @@ class TopUpDialog:
     def on_copy_amount(self) -> None:
         self.QtWidgets.QApplication.clipboard().setText(self._amount_xmr)
 
-    def on_request(self) -> None:
-        self.status.setStyleSheet("")
-        self.status.setText("Requesting credit from faucet…")
-        self.request_btn.setEnabled(False)
-        self.QtWidgets.QApplication.processEvents()
+    def _submit_lab_payment(self) -> None:
+        """FakeChain pays the quote here. Stagenet pays when a wallet-rpc is set.
+
+        With no payer configured, the quote stays on screen for an external
+        stagenet wallet. Mainnet is refused inside pay_quote.
+        """
+        pay = getattr(self.credit, "pay_quote", None)
+        if pay is None or not self.quote:
+            return
         try:
-            self.snapshot = self.credit.redeem_faucet(self._selected_tier())
+            result = pay(self.quote)
         except SyncError as exc:
             self.status.setStyleSheet("color: #8b1a1a;")
             self.status.setText(exc.banner())
-            self.request_btn.setText("Retry")
-            self.request_btn.setEnabled(True)
-            self.cancel_btn.setText("Close")
             return
-        self.dlg.accept()
+        except Exception:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(
+                "REVIEW — Could not submit this payment. Payments already sent are safe; retry later."
+            )
+            return
+        if isinstance(result, dict) and result.get("skipped"):
+            return
+        self.status.setStyleSheet("")
+        self.status.setText("Payment submitted. Collecting your credits…")
 
 
 class ExportRecoveryDialog:
@@ -2099,13 +2105,13 @@ class MainWindow:
         }
 
     def dogfood_credit(self, screenshot: Optional[Path] = None, tier: str = "medium") -> dict:
-        """Join existing friendnet, redeem lab faucet, show updated Credit balance."""
+        """Join existing friendnet, quote → pay → redeem, show the updated balance."""
         self.clear_errors()
         status = self.tahoe.join_existing()
         self._enter_main(status.state, status.detail)
         before = self.credit.remaining_tokens()
         self.open_credit_place()
-        snap = self.credit.redeem_faucet(tier)
+        snap = self.credit.complete_topup(int(XMR_TIERS.get(tier, XMR_TIERS["medium"])))
         note = "Top-up complete.\n" + snap.remaining_text
         self.apply_credit_snapshot(snap, success_note=note)
         if screenshot:

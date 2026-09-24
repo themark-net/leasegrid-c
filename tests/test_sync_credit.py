@@ -329,3 +329,130 @@ def test_quote_and_poll_topup_against_fake_issuer(tmp_path: Path):
         assert "nothing is lost" in text.lower()
     finally:
         httpd.shutdown()
+
+
+def test_gated_xmr_topup_increases_balance_unpaid_allocate_fails(tmp_path: Path, monkeypatch):
+    """U5: quote → pay → redeem on FakeChain. Unpaid allocate still fails.
+
+    LEASEGRID_GATED=1 does not mint faucet credit. A quote with no payment
+    leaves the wallet empty, and the storage gate refuses allocate until a
+    spent ZKAP exists.
+    """
+    from leasegrid_zkap.client import ClientError, http_json
+    from leasegrid_zkap.errors import ZKAPRequired
+    from leasegrid_zkap.gate import LeaseGate
+    from leasegrid_zkap.payment import FakeChain, PricePolicy
+    from leasegrid_zkap.spender import WalletSpender
+    from leasegrid_zkap.spentset import SpentSet
+    from leasegrid_zkap.storage_http import start_storage_http
+
+    monkeypatch.setenv("LEASEGRID_GATED", "1")
+    assert credit_enforced() is True
+
+    price = 6 * 10**9
+    key = generate_signing_key()
+    state, httpd = start_issuer(
+        key,
+        "127.0.0.1:0",
+        chain=FakeChain(),
+        policy=PricePolicy(price_piconero=price),
+        faucet=False,
+    )
+    nodeid = "node1aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    si = bytes(range(16))
+    gate = LeaseGate(key, nodeid=nodeid, spent=SpentSet(str(tmp_path / "spent.json")))
+    storage_url, storage_httpd = start_storage_http(gate, "tcp:0:interface=127.0.0.1")
+    try:
+        ctl = CreditCtl(home=tmp_path, issuer_url=state.listen)
+        assert ctl.load_balance().balance.tokens == 0
+        assert credit_gate(ctl.remaining_tokens(), 1) == "zero"
+        with pytest.raises(ZKAPRequired):
+            gate.lab_allocate(si, [0], 64)
+        with pytest.raises(ClientError) as unpaid_http:
+            http_json(
+                storage_url + "/v0/lab/allocate",
+                "POST",
+                {"storage_index": si.hex(), "sharenums": [0], "allocated_size": 64},
+            )
+        assert "403" in str(unpaid_http.value)
+
+        quote = ctl.quote_topup(2)
+        assert ctl.poll_topup(quote["vid"])["state"] == "quoted"
+        assert ctl.remaining_tokens() == 0
+        with pytest.raises(ZKAPRequired):
+            gate.lab_allocate(si, [0], 64)
+
+        paid = ctl.pay_quote(quote)
+        assert paid.get("ok") is True
+        assert paid.get("skipped") is not True
+        issued = ctl.poll_topup(quote["vid"])
+        assert issued["state"] == "issued"
+        assert issued["tokens_added"] == 2
+        snap = ctl.load_balance()
+        assert snap.balance.tokens == 2
+        assert snap.recent and snap.recent[0].title == "XMR top-up"
+
+        # Tokens in the wallet are not a grant. Allocate stays refused until spend.
+        with pytest.raises(ZKAPRequired):
+            gate.lab_allocate(si, [0], 64)
+        WalletSpender(ctl.wallet_path, recent_path=tmp_path / "credit-recent.json").ensure_grant_sync(
+            storage_url, nodeid, gate.issuer_pubkey_id, si, 64
+        )
+        alloc = gate.lab_allocate(si, [0], 64)
+        assert 0 in alloc["allocated"] or 0 in alloc["already-have"]
+        # Dogfood entry: same quote → pay → redeem, no faucet.
+        dogfood = ctl.complete_topup(1)
+        assert dogfood.balance.tokens == 2
+        with pytest.raises(ClientError) as faucet:
+            http_json(state.listen + "/v0/issue", "POST", {"blinded-tokens": ["not-a-token"]})
+        assert "404" in str(faucet.value)
+    finally:
+        storage_httpd.shutdown()
+        httpd.shutdown()
+
+
+def test_pay_stagenet_refuses_mainnet_and_sends_exact_amount():
+    from leasegrid_sync.credit import pay_stagenet_transfer
+
+    stagenet = "5" + ("A" * 94)
+    sub = "7" + ("B" * 94)
+    mainnet = "4" + ("C" * 94)
+    calls: list[str] = []
+
+    def rpc_mainnet_wallet(method, params):
+        calls.append(method)
+        if method == "get_address":
+            return {"address": mainnet}
+        raise AssertionError("transfer must not run against a mainnet wallet")
+
+    with pytest.raises(SyncError) as exc:
+        pay_stagenet_transfer(sub, 12 * 10**9, rpc=rpc_mainnet_wallet)
+    assert "mainnet" in exc.value.message.lower()
+    assert "transfer" not in calls
+
+    calls.clear()
+
+    def rpc_mainnet_dest(method, params):
+        calls.append(method)
+        raise AssertionError("mainnet destination must not reach the wallet")
+
+    with pytest.raises(SyncError) as exc:
+        pay_stagenet_transfer(mainnet, 12 * 10**9, rpc=rpc_mainnet_dest)
+    assert "mainnet" in exc.value.message.lower()
+    assert calls == []
+
+    seen = {}
+
+    def rpc_ok(method, params):
+        calls.append(method)
+        if method == "get_address":
+            return {"address": stagenet}
+        if method == "transfer":
+            seen["params"] = params
+            return {"tx_hash": "ab" * 32, "amount": params["destinations"][0]["amount"]}
+        raise AssertionError(method)
+
+    out = pay_stagenet_transfer(sub, 12 * 10**9, rpc=rpc_ok)
+    assert out["tx_hash"]
+    assert seen["params"]["destinations"] == [{"amount": 12 * 10**9, "address": sub}]
+    assert calls == ["get_address", "transfer"]

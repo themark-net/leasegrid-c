@@ -1,0 +1,3 @@
+# UI track pointer — Shell polish (#38 includes #32)
+
+**Shell polish Design DoD** (Join → Servers → Offer/store → Credit; visual cleanup + flow straighten; Invite short code + QR + Copy; no raw FURL primary; desktop Sync) lives in [`design/`](design/) — start at [`design/README.md`](design/README.md) (artifacts `45`–`49`). Cite: issues [#38](https://github.com/themark-net/leasegrid-c/issues/38) · [#32](https://github.com/themark-net/leasegrid-c/issues/32) · tip ≥ **`f46ab7c`** · CEO RELEASE 2026-09-23 evening · #27 Servers primary + Join-first preserved · #34 Credit secondary under More preserved · no new payment rails · Marketing silent · no Mark ops · out: #28/#33/#26/#30 · DevBot Build-first on nimo after Design PASS.

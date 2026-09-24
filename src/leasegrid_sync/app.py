@@ -88,6 +88,16 @@ def _qt_api():
     return QtCore, QtGui, QtWidgets
 
 
+def _style_primary(btn) -> None:
+    """Filled weight for lead-journey CTAs. Not a theme rebrand."""
+    btn.setMinimumHeight(36)
+    btn.setStyleSheet(
+        "QPushButton { background-color: #1f6feb; color: white; padding: 8px 16px;"
+        " font-weight: 600; border: none; border-radius: 6px; }"
+        "QPushButton:disabled { background-color: #b9cbe8; color: #f7f9fc; }"
+    )
+
+
 UI_LOG_NAME = "sync-ui.log"
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
 
@@ -653,6 +663,161 @@ class ImportRecoveryDialog:
         self.dlg.accept()
 
 
+class InviteSharePanel:
+    """#32 share card: short code + QR + Copy. Join link stays collapsed."""
+
+    def __init__(self, layout, window: "MainWindow", qt, names: dict) -> None:
+        QtWidgets = qt
+        self.window = window
+        self.QtWidgets = QtWidgets
+        intro = QtWidgets.QLabel(
+            "Invite someone to join this friendnet "
+            "(they can Offer disk so you get more storage)."
+        )
+        intro.setWordWrap(True)
+        intro.setObjectName(names.get("intro", "inviteShareIntro"))
+        layout.addWidget(intro)
+        self.qr = QtWidgets.QLabel("")
+        self.qr.setObjectName(names["qr"])
+        self.qr.setMinimumSize(160, 160)
+        self.qr.setAlignment(window.QtCore.Qt.AlignLeft | window.QtCore.Qt.AlignVCenter)
+        layout.addWidget(self.qr)
+        layout.addWidget(QtWidgets.QLabel("Short code"))
+        self.code_edit = QtWidgets.QLineEdit()
+        self.code_edit.setObjectName(names["code"])
+        self.code_edit.setReadOnly(True)
+        self.code_edit.setPlaceholderText("7-word-word")
+        font = self.code_edit.font()
+        font.setPointSize(14)
+        font.setBold(True)
+        self.code_edit.setFont(font)
+        layout.addWidget(self.code_edit)
+        self.copy_btn = QtWidgets.QPushButton("Copy code")
+        self.copy_btn.setObjectName(names["copy"])
+        self.copy_btn.setAutoDefault(False)
+        _style_primary(self.copy_btn)
+        self.copy_btn.clicked.connect(self.on_copy)
+        layout.addWidget(self.copy_btn)
+        self.advanced = QtWidgets.QCheckBox("Show full join link (advanced)")
+        self.advanced.setObjectName(names["advanced"])
+        self.advanced.toggled.connect(self._on_advanced)
+        layout.addWidget(self.advanced)
+        self.join_link = QtWidgets.QLineEdit()
+        self.join_link.setObjectName(names["link"])
+        self.join_link.setReadOnly(True)
+        self.join_link.hide()
+        layout.addWidget(self.join_link)
+        self.status = QtWidgets.QLabel("")
+        self.status.setObjectName(names["status"])
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+    def _on_advanced(self, checked: bool) -> None:
+        self.join_link.setVisible(bool(checked))
+
+    def on_copy(self) -> None:
+        self.present(copy=True)
+
+    def present(self, copy: bool = False) -> None:
+        self.status.setStyleSheet("")
+        self.status.setText("Creating invite code…")
+        self.QtWidgets.QApplication.processEvents()
+        try:
+            code, url = self.window.ensure_invite_code()
+        except SyncError as exc:
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(exc.banner())
+            self.code_edit.clear()
+            self.qr.clear()
+            self.qr.setText("")
+            return
+        except Exception as exc:
+            self.window._log_exception("invite-share", exc)
+            self.status.setStyleSheet("color: #8b1a1a;")
+            self.status.setText(unexpected_error(exc, "could not share this invite.").banner())
+            return
+        self.code_edit.setText(code)
+        self.code_edit.setCursorPosition(0)
+        self.join_link.setText(url)
+        self.join_link.setCursorPosition(0)
+        self.join_link.setToolTip(url)
+        self._paint_qr(code)
+        if copy:
+            self.QtWidgets.QApplication.clipboard().setText(code)
+            self.status.setStyleSheet("")
+            self.status.setText(
+                "Invite code copied. Keep Sync open until they join. "
+                "They appear under Storage servers when ready."
+            )
+        else:
+            self.status.setStyleSheet("")
+            self.status.setText(
+                "Wait for them to Join (+ Offer if storing for you). "
+                "They appear under Storage servers when ready."
+            )
+
+    def show_existing(self, code: str, url: str) -> None:
+        """Paint a code this window already created. Does not start Tahoe."""
+        if code:
+            self.code_edit.setText(code)
+            self.code_edit.setCursorPosition(0)
+            self._paint_qr(code)
+        if url:
+            self.join_link.setText(url)
+            self.join_link.setCursorPosition(0)
+            self.join_link.setToolTip(url)
+
+    def _paint_qr(self, payload: str) -> None:
+        try:
+            from .invite import qr_png
+
+            pix = self.window.QtGui.QPixmap()
+            if not pix.loadFromData(qr_png(payload)) or pix.isNull():
+                raise RuntimeError("empty qr")
+            self.qr.setText("")
+            self.qr.setPixmap(
+                pix.scaled(160, 160, self.window.QtCore.Qt.KeepAspectRatio)
+            )
+        except Exception:
+            self.qr.setText("QR unavailable")
+
+
+class InviteShareDialog:
+    """Folders / More entry for the same short-code share card."""
+
+    def __init__(self, parent, window: "MainWindow", qt) -> None:
+        QtWidgets = qt
+        self.dlg = QtWidgets.QDialog(parent)
+        self.dlg.setWindowTitle("Share invite")
+        self.dlg.setObjectName("inviteShareDialog")
+        self.dlg.setModal(True)
+        v = QtWidgets.QVBoxLayout(self.dlg)
+        v.setContentsMargins(24, 20, 24, 20)
+        self.panel = InviteSharePanel(
+            v,
+            window,
+            qt,
+            {
+                "intro": "inviteDialogIntro",
+                "qr": "inviteDialogQr",
+                "code": "inviteDialogCode",
+                "copy": "inviteDialogCopy",
+                "advanced": "inviteDialogAdvanced",
+                "link": "inviteDialogLink",
+                "status": "inviteDialogStatus",
+            },
+        )
+        brow = QtWidgets.QHBoxLayout()
+        brow.addStretch(1)
+        done = QtWidgets.QPushButton("Done")
+        done.setObjectName("inviteDialogDone")
+        done.setAutoDefault(False)
+        done.clicked.connect(self.dlg.accept)
+        brow.addWidget(done)
+        v.addLayout(brow)
+        self.panel.present()
+
+
 class AddStorageServerDialog:
     """Add storage: invite someone to Offer disk, or paste a storage furl."""
 
@@ -674,26 +839,28 @@ class AddStorageServerDialog:
         self.invite_radio.setChecked(True)
         v.addWidget(self.invite_radio)
         invite_hint = QtWidgets.QLabel(
-            "Share an invite so their computer can store shares."
+            "Share a short code or QR so their computer can store shares."
         )
         invite_hint.setWordWrap(True)
         invite_hint.setObjectName("addInviteHint")
         v.addWidget(invite_hint)
-        self.copy_invite_btn = QtWidgets.QPushButton("Create invite / Copy invite")
-        self.copy_invite_btn.setObjectName("copyInviteButton")
-        self.copy_invite_btn.setAutoDefault(False)
-        self.copy_invite_btn.clicked.connect(self.on_copy_invite)
-        v.addWidget(self.copy_invite_btn)
-        wait = QtWidgets.QLabel(
-            "Wait for them to Join + Offer, then they appear in Storage servers."
+        self.invite_panel = InviteSharePanel(
+            v,
+            window,
+            qt,
+            {
+                "intro": "addInviteIntro",
+                "qr": "addInviteQr",
+                "code": "addInviteCode",
+                "copy": "copyInviteButton",
+                "advanced": "addShowJoinLink",
+                "link": "addInviteJoinLink",
+                "status": "addInviteStatus",
+            },
         )
-        wait.setWordWrap(True)
-        wait.setObjectName("addInviteWait")
-        v.addWidget(wait)
-        self.invite_status = QtWidgets.QLabel("")
-        self.invite_status.setObjectName("addInviteStatus")
-        self.invite_status.setWordWrap(True)
-        v.addWidget(self.invite_status)
+        self.copy_invite_btn = self.invite_panel.copy_btn
+        self.invite_status = self.invite_panel.status
+        self.invite_panel.present()
 
         self.paste_radio = QtWidgets.QRadioButton("Paste a server link")
         self.paste_radio.setObjectName("addPathPaste")
@@ -734,21 +901,7 @@ class AddStorageServerDialog:
         v.addLayout(brow)
 
     def on_copy_invite(self) -> None:
-        url = self.window.current_share_url()
-        if not url:
-            self.invite_status.setStyleSheet("color: #8b1a1a;")
-            self.invite_status.setText(
-                SyncError(
-                    "could not make a join link. No friendnet joined yet.",
-                    "join a friendnet first, then copy the invite.",
-                ).banner()
-            )
-            return
-        self.QtWidgets.QApplication.clipboard().setText(url)
-        self.invite_status.setStyleSheet("")
-        self.invite_status.setText(
-            "Invite copied. Wait for them to Join + Offer, then they appear in Storage servers."
-        )
+        self.invite_panel.on_copy()
 
     def on_add(self) -> None:
         self.error.setText("")
@@ -830,6 +983,7 @@ class MainWindow:
         self._joined = False
         self._joining = False
         self._credit_loaded = False
+        self._invite_session = None
 
         self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         self.app.setApplicationName(APP_NAME)
@@ -886,7 +1040,7 @@ class MainWindow:
         font.setBold(True)
         title.setFont(font)
         v.addWidget(title)
-        intro = QtWidgets.QLabel("Paste a link, short code, or the text from a QR.")
+        intro = QtWidgets.QLabel("Paste a short code, join link, or text from a QR.")
         intro.setWordWrap(True)
         intro.setObjectName("joinIntro")
         v.addWidget(intro)
@@ -902,8 +1056,11 @@ class MainWindow:
         self.threat_ack.toggled.connect(self._on_join_threat_toggled)
         tb.addWidget(self.threat_ack)
         v.addWidget(threat_box)
+        invite_label = QtWidgets.QLabel("Invite")
+        invite_label.setObjectName("inviteFieldLabel")
+        v.addWidget(invite_label)
         self.invite_edit = QtWidgets.QLineEdit()
-        self.invite_edit.setPlaceholderText("http://….i2p/join#…   or   7-word-word")
+        self.invite_edit.setPlaceholderText("7-word-word or join link")
         self.invite_edit.setObjectName("inviteEdit")
         self.invite_edit.returnPressed.connect(self.on_join_invite)
         v.addWidget(self.invite_edit)
@@ -916,6 +1073,7 @@ class MainWindow:
         self.join_btn.setAutoDefault(True)
         self.join_btn.setDefault(True)
         self.join_btn.setEnabled(False)
+        _style_primary(self.join_btn)
         self.join_btn.clicked.connect(self.on_join_invite)
         v.addWidget(self.join_btn)
         self.existing_btn = QtWidgets.QPushButton("Use existing Tahoe node")
@@ -953,8 +1111,10 @@ class MainWindow:
         QtWidgets = self.QtWidgets
         page = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(page)
-        v.setContentsMargins(12, 8, 12, 8)
+        v.setContentsMargins(16, 12, 16, 16)
+        v.setSpacing(10)
         chrome = QtWidgets.QHBoxLayout()
+        chrome.setSpacing(8)
         self.status_chip = QtWidgets.QPushButton("Connecting…")
         self.status_chip.setObjectName("statusChip")
         self.status_chip.setFlat(True)
@@ -962,20 +1122,18 @@ class MainWindow:
         self.status_chip.setCursor(self.QtCore.Qt.PointingHandCursor)
         self.status_chip.setToolTip("Open Storage servers")
         self.status_chip.clicked.connect(self.open_storage_servers)
-        chrome.addWidget(QtWidgets.QLabel(APP_NAME))
-        chrome.addStretch(1)
+        self.back_btn = QtWidgets.QPushButton("Folders")
+        self.back_btn.setObjectName("backToFolders")
+        self.back_btn.setAutoDefault(False)
+        self.back_btn.clicked.connect(lambda: self.show_place(self.folders_tab))
+        chrome.addWidget(self.back_btn)
         self.servers_nav_btn = QtWidgets.QPushButton("Storage servers")
         self.servers_nav_btn.setObjectName("storageServersNav")
         self.servers_nav_btn.setFlat(True)
         self.servers_nav_btn.setAutoDefault(False)
         self.servers_nav_btn.clicked.connect(self.open_storage_servers)
         chrome.addWidget(self.servers_nav_btn)
-        self.back_btn = QtWidgets.QPushButton("Folders")
-        self.back_btn.setObjectName("backToFolders")
-        self.back_btn.setFlat(True)
-        self.back_btn.clicked.connect(lambda: self.show_place(self.folders_tab))
-        self.back_btn.hide()
-        chrome.addWidget(self.back_btn)
+        chrome.addStretch(1)
         chrome.addWidget(self.status_chip)
         self.more_btn = QtWidgets.QToolButton()
         self.more_btn.setText("More")
@@ -983,6 +1141,9 @@ class MainWindow:
         self.more_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         more = QtWidgets.QMenu(self.more_btn)
         more.setObjectName("moreMenu")
+        self.invite_action = more.addAction("Invite…")
+        self.invite_action.setObjectName("invitePlaceAction")
+        self.invite_action.triggered.connect(self.open_invite_share)
         self.credit_action = more.addAction("Credit")
         self.credit_action.setObjectName("creditPlaceAction")
         self.credit_action.triggered.connect(self.open_credit_place)
@@ -1025,6 +1186,7 @@ class MainWindow:
         head.addStretch(1)
         self.add_btn = QtWidgets.QPushButton("Add folder")
         self.add_btn.setObjectName("addFolderButton")
+        _style_primary(self.add_btn)
         self.add_btn.clicked.connect(self.on_add_folder)
         head.addWidget(self.add_btn)
         fl.addLayout(head)
@@ -1064,6 +1226,18 @@ class MainWindow:
         self.open_credit_btn.hide()
         fl.addWidget(self.open_credit_btn)
         fl.addWidget(self._build_offer_box())
+        invite_row = QtWidgets.QHBoxLayout()
+        invite_row.setContentsMargins(0, 8, 0, 4)
+        invite_note = QtWidgets.QLabel("Invite a friend to store files?")
+        invite_note.setObjectName("shareInviteNote")
+        self.share_invite_btn = QtWidgets.QPushButton("Share invite")
+        self.share_invite_btn.setObjectName("shareInviteButton")
+        self.share_invite_btn.setAutoDefault(False)
+        self.share_invite_btn.clicked.connect(self.open_invite_share)
+        invite_row.addWidget(invite_note)
+        invite_row.addWidget(self.share_invite_btn)
+        invite_row.addStretch(1)
+        fl.addLayout(invite_row)
         fl.addWidget(self._build_recovery_nudge())
 
         self._build_servers_tab()
@@ -1090,6 +1264,7 @@ class MainWindow:
         self.add_storage_btn = QtWidgets.QPushButton("+ Add storage server")
         self.add_storage_btn.setObjectName("addStorageButton")
         self.add_storage_btn.setAutoDefault(False)
+        _style_primary(self.add_storage_btn)
         self.add_storage_btn.clicked.connect(self.on_add_storage)
         sl.addWidget(self.add_storage_btn)
         self.servers_empty = QtWidgets.QLabel(
@@ -1512,30 +1687,35 @@ class MainWindow:
         share_box.setObjectName("shareBox")
         sb = QtWidgets.QVBoxLayout(share_box)
         share_hint = QtWidgets.QLabel(
-            "Share the link or QR. Host the exported page on your I2P eepsite."
+            "Share a short code or the QR. They paste it on Join."
         )
         share_hint.setWordWrap(True)
+        share_hint.setObjectName("shareHint")
         sb.addWidget(share_hint)
-        self.share_url_edit = QtWidgets.QLineEdit()
-        self.share_url_edit.setObjectName("shareUrl")
-        self.share_url_edit.setReadOnly(True)
-        self.share_url_edit.setPlaceholderText("Join a friendnet first")
-        sb.addWidget(self.share_url_edit)
-        srow = QtWidgets.QHBoxLayout()
-        self.copy_share_btn = QtWidgets.QPushButton("Copy link")
-        self.copy_share_btn.setObjectName("copyShare")
-        self.copy_share_btn.clicked.connect(self.on_copy_share_url)
+        self.share_panel = InviteSharePanel(
+            sb,
+            self,
+            QtWidgets,
+            {
+                "intro": "settingsInviteIntro",
+                "qr": "shareQr",
+                "code": "shareCode",
+                "copy": "copyShare",
+                "advanced": "showJoinLink",
+                "link": "shareUrl",
+                "status": "shareStatus",
+            },
+        )
+        self.share_code_edit = self.share_panel.code_edit
+        self.share_url_edit = self.share_panel.join_link
+        self.share_qr = self.share_panel.qr
+        self.copy_share_btn = self.share_panel.copy_btn
         self.export_page_btn = QtWidgets.QPushButton("Export I2P page…")
         self.export_page_btn.setObjectName("exportInvitePage")
+        self.export_page_btn.setFlat(True)
+        self.export_page_btn.setAutoDefault(False)
         self.export_page_btn.clicked.connect(self.on_export_invite_page)
-        srow.addWidget(self.copy_share_btn)
-        srow.addWidget(self.export_page_btn)
-        srow.addStretch(1)
-        sb.addLayout(srow)
-        self.share_qr = QtWidgets.QLabel("")
-        self.share_qr.setObjectName("shareQr")
-        self.share_qr.setMinimumSize(160, 160)
-        sb.addWidget(self.share_qr)
+        sb.addWidget(self.export_page_btn)
         sl.addWidget(share_box)
         self._refresh_share()
         note = QtWidgets.QLabel(
@@ -1587,29 +1767,51 @@ class MainWindow:
         except SyncError:
             return ""
 
+    def ensure_invite_code(self) -> tuple[str, str]:
+        """Live short code plus the advanced join link. Does not copy a raw furl."""
+        from .invite import start_invite_code
+
+        url = self.current_share_url()
+        if not url:
+            raise SyncError(
+                "could not share an invite. No friendnet joined yet.",
+                "join a friendnet first, then Invite.",
+            )
+        session = self._invite_session
+        if session is not None and session.alive() and session.code:
+            return session.code, url
+        if session is not None:
+            session.close()
+            self._invite_session = None
+        session = start_invite_code(self.tahoe.nodedir, tahoe_bin=self.tahoe.tahoe_bin)
+        self._invite_session = session
+        return session.code, url
+
     def _refresh_share(self) -> None:
+        """Fill the collapsed join link. A short code is created on Copy / Share."""
         url = self.current_share_url()
         self.share_url_edit.setText(url)
         self.share_url_edit.setCursorPosition(0)
         self.share_url_edit.setToolTip(url)
-        self.copy_share_btn.setEnabled(bool(url))
+        self.copy_share_btn.setEnabled(True)
         self.export_page_btn.setEnabled(bool(url))
-        if not url:
+        session = self._invite_session
+        code = session.code if session is not None and session.alive() else ""
+        if code:
+            self.share_panel.show_existing(code, url)
+        else:
+            self.share_code_edit.clear()
             self.share_qr.clear()
-            return
-        try:
-            from .invite import qr_png
-
-            pix = self.QtGui.QPixmap()
-            pix.loadFromData(qr_png(url))
-            self.share_qr.setPixmap(pix.scaled(160, 160, self.QtCore.Qt.KeepAspectRatio))
-        except Exception:
-            self.share_qr.setText("QR unavailable")
+            self.share_qr.setText("")
 
     def on_copy_share_url(self) -> None:
-        url = self.share_url_edit.text().strip() or self.current_share_url()
-        if url:
-            self.QtWidgets.QApplication.clipboard().setText(url)
+        self.share_panel.on_copy()
+
+    def open_invite_share(self) -> None:
+        if not self._joined or self.stack.currentWidget() is not self.main_page:
+            return
+        dlg = InviteShareDialog(self.win, self, self.QtWidgets)
+        dlg.dlg.exec_()
 
     def on_export_invite_page(self) -> None:
         url = self.current_share_url()
@@ -1665,6 +1867,10 @@ class MainWindow:
 
     def shutdown(self) -> None:
         """Stop the daemons this Sync process started (Magic Folder, then Tahoe)."""
+        session = getattr(self, "_invite_session", None)
+        if session is not None:
+            session.close()
+            self._invite_session = None
         for ctl in (self.mf, self.tahoe):
             try:
                 ctl.stop()
@@ -1974,6 +2180,20 @@ class MainWindow:
     def show_place(self, widget) -> None:
         self.places.setCurrentWidget(widget)
 
+    def _style_place_nav(self, widget) -> None:
+        """Folders and Storage servers are the two primary places. Credit stays in More."""
+        on_folders = widget is self.folders_tab
+        on_servers = widget is self.servers_tab
+        self.back_btn.setVisible(True)
+        folder_font = self.back_btn.font()
+        folder_font.setBold(on_folders)
+        self.back_btn.setFont(folder_font)
+        self.back_btn.setFlat(not on_folders)
+        server_font = self.servers_nav_btn.font()
+        server_font.setBold(on_servers)
+        self.servers_nav_btn.setFont(server_font)
+        self.servers_nav_btn.setFlat(not on_servers)
+
     def open_credit_place(self) -> None:
         self.show()
         if self.stack.currentWidget() is not self.main_page:
@@ -1985,7 +2205,7 @@ class MainWindow:
 
     def _on_place_changed(self, idx: int) -> None:
         widget = self.places.widget(idx)
-        self.back_btn.setVisible(widget is not self.folders_tab)
+        self._style_place_nav(widget)
         if not self._joined:
             return
         if widget is self.credit_tab:

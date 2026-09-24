@@ -1,7 +1,9 @@
-"""Lab issuer/faucet credit for Leasegrid Sync.
+"""Leasegrid Sync credit: XMR top-up against the lab issuer.
 
 Buyer-facing remaining capacity (GiB·share-months). Tokens live in a local
-wallet bound to this friendnet issuer. Not a 1:1 upload=credit meter.
+wallet bound to this friendnet issuer. Top up is quote → pay → redeem
+(stagenet wallet-rpc, or FakeChain ``/v0/fake/pay`` in CI). Not a 1:1
+upload=credit meter. Not mainnet.
 """
 
 from __future__ import annotations
@@ -45,8 +47,9 @@ DENOMINATION_NOTE = (
 )
 
 LAB_NOTE = (
-    "Top up quotes XMR for this friendnet. A lab faucet is still in the dialog "
-    "for unpaid grids. Opaque ZKAP wallets from other apps do not convert."
+    "Top up quotes XMR for this friendnet (stagenet, or a lab fake chain). "
+    "Send exactly the quoted amount. Credits appear after confirmations. "
+    "Opaque ZKAP wallets from other apps do not convert."
 )
 
 OPAQUE_REJECT = (
@@ -105,6 +108,108 @@ def underpaid_copy(voucher: dict[str, Any], quoted_piconero: Any = None) -> str:
 
 
 MintFn = Callable[[str, int], dict]
+RpcFn = Callable[[str, dict], dict]
+
+_MAINNET_MSG = "mainnet XMR is refused. This top-up is stagenet or a lab fake chain only."
+_MAINNET_NEXT = "Use a stagenet wallet. Do not send mainnet XMR."
+_WALLET_FAIL_MSG = (
+    "REVIEW — the stagenet wallet did not answer. Payments already sent are safe; retry later."
+)
+_WALLET_FAIL_NEXT = "Retry later."
+
+
+def xmr_network(address: str) -> str:
+    """Classify a Monero address. FakeChain lab addresses start with ``FAKE``."""
+    text = (address or "").strip()
+    if text.startswith("FAKE"):
+        return "fake"
+    if len(text) < 95:
+        return "unknown"
+    head = text[0]
+    if head in ("4", "8"):
+        return "mainnet"
+    if head in ("5", "7"):
+        return "stagenet"
+    if head in ("9", "A", "B"):
+        return "testnet"
+    return "unknown"
+
+
+def pay_stagenet_transfer(
+    address: str,
+    piconero: int,
+    *,
+    rpc: RpcFn,
+    account_index: int = 0,
+) -> dict:
+    """Send exactly ``piconero`` from a stagenet wallet-rpc. Refuses mainnet."""
+    if os.environ.get("LEASEGRID_XMR_NETWORK", "stagenet").strip().lower() == "mainnet":
+        raise SyncError(_MAINNET_MSG, _MAINNET_NEXT)
+    try:
+        amount = int(piconero)
+    except (TypeError, ValueError) as exc:
+        raise SyncError(
+            "top-up did not complete. Quote amount was not a positive XMR value.",
+            "Retry from Credit → Top up.",
+        ) from exc
+    if amount <= 0:
+        raise SyncError(
+            "top-up did not complete. Quote amount was not a positive XMR value.",
+            "Retry from Credit → Top up.",
+        )
+    dest = xmr_network(address)
+    if dest == "mainnet":
+        raise SyncError(
+            "refusing a mainnet address. This top-up is stagenet only.",
+            _MAINNET_NEXT,
+        )
+    if dest != "stagenet":
+        raise SyncError(
+            "quote address is not a stagenet address.",
+            "Retry the quote. Do not send mainnet XMR.",
+        )
+    try:
+        info = rpc("get_address", {"account_index": int(account_index)})
+    except SyncError:
+        raise
+    except Exception as exc:
+        raise SyncError(_WALLET_FAIL_MSG, _WALLET_FAIL_NEXT) from exc
+    if not isinstance(info, dict):
+        raise SyncError(_WALLET_FAIL_MSG, _WALLET_FAIL_NEXT)
+    primary = str(info.get("address") or "")
+    wallet_net = xmr_network(primary)
+    if wallet_net == "mainnet":
+        raise SyncError(
+            "refusing a mainnet wallet. This top-up is stagenet only.",
+            "Point LEASEGRID_STAGENET_WALLET_RPC at a stagenet wallet.",
+        )
+    if wallet_net != "stagenet":
+        raise SyncError(
+            "wallet-rpc is not a stagenet wallet.",
+            "Point LEASEGRID_STAGENET_WALLET_RPC at a stagenet wallet.",
+        )
+    try:
+        result = rpc(
+            "transfer",
+            {
+                "destinations": [{"amount": amount, "address": address.strip()}],
+                "account_index": int(account_index),
+                "get_tx_key": True,
+            },
+        )
+    except SyncError:
+        raise
+    except Exception as exc:
+        raise SyncError(
+            "REVIEW — the stagenet wallet did not send the payment. Retry later.",
+            "Retry later. Do not send mainnet XMR.",
+        ) from exc
+    if not isinstance(result, dict):
+        raise SyncError(
+            "REVIEW — the stagenet wallet did not send the payment. Retry later.",
+            "Retry later.",
+        )
+    return result
 
 
 @dataclass
@@ -360,6 +465,120 @@ class CreditCtl:
         from leasegrid_zkap.payment.topup import TopUpClient
 
         return TopUpClient(self.issuer_url, self.wallet_path, self.topup_state_path)
+
+    def pay_quote(self, quote: dict) -> dict:
+        """Pay a quote on the lab chain.
+
+        FakeChain (CI / dev grid): ``POST /v0/fake/pay`` for the exact amount
+        and mine the quote's confirmations. Stagenet (``chain=wallet-rpc``):
+        transfer from ``LEASEGRID_STAGENET_WALLET_RPC`` when that wallet is
+        stagenet; otherwise return ``skipped`` so the buyer can pay the
+        address shown in Top up. Mainnet is refused.
+        """
+        if not isinstance(quote, dict) or not quote.get("vid"):
+            raise SyncError(
+                "top-up did not complete. There is no quote to pay.",
+                "Credit → Top up, then Continue.",
+            )
+        try:
+            info = http_json(self.issuer_url + "/v0/info", timeout=5.0)
+        except ClientError as exc:
+            raise SyncError(
+                "REVIEW — Your grid's issuer did not answer. Payments already sent are safe; retry later.",
+                "Retry later.",
+            ) from exc
+        chain = str((info or {}).get("chain") or "")
+        raw_amount = quote.get("amount_piconero")
+        if raw_amount is None:
+            raw_amount = quote.get("amount_due")
+        try:
+            amount = int(raw_amount)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            raise SyncError(
+                "top-up did not complete. The quote has no XMR amount.",
+                "Retry from Credit → Top up.",
+            )
+        if chain == "fake":
+            try:
+                mine = int(quote.get("confirmations_required") or 2)
+            except (TypeError, ValueError):
+                mine = 2
+            if mine < 1:
+                mine = 1
+            try:
+                body = http_json(
+                    self.issuer_url + "/v0/fake/pay",
+                    "POST",
+                    {
+                        "vid": str(quote["vid"]),
+                        "amount_piconero": amount,
+                        "mine": mine,
+                    },
+                )
+            except ClientError as exc:
+                raise SyncError(
+                    "REVIEW — Your grid's issuer did not accept the lab payment. "
+                    "Payments already sent are safe; retry later.",
+                    "Retry later.",
+                ) from exc
+            out = dict(body) if isinstance(body, dict) else {}
+            out["ok"] = True
+            out["skipped"] = False
+            out["chain"] = "fake"
+            return out
+        if chain == "wallet-rpc":
+            rpc_url = os.environ.get("LEASEGRID_STAGENET_WALLET_RPC", "").strip()
+            if not rpc_url:
+                return {"ok": False, "skipped": True, "chain": "wallet-rpc"}
+            address = str(quote.get("address") or "")
+            user = os.environ.get("LEASEGRID_STAGENET_WALLET_RPC_USER") or None
+            password = os.environ.get("LEASEGRID_STAGENET_WALLET_RPC_PASSWORD") or ""
+            try:
+                account_index = int(os.environ.get("LEASEGRID_STAGENET_ACCOUNT_INDEX") or "0")
+            except ValueError:
+                account_index = 0
+            from leasegrid_zkap.payment.chain_walletrpc import WalletRpcChain, WalletRpcError
+
+            watcher = WalletRpcChain(rpc_url, user=user, password=password)
+
+            def rpc(method: str, params: dict) -> dict:
+                try:
+                    return watcher._rpc(method, params)
+                except WalletRpcError as exc:
+                    raise SyncError(_WALLET_FAIL_MSG, _WALLET_FAIL_NEXT) from exc
+
+            result = pay_stagenet_transfer(
+                address, amount, rpc=rpc, account_index=account_index
+            )
+            return {
+                "ok": True,
+                "skipped": False,
+                "chain": "wallet-rpc",
+                "tx_hash": result.get("tx_hash"),
+            }
+        raise SyncError(
+            "REVIEW — this issuer is not taking XMR top-ups.",
+            "Ask the friendnet operator for a stagenet or lab issuer.",
+        )
+
+    def complete_topup(self, tokens: int) -> CreditSnapshot:
+        """quote → pay → redeem. Used by Credit dogfood. Does not call the faucet."""
+        quote = self.quote_topup(int(tokens))
+        paid = self.pay_quote(quote)
+        if paid.get("skipped"):
+            raise SyncError(
+                "top-up is waiting for XMR. No stagenet wallet is configured and this issuer is not a lab fake chain.",
+                "Set LEASEGRID_STAGENET_WALLET_RPC to a stagenet wallet, or pay the quoted address from your own stagenet wallet.",
+            )
+        result = self.poll_topup(str(quote["vid"]))
+        if str(result.get("state") or "") != "issued":
+            raise SyncError(
+                "top-up did not complete. The payment is not confirmed yet.",
+                "Retry later. Balance unchanged until credits are issued.",
+            )
+        return self.load_balance()
 
     def quote_topup(self, tokens: int) -> dict:
         try:

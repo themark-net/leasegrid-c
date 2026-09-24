@@ -66,7 +66,7 @@ $ leasegrid-sync --dogfood-folder /tmp/lg-paid-sync
 U1 dogfood … probe=u1-hello.txt status={… 'size': 34}
 ```
 
-`--credit-dogfood` (faucet) is still the U2 window path until U5.
+`--credit-dogfood` is quote → pay → redeem (fake chain in the lab, stagenet wallet-rpc when `LEASEGRID_STAGENET_WALLET_RPC` is set). It does not call the faucet. Unpaid allocate still fails.
 
 ## Evidence (dev grid, gated, 2026-09-20)
 

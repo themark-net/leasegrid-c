@@ -48,12 +48,11 @@ leasegrid-sync
    for the introducer. Chip: **Connected · introducer up · 3 storage**.
    Offering disk uses `LEASEGRID_STORAGE_HOSTNAME` (default `127.0.0.1`, so other
    lab nodes on this machine can reach it).
-2. **Credit** → **Top up** → **Request faucet credit**. Balance updates.
-   XMR (FakeChain, no Monero daemon) from another shell:
-   `leasegrid-zkap topup --issuer http://127.0.0.1:8700 --wallet "$LEASEGRID_SYNC_HOME/credit-wallet.json" --tokens 20 --json`
-   then `POST /v0/fake/pay` with that `vid` and `mine: 2`, then **Credit → Retry**
-   (or `leasegrid-sync --credit-status`). U5 will put this quote/pay/pending
-   flow in the window.
+2. **Credit** → **Top up** → pick a tier → **Continue**. On a fake-chain issuer
+   the dialog pays the quote (`/v0/fake/pay`) and the balance updates after
+   confirmations. On stagenet, pay the address from a stagenet wallet (or set
+   `LEASEGRID_STAGENET_WALLET_RPC`); mainnet is refused. Unpaid allocate still
+   fails until that top-up is spent.
 3. **Folders** → **Add folder**. Drop a file in; the row goes **Up to date**.
 4. Tray **Quit** stops Magic Folder and the Tahoe client Sync started.
    Relaunching `leasegrid-sync` restarts them and lands on Folders.

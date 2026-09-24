@@ -98,7 +98,7 @@ Secrets (furls, keys, wallet files) stay **off git**.
 
 **Record:** which node ejected, repair method, before/after connected storage count, PASS/FAIL.
 
-**Implementation (code, not a live PASS):** `src/leasegrid_zkap/eject.py` (`EjectSet` + probe), spender/plugin refuse to pay an ejected nodeid, `leasegrid-zkap check-0d` / `eject` / `probe` / `repair`, `deploy/zkap-lab/scripts/repair-drill.sh`. Covered by `tests/test_zkap_eject.py`. Dated live 0d PASS (real Tahoe happy-set) is not started.
+**Implementation + live PASS:** `src/leasegrid_zkap/eject.py` (`EjectSet` + probe), spender/plugin refuse to pay an ejected nodeid, `leasegrid-zkap check-0d` / `eject` / `probe` / `repair`, `deploy/zkap-lab/scripts/repair-drill.sh`. Covered by `tests/test_zkap_eject.py`. Dated live 0d PASS recorded 2026-09-23 (see Results log).
 
 ### Gate 0e — Publicly verifiable tokens (`rsa-bssa-v1`)
 
@@ -125,8 +125,8 @@ Secrets (furls, keys, wallet files) stay **off git**.
 | Gate 0a PASS | ✅ 2026-09-17 |
 | Gate 0b PASS | ✅ 2026-09-17 |
 | Gate 0c PASS | ✅ 2026-09-22 |
-| Gate 0d PASS | ☐ |
-| Results dated below (or linked private operator notes — no secrets) | ✅ partial (0a, 0b) |
+| Gate 0d PASS | ✅ 2026-09-23 |
+| Results dated below (or linked private operator notes — no secrets) | ✅ 0a–0d |
 
 **Phase 0 PASS** only when all four gates are PASS. Then capital may move to Phase 1 (Magic Folder buyer surface) **and** demand falsification — not before.
 
@@ -139,6 +139,8 @@ Append rows; never paste furls, caps, seed phrases, or view keys.
 | 2026-09-17 ~7:44pm PT | 0a | Leasegrid Stress Test (via nimo) | **PASS** | Tahoe 1.20.0. Introducer `leasegrid-1` (10.42.0.70). Storage `leasegrid-2` (10.42.0.40), `leasegrid-3` (10.42.0.161), `maximum` (10.42.0.238). Client `nimo`. shares needed/happy/total = 1/3/3. `smoke-put-get` PASS. Nodes kept alive with tmux/screen (`tahoe run`). Lab notes: pin cryptography 41.0.7 + pyOpenSSL 23.3.0 + service-identity 23.1.0 (VMs lack PyPI DNS); nimo needs `legacy-cgi` on Python 3.14. `deploy/friendnet/` still local-only. No furls/caps in git. |
 | 2026-09-17 ~9:10pm PT | 0b | Leasegrid Stress Test (via nimo) | **PASS** | Thin lab authorizer `leasegrid-zkap-lab` 0.1.0 + `python-challenge-bypass-ristretto` 2022.6.30 (not PyPI ZKAPAuthorizer; Tahoe 1.20). Issuer on nimo; pubkey id `09e9633f194ba8bf2df91e69c0e497619a24ebd6a4fa7814406c836796995ab5`. Plugin wrap on storage `leasegrid-2` only (`spend-listen` 10.42.0.40:8701). Denomination: 1 token = 1 GiB-share × 30 days on one node. `leasegrid-zkap check-0b --live` GATE 0b PASS (0b.1–0b.5). Unpaid non-LIT `tahoe put` → `UploadUnhappinessError` (GBS allocate 500/`ZKAPRequired` on leasegrid-2; 2/3 servers placed shares). LIT puts still skip allocate. Issuer rejects settlement JSON that contains `R`. Signing key off-git (`~/DEVELOP/leasegrid-lab-private/`). Restore unpaid: `enable-storage-plugin.sh --disable` + restart `tahoe run`. |
 | 2026-09-22 ~1:16am PT | 0c | Leasegrid Stress Test (via nimo) | **PASS** | stagenet via remote daemon `node.monerodevs.org:38089` (mainnet monerod untouched). Issuer `--chain wallet-rpc` on nimo; pubkey id `09e9633f194ba8bf2df91e69c0e497619a24ebd6a4fa7814406c836796995ab5`. Quote→stagenet pay→redeem issued 1 token; unpaid NoCredit; paid spend on leasegrid-2 `:8701`. Attribution: fresh subaddress/quote (ADR-0002). Caveat: live underpay (0c.4) not re-proven (funds exhausted after pay); FakeChain underpay PASS stands. No tx secrets/view keys in git. Tip `6e3ed95`. |
+| 2026-09-23 ~6:45pm PT | 0d | Leasegrid Stress Test (via nimo) | **PASS** | Silent eject + repair on friendnet. Tip `442b76e`. Client `nimo` shares needed/happy/total = 1/2/2. BEFORE connected storage = 3 (`leasegrid-2`, `leasegrid-3`, `maximum`). 0d.1 unpaid CHK put/get+cmp PASS. 0d.2 stopped share-holding storage `leasegrid-2` (tmux `lg-s2`); AFTER connected = 2; object still readable (needed=1). 0d.3 `leasegrid-zkap eject --reason probe` (eject-set off-git under `~/DEVELOP/leasegrid-lab-private/`); stop-paying invariant; no slash. 0d.4 pre-repair Not Healthy (1 good share of 1-of-2); `tahoe check --repair` → repair successful → Healthy (2/2); happy-set restored on remaining live nodes. 0d.5 logs show eject+repair only (no slash/PoRep/bond). ZKAP plugin stayed disabled (unpaid 0a restore). Restarted `leasegrid-2` after evidence; admitted nodeid. No furls/caps/nodeids/secrets in git. |
+
 
 ## First implementation slice (after this doc)
 

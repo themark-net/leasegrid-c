@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -120,21 +122,36 @@ def test_start_invite_code_before_join_fails(tmp_path: Path):
     assert "pb://" not in exc.value.banner()
 
 
+def _fake_tahoe_bin(tmp_path: Path, body: str) -> str:
+    """A Tahoe stand-in that CreateProcess can start on Windows and POSIX.
+
+    A shebang script is not a Win32 image (WinError 193). Windows gets a .bat
+    that runs this interpreter, matching tests/test_sync_backend.py.
+    """
+    script = tmp_path / "fake-tahoe.py"
+    # Shebang is how POSIX execs the file. Python ignores it when the .bat
+    # launches this interpreter on Windows.
+    script.write_text("#!/usr/bin/env python3\n" + body, encoding="utf-8")
+    if os.name == "nt":
+        bat = tmp_path / "fake-tahoe.bat"
+        bat.write_text('@"%s" "%s" %%*\n' % (sys.executable, script), encoding="utf-8")
+        return str(bat)
+    script.chmod(0o755)
+    return str(script)
+
+
 def test_start_invite_code_reads_tahoe_stdout(tmp_path, monkeypatch):
     nodedir = _joined_nodedir(tmp_path)
-    script = tmp_path / "fake-tahoe"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
+    tahoe_bin = _fake_tahoe_bin(
+        tmp_path,
         "import sys, time\n"
         "sys.stdout.write('Connecting to wormhole server\\n')\n"
         "sys.stdout.write('Invite Code for client: 7-orange-tunnel\\n')\n"
         "sys.stdout.flush()\n"
         "time.sleep(60)\n",
-        encoding="utf-8",
     )
-    script.chmod(0o755)
     monkeypatch.setenv("LEASEGRID_WORMHOLE_SERVER", "ws://127.0.0.1:45040/v1")
-    session = start_invite_code(nodedir, tahoe_bin=str(script), timeout=5)
+    session = start_invite_code(nodedir, tahoe_bin=tahoe_bin, timeout=5)
     proc = session.proc
     try:
         assert session.code == "7-orange-tunnel"
@@ -150,16 +167,12 @@ def test_start_invite_code_reads_tahoe_stdout(tmp_path, monkeypatch):
 
 def test_start_invite_code_rejects_furl_only_output(tmp_path):
     nodedir = _joined_nodedir(tmp_path)
-    script = tmp_path / "fake-tahoe"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        "sys.stdout.write(%r)\n" % (GOOD_FURL + "\n"),
-        encoding="utf-8",
+    tahoe_bin = _fake_tahoe_bin(
+        tmp_path,
+        "import sys\nsys.stdout.write(%r)\n" % (GOOD_FURL + "\n"),
     )
-    script.chmod(0o755)
     with pytest.raises(SyncError) as exc:
-        start_invite_code(nodedir, tahoe_bin=str(script), timeout=5)
+        start_invite_code(nodedir, tahoe_bin=tahoe_bin, timeout=5)
     assert "short code" in exc.value.banner()
     assert GOOD_FURL not in exc.value.banner()
 

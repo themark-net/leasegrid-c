@@ -1,7 +1,8 @@
-"""Shareable friendnet invite: URL, short code, QR, static i2p page.
+"""Shareable friendnet invite: short code, QR, join URL, static i2p page.
 
-Signal/WhatsApp pattern: one link you copy or scan. The introducer furl is the
-address; it lives in the URL fragment so an eepsite never has to see it.
+Primary share is a one-time ``tahoe invite`` code (plus a QR of that code).
+The introducer furl stays inside the advanced join-link fragment so an eepsite
+never has to see it, and it is not the share string a buyer copies.
 """
 
 from __future__ import annotations
@@ -9,12 +10,20 @@ from __future__ import annotations
 import html
 import io
 import os
+import re
+import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 from .backend import SyncError, is_wormhole_code, validate_introducer_furl
+
+# Tahoe 1.20 prints this once the inviter is parked on the relay.
+_INVITE_CODE_LINE = re.compile(r"Invite Code for client:\s*(\S+)", re.IGNORECASE)
+INVITE_CODE_TIMEOUT = 20.0
 
 DEFAULT_JOIN_ORIGIN = "http://leasegrid.i2p/join"
 NATIVE_SCHEME = "leasegrid:join"
@@ -157,6 +166,153 @@ def qr_png(data: str) -> bytes:
     buf = io.BytesIO()
     segno.make(data, error="m").save(buf, kind="png", scale=6, border=2)
     return buf.getvalue()
+
+
+def invite_code_from_output(text: str) -> str:
+    """Return the short code Tahoe printed, or "" if that line is absent.
+
+    A raw ``pb://`` introducer furl in the same log is not a code.
+    """
+    match = _INVITE_CODE_LINE.search(text or "")
+    if not match:
+        return ""
+    token = match.group(1).strip().strip("\"'")
+    if not is_wormhole_code(token):
+        return ""
+    return token.lower()
+
+
+@dataclass
+class InviteCodeSession:
+    """Live ``tahoe invite``. The process must stay up until the peer joins."""
+
+    code: str
+    proc: Optional[subprocess.Popen] = None
+
+    def alive(self) -> bool:
+        if not self.code:
+            return False
+        if self.proc is None:
+            return True
+        return self.proc.poll() is None
+
+    def close(self) -> None:
+        proc = self.proc
+        self.proc = None
+        if proc is None or proc.poll() is not None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                pass
+
+
+def _read_invite_code(proc: subprocess.Popen, timeout: float) -> str:
+    """Read stdout until Tahoe prints a short code, the process exits, or timeout."""
+    chunks: list[str] = []
+    done = threading.Event()
+
+    def _reader() -> None:
+        stream = proc.stdout
+        try:
+            if stream is None:
+                return
+            while True:
+                line = stream.readline()
+                if not line:
+                    break
+                chunks.append(line)
+                if invite_code_from_output("".join(chunks)):
+                    break
+        finally:
+            done.set()
+
+    threading.Thread(target=_reader, name="leasegrid-invite-code", daemon=True).start()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        code = invite_code_from_output("".join(chunks))
+        if code:
+            return code
+        if proc.poll() is not None and done.wait(0.05):
+            break
+        done.wait(0.05)
+    return invite_code_from_output("".join(chunks))
+
+
+def start_invite_code(
+    nodedir: Path,
+    tahoe_bin: Optional[str] = None,
+    timeout: float = INVITE_CODE_TIMEOUT,
+) -> InviteCodeSession:
+    """Start ``tahoe invite`` and return once the short code is printed.
+
+    Fails in-process (no code) when this home has not joined, Tahoe is missing,
+    or the inviter never prints ``Invite Code for client:``. The returned
+    session keeps the process alive so the code can still be redeemed.
+    """
+    from .backend import which_bin
+    from .recovery import read_shares
+
+    try:
+        share_url_for_nodedir(Path(nodedir))
+    except SyncError as exc:
+        raise SyncError(
+            "could not share an invite. No friendnet joined yet.",
+            "join a friendnet first, then Invite.",
+        ) from exc
+
+    binary = tahoe_bin or which_bin("tahoe", "LEASEGRID_TAHOE_BIN")
+    if not binary:
+        raise SyncError(
+            "could not create an invite code. The Tahoe client is not installed.",
+            "install Tahoe next to Sync, then Retry.",
+        )
+
+    needed, happy, total = read_shares(Path(nodedir))
+    nick = (os.environ.get("LEASEGRID_NICKNAME") or "leasegrid-sync").strip() or "leasegrid-sync"
+    cmd = [binary]
+    relay = (os.environ.get("LEASEGRID_WORMHOLE_SERVER") or "").strip()
+    if relay:
+        cmd += ["--wormhole-server", relay]
+    cmd += [
+        "-d",
+        str(nodedir),
+        "invite",
+        "--shares-needed=%d" % needed,
+        "--shares-happy=%d" % happy,
+        "--shares-total=%d" % total,
+        nick,
+    ]
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+    except OSError as exc:
+        raise SyncError(
+            "could not create an invite code. Tahoe invite did not start.",
+            "check that tahoe is installed, then Retry.",
+        ) from exc
+
+    code = _read_invite_code(proc, timeout)
+    if not code:
+        InviteCodeSession(code="", proc=proc).close()
+        raise SyncError(
+            "could not create an invite code. Tahoe invite did not print a short code.",
+            "check the wormhole relay, then Retry.",
+        )
+    return InviteCodeSession(code=code, proc=proc)
 
 
 def share_url_for_nodedir(nodedir: Path, origin: Optional[str] = None) -> str:

@@ -17,6 +17,7 @@ from leasegrid_sync import APP_NAME  # noqa: E402
 from leasegrid_sync.app import (  # noqa: E402
     AddStorageServerDialog,
     DisconnectServerDialog,
+    InviteShareDialog,
     MainWindow,
     TopUpDialog,
 )
@@ -420,8 +421,13 @@ def test_join_page_explains_what_join_does(ui: MainWindow):
     assert "Recovery" in blob
     assert "paste" in blob.lower() or "link" in blob.lower() or "code" in blob.lower()
     ph = ui.invite_edit.placeholderText().lower()
-    assert "i2p" in ph or "join#" in ph
     assert "word-word" in ph or "7-" in ph
+    assert "pb://" not in ph
+    assert not ph.startswith("http")
+    intro = ui.join_page.findChild(PyQt5.QtWidgets.QLabel, "joinIntro")
+    assert intro is not None
+    assert "short code" in intro.text().lower()
+    assert "pb://" not in intro.text().lower()
     cb = ui.join_page.findChild(PyQt5.QtWidgets.QCheckBox, "offerStorage")
     assert cb is not None
     assert cb.isChecked()
@@ -463,13 +469,28 @@ def test_join_i2p_url_enters_main(ui: MainWindow):
     assert ui.stack.currentWidget() is ui.main_page
 
 
-def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
-    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+def _write_joined_cfg(ui: MainWindow, furl: str) -> None:
     (ui.tahoe.nodedir / "tahoe.cfg").write_text(
         "[node]\n[client]\nintroducer.furl = %s\nshares.needed = 2\n"
         "shares.happy = 3\nshares.total = 3\n" % furl,
         encoding="utf-8",
     )
+
+
+def _patch_invite_code(monkeypatch, code: str = "7-orange-tunnel"):
+    from leasegrid_sync.invite import InviteCodeSession
+
+    monkeypatch.setattr(
+        "leasegrid_sync.invite.start_invite_code",
+        lambda *args, **kwargs: InviteCodeSession(code=code),
+    )
+
+
+def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
+    """Primary share is short code + QR + Copy. Join link stays advanced."""
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    _write_joined_cfg(ui, furl)
+    _patch_invite_code(monkeypatch)
     monkeypatch.setenv("LEASEGRID_JOIN_ORIGIN", "http://alice.i2p/join")
     st = ConnectionStatus(state="Connected", detail="introducer up", introducer_ok=True)
     with patch.object(ui.tahoe, "connection_status", return_value=st):
@@ -480,16 +501,105 @@ def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
     url = ui.share_url_edit.text()
     assert url.startswith("http://alice.i2p/join#")
     assert furl not in url.split("#", 1)[0]
+    assert "pb://" not in url
     assert ui.share_url_edit.cursorPosition() == 0
+    assert ui.share_url_edit.isHidden()
+    assert ui.share_code_edit.text() == ""
+    assert "pb://" not in ui.share_code_edit.placeholderText()
+    ui.on_copy_share_url()
+    assert ui.share_code_edit.text() == "7-orange-tunnel"
+    assert ui.QtWidgets.QApplication.clipboard().text() == "7-orange-tunnel"
+    assert "pb://" not in ui.QtWidgets.QApplication.clipboard().text()
     pix = ui.share_qr.pixmap()
     assert pix is not None and not pix.isNull()
-    ui.on_copy_share_url()
-    assert ui.QtWidgets.QApplication.clipboard().text() == url
+    assert ui.share_qr.text() != "QR unavailable"
+    assert ui.copy_share_btn.text() == "Copy code"
     assert ui.copy_share_btn.isEnabled()
     assert ui.export_page_btn.isEnabled()
+    ui.win.show()
+    ui.show_place(ui.settings_tab)
+    ui.share_panel.advanced.setChecked(True)
+    ui.QtWidgets.QApplication.processEvents()
+    assert ui.share_url_edit.isVisible()
+    assert not ui.share_url_edit.text().startswith("pb://")
     hint = " ".join(w.text() for w in box.findChildren(PyQt5.QtWidgets.QLabel))
-    assert "i2p" in hint.lower()
-    assert "qr" in hint.lower() or "QR" in hint
+    assert "short code" in hint.lower()
+    assert "qr" in hint.lower()
+
+
+def test_share_dialog_is_code_qr_copy_not_raw_furl(ui: MainWindow, monkeypatch):
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    _write_joined_cfg(ui, furl)
+    _patch_invite_code(monkeypatch)
+    monkeypatch.setenv("LEASEGRID_JOIN_ORIGIN", "http://alice.i2p/join")
+    _enter(ui)
+    assert ui.places.currentWidget() is ui.folders_tab
+    dlg = InviteShareDialog(ui.win, ui, ui.QtWidgets)
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    assert dlg.panel.code_edit.text() == "7-orange-tunnel"
+    assert "pb://" not in dlg.panel.code_edit.text()
+    assert dlg.panel.join_link.isHidden()
+    pix = dlg.panel.qr.pixmap()
+    assert pix is not None and not pix.isNull()
+    dlg.panel.on_copy()
+    assert ui.QtWidgets.QApplication.clipboard().text() == "7-orange-tunnel"
+    dlg.panel.advanced.setChecked(True)
+    ui.QtWidgets.QApplication.processEvents()
+    assert not dlg.panel.join_link.isHidden()
+    assert dlg.panel.join_link.text().startswith("http://alice.i2p/join#")
+    assert "pb://" not in dlg.panel.join_link.text()
+    dlg.dlg.close()
+
+
+def test_add_dialog_invite_card_copies_code_and_keeps_paste_furl(ui: MainWindow, monkeypatch):
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    _write_joined_cfg(ui, furl)
+    _patch_invite_code(monkeypatch)
+    _enter(ui)
+    dlg = AddStorageServerDialog(ui.win, ui, ui.QtWidgets)
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    assert dlg.invite_radio.isChecked()
+    assert dlg.invite_panel.code_edit.text() == "7-orange-tunnel"
+    assert "pb://" not in dlg.invite_panel.code_edit.text()
+    assert dlg.invite_panel.join_link.isHidden()
+    assert dlg.copy_invite_btn.text() == "Copy code"
+    dlg.on_copy_invite()
+    assert ui.QtWidgets.QApplication.clipboard().text() == "7-orange-tunnel"
+    assert "pb://" in dlg.paste_hint.text()
+    assert dlg.furl_edit.isVisible()
+    dlg.dlg.close()
+
+
+def test_share_before_join_fails_in_window(ui: MainWindow):
+    _enter(ui)
+    dlg = AddStorageServerDialog(ui.win, ui, ui.QtWidgets)
+    text = dlg.invite_status.text().lower()
+    assert "fail" in text
+    assert "join a friendnet first" in text
+    assert dlg.invite_panel.code_edit.text() == ""
+    assert "pb://" not in dlg.invite_panel.code_edit.placeholderText()
+    assert "web ui" not in text
+    dlg.dlg.close()
+
+
+def test_credit_stays_under_more_and_offer_pie_remains(ui: MainWindow, monkeypatch):
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    _enter(ui)
+    nav = [ui.back_btn.text(), ui.servers_nav_btn.text(), ui.more_btn.text()]
+    assert nav == ["Folders", "Storage servers", "More"]
+    assert "Credit" not in nav
+    assert not ui.credit_action.isVisible()
+    assert ui.invite_action.isVisible()
+    offer = ui.folders_tab.findChild(PyQt5.QtWidgets.QGroupBox, "offerBox")
+    assert offer is not None
+    assert ui.disk_pie.isVisible()
+    ui.show_place(ui.servers_tab)
+    assert ui.places.currentWidget() is ui.servers_tab
+    assert ui.add_storage_btn.text().endswith("Add storage server")
+    ui.back_btn.click()
+    assert ui.places.currentWidget() is ui.folders_tab
 
 
 def test_join_invite_passes_offer_storage_default(ui: MainWindow):
@@ -581,8 +691,11 @@ def test_enter_main_shows_folders_tab(ui: MainWindow):
             ui._enter_main("Connected", "introducer up")
     assert ui.stack.currentWidget() is ui.main_page
     assert ui.places.currentWidget() is ui.folders_tab
-    assert ui.back_btn.isHidden()
+    assert ui.back_btn.text() == "Folders"
+    assert not ui.back_btn.isHidden()
     assert ui.more_btn.text() == "More"
+    assert ui.invite_action.text() == "Invite…"
+    assert ui.share_invite_btn.text() == "Share invite"
     assert ui.recovery_action.text() == "Recovery"
     assert ui.settings_action.text() == "Settings"
     assert not ui.credit_action.isVisible()

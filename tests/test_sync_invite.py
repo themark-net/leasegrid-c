@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
 import pytest
 
 from leasegrid_sync.backend import SyncError, validate_invite, validate_introducer_furl
 from leasegrid_sync.invite import (
     DEFAULT_JOIN_ORIGIN,
+    InviteCodeSession,
     format_join_url,
+    invite_code_from_output,
     invite_page_html,
     parse_invite,
+    qr_png,
     qr_svg,
     share_url_for_nodedir,
+    start_invite_code,
 )
 
 GOOD_FURL = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
@@ -81,6 +89,107 @@ def test_qr_svg_encodes_the_url():
     svg = qr_svg(url)
     assert "<svg" in svg.lower()
     assert len(svg) > 200
+
+
+def test_invite_code_line_is_not_a_raw_furl():
+    assert invite_code_from_output("Invite Code for client: 7-Orange-Tunnel\n") == "7-orange-tunnel"
+    dumped = "Invite Code for client: pb://hashhashhash@127.0.0.1:45001/swissnumswiss\n"
+    assert invite_code_from_output(dumped) == ""
+    assert invite_code_from_output(GOOD_FURL) == ""
+
+
+def test_qr_png_encodes_a_short_code():
+    png = qr_png("7-orange-tunnel")
+    assert png.startswith(b"\x89PNG")
+    assert len(png) > 200
+
+
+def _joined_nodedir(tmp_path: Path) -> Path:
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text(
+        "[node]\n[client]\nintroducer.furl = %s\nshares.needed = 2\n"
+        "shares.happy = 3\nshares.total = 3\n" % GOOD_FURL,
+        encoding="utf-8",
+    )
+    return nodedir
+
+
+def test_start_invite_code_before_join_fails(tmp_path: Path):
+    with pytest.raises(SyncError) as exc:
+        start_invite_code(tmp_path / "missing")
+    assert "join a friendnet first" in exc.value.banner()
+    assert "pb://" not in exc.value.banner()
+
+
+def _fake_tahoe_bin(tmp_path: Path, body: str) -> str:
+    """A Tahoe stand-in that CreateProcess can start on Windows and POSIX.
+
+    A shebang script is not a Win32 image (WinError 193). Windows gets a .bat
+    that runs this interpreter, matching tests/test_sync_backend.py.
+    """
+    script = tmp_path / "fake-tahoe.py"
+    # Shebang is how POSIX execs the file. Python ignores it when the .bat
+    # launches this interpreter on Windows.
+    script.write_text("#!/usr/bin/env python3\n" + body, encoding="utf-8")
+    if os.name == "nt":
+        bat = tmp_path / "fake-tahoe.bat"
+        bat.write_text('@"%s" "%s" %%*\n' % (sys.executable, script), encoding="utf-8")
+        return str(bat)
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_start_invite_code_reads_tahoe_stdout(tmp_path, monkeypatch):
+    nodedir = _joined_nodedir(tmp_path)
+    tahoe_bin = _fake_tahoe_bin(
+        tmp_path,
+        "import sys, time\n"
+        "sys.stdout.write('Connecting to wormhole server\\n')\n"
+        "sys.stdout.write('Invite Code for client: 7-orange-tunnel\\n')\n"
+        "sys.stdout.flush()\n"
+        "time.sleep(60)\n",
+    )
+    monkeypatch.setenv("LEASEGRID_WORMHOLE_SERVER", "ws://127.0.0.1:45040/v1")
+    session = start_invite_code(nodedir, tahoe_bin=tahoe_bin, timeout=5)
+    proc = session.proc
+    try:
+        assert session.code == "7-orange-tunnel"
+        assert proc is not None and proc.poll() is None
+        cmd = proc.args
+        assert "--wormhole-server" in cmd
+        assert "ws://127.0.0.1:45040/v1" in cmd
+        assert "invite" in cmd
+    finally:
+        session.close()
+    assert proc is not None and proc.poll() is not None
+
+
+def test_start_invite_code_rejects_furl_only_output(tmp_path):
+    nodedir = _joined_nodedir(tmp_path)
+    tahoe_bin = _fake_tahoe_bin(
+        tmp_path,
+        "import sys\nsys.stdout.write(%r)\n" % (GOOD_FURL + "\n"),
+    )
+    with pytest.raises(SyncError) as exc:
+        start_invite_code(nodedir, tahoe_bin=tahoe_bin, timeout=5)
+    assert "short code" in exc.value.banner()
+    assert GOOD_FURL not in exc.value.banner()
+
+
+def test_start_invite_code_missing_tahoe(tmp_path, monkeypatch):
+    nodedir = _joined_nodedir(tmp_path)
+    monkeypatch.setattr("leasegrid_sync.backend.which_bin", lambda *_a, **_k: None)
+    with pytest.raises(SyncError) as exc:
+        start_invite_code(nodedir)
+    assert "not installed" in exc.value.banner()
+
+
+def test_injected_session_stays_alive_without_a_process():
+    session = InviteCodeSession(code="7-orange-tunnel")
+    assert session.alive()
+    session.close()
+    assert session.alive()
 
 
 def test_share_url_for_nodedir_puts_furl_in_fragment(tmp_path, monkeypatch):

@@ -1,5 +1,7 @@
 # Leasegrid Sync — Design DoD index
 
+> **CEO pause snapshot:** See [`../PENDING-HANDOFF.md`](../PENDING-HANDOFF.md) (2026-09-24) for open GitHub issues, tip SHA, and takeover posture. Designs below remain the implement DoDs.
+
 **Status:** **#28 Offer Used → settlement — Design DoD ready** — 2026-09-24 PT (~2:20am PT)  
 **Owner:** Design Bot (executor staged on box)  
 **Date:** 2026-09-24 PT  

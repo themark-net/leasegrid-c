@@ -1,0 +1,3 @@
+# UI track pointer — P4 Android (Slice B, write)
+
+**P4 Android Slice B Design DoD** (add a file to a folder the phone already shows; Not on friendnet yet vs On friendnet; replace/keep both; remove vs discard; no write settings) lives in [`design/`](design/) — start at [`design/55-P4-ANDROID-B-JOURNEY.md`](design/55-P4-ANDROID-B-JOURNEY.md) (artifacts `55`–`59`). Cite: issue [#44](https://github.com/themark-net/leasegrid-c/issues/44) only · tip ≥ **`be1cfea`** · desktop Sync stays primary · Slice A read path (`35`–`39`) is not rewritten. No new payment rails. No product UI until this pack is on the PR. Tester after implement: **And** (emulator dogfood).

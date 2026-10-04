@@ -24,7 +24,7 @@
 | **U4** | Design/SHIP Recovery (`30`–`34`) | Threat HITL + recovery key export/import |
 | **U5 / #34** | SHIP Credit XMR top-up @ `442b76e` | Credit stays under More — **Top up entry unchanged** |
 | **P4-A** | Design DoD / Slice A shipped (`35`–`39`) | Android read-first — **leave bodies alone**; desktop Sync still primary |
-| **P4-B** | Parked | Android write — not this slice |
+| **P4-B** | **Design DoD ready** (`55`–`59`) | Android write into a folder you already have — issue [#44](https://github.com/themark-net/leasegrid-c/issues/44); desktop Sync still primary |
 | **#27 Buyer storage** | SHIP / Design DoD (`40`–`44`) | Empty Join-first + Storage servers — **locks stand**; pack `43` #28 footnote **superseded** |
 | **#38 Shell polish** (+ **#32**) | SHIP / Design DoD (`45`–`49`) @ `83b3e66` | Lead journey + invite short code/QR/Copy — **locks stand** |
 | **#28 Offer → settlement** | **Design DoD ready** (`50`–`54`) | Disk Used ≠ Hosted; link to Credit/ZKAP settlement visibility |
@@ -98,3 +98,20 @@
 - [#26](https://github.com/themark-net/leasegrid-c/issues/26) / [#30](https://github.com/themark-net/leasegrid-c/issues/30) — out  
 
 See [53-OFFER-SETTLEMENT-NON-GOALS.md](53-OFFER-SETTLEMENT-NON-GOALS.md).
+
+---
+
+## Artifact index — P4 Android Slice B (#44)
+
+Adds `55`–`59` and the pointer beside `docs/09-ui-track.md`. Does **not** rewrite Slice A `35`–`39` or earlier bodies. Desktop Sync stays primary. Docs only — no product UI in this PR.
+
+| File | Contents |
+|------|----------|
+| [55-P4-ANDROID-B-JOURNEY.md](55-P4-ANDROID-B-JOURNEY.md) | Add file on the open folder; pending vs On friendnet; FAIL |
+| [56-P4-ANDROID-B-IA.md](56-P4-ANDROID-B-IA.md) | Write stays on folder detail; no settings; do not re-ask join |
+| [57-P4-ANDROID-B-WIREFRAMES.md](57-P4-ANDROID-B-WIREFRAMES.md) | ASCII: Add file, clash, remove vs discard, read-only |
+| [58-P4-ANDROID-B-NON-GOALS.md](58-P4-ANDROID-B-NON-GOALS.md) | No new folder, no new rails, no phone-as-primary |
+| [59-P4-ANDROID-B-DEVBOT-HANDOFF.md](59-P4-ANDROID-B-DEVBOT-HANDOFF.md) | Implement DoD after PM RELEASE; And dogfood; tip ≥ `be1cfea` |
+| [09-ui-track-P4-ANDROID-B-POINTER.md](../09-ui-track-P4-ANDROID-B-POINTER.md) | Pointer beside `09-ui-track.md` |
+
+**#44 one-liner:** Phone adds a file to a folder it already shows; **On friendnet** only after ack; desktop Sync stays primary.

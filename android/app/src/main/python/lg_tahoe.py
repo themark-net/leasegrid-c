@@ -217,6 +217,105 @@ def _http_get(host: str, port: int, tubid: str, path: str, swiss: str, timeout: 
     )
 
 
+def http_storage(
+    host: str,
+    port: int,
+    tubid: str,
+    method: str,
+    path: str,
+    swiss: str,
+    body: bytes = b"",
+    extra_headers: Optional[list[tuple[str, str]]] = None,
+    timeout: float = 60.0,
+    fail_message: str = "could not add this file.",
+    fail_next: str = "check network; Retry.",
+) -> tuple[int, bytes]:
+    """HTTPS request to one storage server. Returns ``(status, body)``."""
+    auth = base64.b64encode(swiss.encode("ascii")).decode("ascii")
+    header_lines = [
+        "%s %s HTTP/1.1" % (method, path),
+        "Host: %s" % host,
+        "Authorization: Tahoe-LAFS %s" % auth,
+        "Accept: application/cbor",
+        "Connection: close",
+    ]
+    for key, value in extra_headers or []:
+        header_lines.append("%s: %s" % (key, value))
+    if body:
+        if not any(line.lower().startswith("content-type:") for line in header_lines):
+            header_lines.append("Content-Type: application/octet-stream")
+        header_lines.append("Content-Length: %d" % len(body))
+    elif method in ("POST", "PUT", "PATCH"):
+        header_lines.append("Content-Length: 0")
+    request = ("\r\n".join(header_lines) + "\r\n\r\n").encode("ascii") + body
+    last: Optional[Exception] = None
+    for use_host in _host_candidates(host):
+        try:
+            raw = socket.create_connection((use_host, port), timeout=timeout)
+        except OSError as exc:
+            last = exc
+            continue
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            ssock = ctx.wrap_socket(raw, server_hostname=use_host)
+            der = ssock.getpeercert(binary_form=True)
+            if der and _cert_tubid(der) != tubid.lower():
+                ssock.close()
+                last = ReadFail(
+                    fail_message,
+                    fail_next + " Storage server identity did not match.",
+                )
+                continue
+            ssock.sendall(request)
+            chunks = []
+            while True:
+                block = ssock.recv(65536)
+                if not block:
+                    break
+                chunks.append(block)
+            ssock.close()
+            return _http_status(b"".join(chunks))
+        except ReadFail:
+            raise
+        except (OSError, ssl.SSLError) as exc:
+            last = exc
+            try:
+                raw.close()
+            except OSError:
+                pass
+    if isinstance(last, ReadFail):
+        raise last
+    raise ReadFail(fail_message, fail_next)
+
+
+def _http_status(raw: bytes) -> tuple[int, bytes]:
+    head, _, rest = raw.partition(b"\r\n\r\n")
+    if not head:
+        raise ReadFail(
+            "could not add this file.",
+            "check network; Retry.",
+        )
+    line = head.split(b"\r\n", 1)[0]
+    parts = line.split(b" ")
+    code = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    headers = {}
+    for row in head.split(b"\r\n")[1:]:
+        if b":" in row:
+            key, value = row.split(b":", 1)
+            headers[key.strip().lower()] = value.strip()
+    if headers.get(b"transfer-encoding", b"").lower() == b"chunked":
+        body = _unchunk(rest)
+    else:
+        length = headers.get(b"content-length")
+        if length and length.isdigit():
+            body = rest[: int(length)]
+        else:
+            body = rest
+    return code, body
+
+
 def _http_body(raw: bytes) -> bytes:
     head, _, rest = raw.partition(b"\r\n\r\n")
     if not head:
@@ -645,11 +744,37 @@ def list_folder_view(cap: str, servers: list[StorageServer]) -> list[Child]:
             if content is not None:
                 flattened.append(Child(entry.name, "file", content.cap, content.size))
                 continue
-        if inner_files or not inner_dirs:
-            flattened.extend(_snapshots_as_files(inner_files, inner_dirs, servers))
+        snaps, others = _snapshot_files(inner_dirs, servers)
+        if inner_files or snaps:
+            # A Magic Folder personal directory holds snapshot directories and
+            # no plain files. Show those snapshots as files in this folder.
+            flattened.extend(inner_files)
+            flattened.extend(snaps)
+            flattened.extend(others)
+        elif not inner_dirs:
+            flattened.extend(inner_files)
         else:
             flattened.append(entry)
     return flattened or dirs
+
+
+def _snapshot_files(dirs: list[Child], servers: list[StorageServer]) -> tuple[list[Child], list[Child]]:
+    """Split directory children into snapshot-backed files and the rest."""
+    snaps: list[Child] = []
+    others: list[Child] = []
+    for entry in dirs:
+        try:
+            inner = list_directory(entry.cap, servers)
+        except ReadFail:
+            others.append(entry)
+            continue
+        if _looks_like_snapshot(inner):
+            content = _content_child(inner)
+            if content is not None:
+                snaps.append(Child(entry.name.rstrip("/"), "file", content.cap, content.size))
+                continue
+        others.append(entry)
+    return snaps, others
 
 
 def _looks_like_snapshot(children: list[Child]) -> bool:

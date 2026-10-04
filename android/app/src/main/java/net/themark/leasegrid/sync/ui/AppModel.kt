@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Environment
+import android.os.StatFs
+import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,8 +15,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.security.SecureRandom
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
@@ -58,6 +63,12 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     private val grid = AndroidGrid(app)
     private val json = Json { ignoreUnknownKeys = true }
     private var job: Job? = null
+    private val board = FolderWriteBoard()
+    private val uploads = mutableMapOf<String, Job>()
+
+    /** Bumps when a pending row or sheet changes so the folder screen redraws. */
+    var writeTick by mutableStateOf(0)
+        private set
 
     var place by mutableStateOf<Place>(Place.Welcome)
         private set
@@ -267,6 +278,125 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun folderWritable(folder: FolderRef): Boolean = directoryWritable(folder.cap)
+
+    fun visibleFiles(place: Place.Folder): List<VisibleFile> {
+        writeTick
+        return board.visibleFiles(place.folder.cap, place.children)
+    }
+
+    fun writeSheet(): WriteSheet? {
+        writeTick
+        return board.sheet
+    }
+
+    fun addTarget(): FolderRef? = (place as? Place.Folder)?.folder
+
+    fun onFilePicked(folder: FolderRef, displayName: String, bytes: ByteArray) {
+        if (!directoryWritable(folder.cap)) {
+            show(FailBanner(WriteCopy.ADD_FAIL, WriteCopy.READ_ONLY), null)
+            return
+        }
+        val name = try {
+            baseName(displayName)
+        } catch (_: IllegalArgumentException) {
+            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+            return
+        }
+        val dest = pendingFile(folder.cap, name)
+        try {
+            val free = StatFs(dest.parentFile!!.absolutePath).availableBytes
+            if (free < bytes.size.toLong() + 4096L) {
+                show(FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)) { }
+                return
+            }
+            dest.parentFile?.mkdirs()
+            dest.writeBytes(bytes)
+        } catch (_: Exception) {
+            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+            return
+        }
+        val existing = namesInFolder(folder.cap)
+        when (val stage = board.stageAdd(folder.name, folder.cap, name, dest.absolutePath, bytes.size, existing)) {
+            is StageAdd.Ready -> startUpload(folder, stage.name, stage.localPath, stage.size, replace = false)
+            is StageAdd.NeedsChoice -> touch()
+        }
+    }
+
+    fun replaceClash() {
+        val clash = board.clashOrNull() ?: return
+        board.cancelSheet()
+        touch()
+        val folder = folderByCap(clash.folderCap) ?: return
+        startUpload(folder, clash.name, clash.localPath, clash.size, replace = true)
+    }
+
+    fun keepBothClash() {
+        val clash = board.clashOrNull() ?: return
+        board.cancelSheet()
+        val folder = folderByCap(clash.folderCap) ?: return
+        val taken = namesInFolder(folder.cap)
+        val distinct = keepBothName(clash.name, taken)
+        val dest = pendingFile(folder.cap, distinct)
+        val bytes = File(clash.localPath).takeIf { it.isFile }?.readBytes()
+        if (bytes == null) {
+            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+            touch()
+            return
+        }
+        dest.parentFile?.mkdirs()
+        dest.writeBytes(bytes)
+        if (dest.absolutePath != clash.localPath) File(clash.localPath).delete()
+        touch()
+        startUpload(folder, distinct, dest.absolutePath, bytes.size, replace = false)
+    }
+
+    fun cancelClash() {
+        val clash = board.clashOrNull() ?: return
+        File(clash.localPath).delete()
+        board.cancelSheet()
+        touch()
+    }
+
+    fun askDiscard(name: String) {
+        val folder = addTarget() ?: return
+        board.askDiscard(folder.cap, name)
+        touch()
+    }
+
+    fun confirmDiscard() {
+        val dropped = board.confirmDiscard() ?: return
+        uploads.remove(uploadKey(dropped.folderCap, dropped.name))?.cancel()
+        File(dropped.localPath).delete()
+        touch()
+    }
+
+    fun askRemove(name: String, cap: String) {
+        val folder = addTarget() ?: return
+        board.askRemove(folder.name, name, cap)
+        touch()
+    }
+
+    fun cancelSheet() {
+        board.cancelSheet()
+        touch()
+    }
+
+    fun confirmRemove() {
+        val request = board.confirmRemove() ?: return
+        touch()
+        val folder = addTarget() ?: return
+        val current = session ?: return
+        removeLanded(folder, request.name, current)
+    }
+
+    fun retryUpload(name: String) {
+        val folder = addTarget() ?: return
+        val pending = board.pendingFor(folder.cap).firstOrNull { it.name == name } ?: return
+        val replace = serverNames(folder.cap).contains(name)
+        startUpload(folder, pending.name, pending.localPath, pending.size, replace = replace)
+    }
+
     fun openChild(row: ChildRow, parent: FolderRef) {
         if (row.kind == "dir") {
             openFolder(FolderRef(row.name, row.cap))
@@ -367,6 +497,231 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         inviteText = ""
         place = Place.Welcome
         fail = null
+    }
+
+    private fun startUpload(
+        folder: FolderRef,
+        name: String,
+        localPath: String,
+        size: Int,
+        replace: Boolean,
+    ) {
+        val current = session ?: return
+        if (current.servers.isEmpty()) {
+            show(FailBanner(WriteCopy.ADD_FAIL, WriteCopy.ADD_NEXT)) {
+                retryUpload(name)
+            }
+            val item = board.begin(folder.cap, name, localPath, size)
+            board.fail(folder.cap, name, item.token)
+            touch()
+            return
+        }
+        fail = null
+        retry = null
+        val armed = ensureAuthor(folder)
+        val existing = board.tokenOf(armed.cap, name)
+        val item = if (existing == null) {
+            board.begin(armed.cap, name, localPath, size)
+        } else {
+            board.markSending(armed.cap, name)
+            board.pendingFor(armed.cap).first { it.name == name }
+        }
+        touch()
+        val token = board.tokenOf(armed.cap, name) ?: item.token
+        val key = uploadKey(armed.cap, name)
+        uploads.remove(key)?.cancel()
+        val upload = viewModelScope.launch {
+            val ticker = launch {
+                var mark = 0.12f
+                while (isActive) {
+                    delay(350)
+                    mark = (mark + 0.08f).coerceAtMost(0.9f)
+                    board.noteProgress(armed.cap, name, mark)
+                    touch()
+                }
+            }
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    dispatch(
+                        "put",
+                        buildJsonObject {
+                            put("cap", armed.cap)
+                            put("name", name)
+                            put("path", localPath)
+                            put("replace", replace)
+                            put("author_seed_b64", armed.authorSeedB64)
+                            put("phone_dmd", armed.phoneDmd)
+                            putJsonArray("shares") {
+                                for (share in armedShares(current)) add(share)
+                            }
+                            putJsonArray("servers") {
+                                for (server in current.servers) {
+                                    addJsonObject {
+                                        put("furl", server.furl)
+                                        put("nickname", server.nickname)
+                                    }
+                                }
+                            }
+                        }.toString(),
+                    )
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    GridResult(false, WriteCopy.ADD_FAIL, WriteCopy.ADD_NEXT, buildJsonObject {})
+                }
+            }
+            ticker.cancel()
+            if (board.tokenOf(armed.cap, name) != token) return@launch
+            if (!result.ok && result.message.contains("already in this folder")) {
+                board.abandon(armed.cap, name, token)
+                board.stageAdd(armed.name, armed.cap, name, localPath, size, setOf(name))
+                touch()
+                return@launch
+            }
+            if (!result.ok) {
+                board.fail(armed.cap, name, token)
+                touch()
+                show(FailBanner(result.message, result.next)) { retryUpload(name) }
+                return@launch
+            }
+            val dmd = result.raw["phone_dmd"]?.jsonPrimitive?.contentOrNull ?: armed.phoneDmd
+            val seed = result.raw["author_seed_b64"]?.jsonPrimitive?.contentOrNull ?: armed.authorSeedB64
+            rememberFolder(armed.copy(phoneDmd = dmd, authorSeedB64 = seed))
+            if (!board.acknowledge(armed.cap, name, token)) return@launch
+            val landedCap = result.raw["cap"]?.jsonPrimitive?.contentOrNull ?: ""
+            val landedSize = result.raw["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: size
+            val here = place as? Place.Folder
+            if (here != null && here.folder.cap == armed.cap) {
+                val kept = here.children.filter { it.name != name }
+                place = here.copy(
+                    folder = folderByCap(armed.cap) ?: here.folder,
+                    children = listOf(ChildRow(name, "file", landedCap, landedSize)) + kept,
+                )
+            }
+            File(localPath).delete()
+            touch()
+            reloadIfOpen(armed)
+        }
+        uploads[key] = upload
+    }
+
+    private fun removeLanded(folder: FolderRef, name: String, current: Session) {
+        job?.cancel()
+        job = viewModelScope.launch {
+            busy = true
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    dispatch(
+                        "remove",
+                        buildJsonObject {
+                            put("cap", folder.cap)
+                            put("name", name)
+                            put("phone_dmd", folder.phoneDmd)
+                            putJsonArray("shares") {
+                                for (share in armedShares(current)) add(share)
+                            }
+                            putJsonArray("servers") {
+                                for (server in current.servers) {
+                                    addJsonObject {
+                                        put("furl", server.furl)
+                                        put("nickname", server.nickname)
+                                    }
+                                }
+                            }
+                        }.toString(),
+                    )
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    GridResult(false, WriteCopy.REMOVE_FAIL, WriteCopy.REMOVE_NEXT, buildJsonObject {})
+                }
+            }
+            busy = false
+            if (!result.ok) {
+                show(FailBanner(result.message.ifBlank { WriteCopy.REMOVE_FAIL }, result.next)) {
+                    val again = addTarget() ?: folder
+                    removeLanded(again, name, session ?: current)
+                }
+                return@launch
+            }
+            reloadIfOpen(folder)
+        }
+    }
+
+    private fun namesInFolder(folderCap: String): Set<String> {
+        val pending = board.pendingFor(folderCap).map { it.name }
+        return serverNames(folderCap) + pending
+    }
+
+    private fun serverNames(folderCap: String): Set<String> {
+        val here = place as? Place.Folder ?: return emptySet()
+        if (here.folder.cap != folderCap) return emptySet()
+        return here.children.map { it.name }.toSet()
+    }
+
+    private fun folderByCap(cap: String): FolderRef? =
+        session?.folders?.firstOrNull { it.cap == cap }
+
+    private fun ensureAuthor(folder: FolderRef): FolderRef {
+        if (folder.authorSeedB64.isNotBlank()) return folder
+        val seed = ByteArray(32)
+        SecureRandom().nextBytes(seed)
+        val next = folder.copy(authorSeedB64 = Base64.encodeToString(seed, Base64.NO_WRAP))
+        rememberFolder(next)
+        return next
+    }
+
+    private fun rememberFolder(folder: FolderRef) {
+        val current = session ?: return
+        val next = current.copy(
+            folders = current.folders.map { existing ->
+                if (existing.cap == folder.cap) {
+                    existing.copy(phoneDmd = folder.phoneDmd, authorSeedB64 = folder.authorSeedB64)
+                } else {
+                    existing
+                }
+            },
+        )
+        store.save(next)
+        session = next
+        val here = place
+        if (here is Place.Folder && here.folder.cap == folder.cap) {
+            val updated = next.folders.firstOrNull { it.cap == folder.cap } ?: return
+            place = here.copy(folder = updated)
+        }
+    }
+
+    private fun reloadIfOpen(folder: FolderRef) {
+        val here = place as? Place.Folder ?: return
+        if (here.folder.cap != folder.cap) return
+        val fresh = folderByCap(folder.cap) ?: folder
+        openFolder(fresh)
+    }
+
+    private fun armedShares(current: Session): List<Int> {
+        val shares = current.shares
+        return if (shares.size >= 3) shares.take(3) else listOf(2, 3, 3)
+    }
+
+    private fun pendingFile(folderCap: String, name: String): File {
+        val dir = File(getApplication<Application>().filesDir, "pending")
+        val bucket = File(dir, Integer.toHexString(folderCap.hashCode()))
+        bucket.mkdirs()
+        return File(bucket, safeName(name))
+    }
+
+    private fun baseName(name: String): String {
+        val cleaned = name.replace('\\', '/').substringAfterLast('/').replace("\u0000", "").trim()
+        if (cleaned.isBlank() || cleaned == "." || cleaned == "..") {
+            throw IllegalArgumentException("name")
+        }
+        return cleaned.take(180)
+    }
+
+    private fun uploadKey(folderCap: String, name: String) = "$folderCap\n$name"
+
+    private fun touch() {
+        writeTick += 1
     }
 
     private fun downloadsDir(): File {

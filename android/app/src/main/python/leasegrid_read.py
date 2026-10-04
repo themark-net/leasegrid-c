@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 
 from lg_intro import learn_servers
 from lg_tahoe import ReadFail, StorageServer, download_file, list_folder_view
+from lg_write import WriteFail, put_file, remove_file, shares_tuple
 
 
 def dispatch(op: str, payload: str) -> str:
@@ -39,10 +41,14 @@ def dispatch(op: str, payload: str) -> str:
             with open(dest, "wb") as handle:
                 handle.write(blob)
             result = {"ok": True, "size": len(blob), "path": dest}
+        elif op == "put":
+            result = _put(data)
+        elif op == "remove":
+            result = _remove(data)
         else:
             raise ReadFail("could not complete that. Unknown action.", "Retry.")
         return json.dumps(result)
-    except ReadFail as exc:
+    except (ReadFail, WriteFail) as exc:
         return json.dumps({"ok": False, "message": exc.message, "next": exc.next_hint})
     except OSError as exc:
         return json.dumps(
@@ -60,6 +66,44 @@ def dispatch(op: str, payload: str) -> str:
                 "next": "Retry. If it repeats, check the network and the invite.",
             }
         )
+
+
+def _put(data: dict[str, Any]) -> dict[str, Any]:
+    path = str(data.get("path") or "")
+    if not path:
+        raise WriteFail("could not read this file.", "pick it again.")
+    try:
+        with open(path, "rb") as handle:
+            blob = handle.read()
+    except OSError as exc:
+        if getattr(exc, "errno", None) == 28:
+            raise WriteFail("not enough free space.", "free space; Retry.") from exc
+        raise WriteFail("could not read this file.", "pick it again.") from exc
+    seed_b64 = str(data.get("author_seed_b64") or "")
+    try:
+        seed = base64.b64decode(seed_b64) if seed_b64 else b""
+    except (ValueError, TypeError) as exc:
+        raise WriteFail("could not add this file.", "Retry.") from exc
+    return put_file(
+        str(data.get("cap") or ""),
+        str(data.get("name") or ""),
+        blob,
+        _servers(data),
+        shares_tuple(data.get("shares")),
+        replace=bool(data.get("replace")),
+        author_seed=seed,
+        phone_dmd=str(data.get("phone_dmd") or ""),
+    )
+
+
+def _remove(data: dict[str, Any]) -> dict[str, Any]:
+    return remove_file(
+        str(data.get("cap") or ""),
+        str(data.get("name") or ""),
+        _servers(data),
+        shares_tuple(data.get("shares")),
+        phone_dmd=str(data.get("phone_dmd") or ""),
+    )
 
 
 def _servers(data: dict[str, Any]) -> list[StorageServer]:

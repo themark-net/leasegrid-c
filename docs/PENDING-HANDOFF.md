@@ -92,7 +92,8 @@ Earlier sections stay. This section is only #44. It does not close #26, #30, or 
 |--|--|
 | **Issue** | [#44](https://github.com/themark-net/leasegrid-c/issues/44) only |
 | **Branch** | `cursor/android-p4b-write-sync-7258` |
-| **Tip SHA** | filled in the commit that follows the product commit; the pull request head is the slice |
+| **Product commit** | `993466a62f42c6760e155c1d46b13a1fc9750f63` |
+| **Tip SHA** | the child of that commit on this branch (this handoff line). The pull request head is that tip. |
 | **Design** | `docs/design/55`–`59` and `docs/09-ui-track-P4-ANDROID-B-POINTER.md` |
 | **Base** | `1c327c9b1b5c5478e21bbfe3ec19fb1b9c8c9d43` (docs PR #45) |
 

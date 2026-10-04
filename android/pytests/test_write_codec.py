@@ -53,6 +53,48 @@ def test_read_only_put_fails_closed(tmp_path: Path):
     assert "computer" not in raw.lower()
 
 
+def test_locate_stops_at_the_share_count_in_the_header(monkeypatch):
+    """A 1-of-1 folder must not be probed as 16 shares.
+
+    The old rewrite scanned ``max(total, 16)``. Each missing share can
+    sit on the storage timeout, so put never reaches read-back.
+    """
+    from lg_write import MUTABLE, _locate
+
+    def header(total: int) -> bytes:
+        return MUTABLE.pack(
+            0, 1, b"\x00" * 32, b"\x00" * 16, 1, total, 0, 0, 0, 0, 0, 0, 0, 0,
+        )
+
+    asked: list[int] = []
+
+    def fake_fetch(_server, _kind, _si, num):
+        asked.append(num)
+        if num == 0:
+            return header(1)
+        raise AssertionError("share %s is past n" % num)
+
+    monkeypatch.setattr("lg_write._fetch_share", fake_fetch)
+    found = _locate([object()], "mutable", b"\x00" * 16, 16)
+    assert asked == [0]
+    assert set(found) == {0}
+
+    asked.clear()
+
+    def sparse(_server, _kind, _si, num):
+        asked.append(num)
+        if num == 0:
+            return None
+        if num == 1:
+            return header(2)
+        raise AssertionError("share %s is past n" % num)
+
+    monkeypatch.setattr("lg_write._fetch_share", sparse)
+    found = _locate([object()], "mutable", b"\x00" * 16, 16)
+    assert asked == [0, 1]
+    assert set(found) == {1}
+
+
 def test_keep_both_and_read_only_cap():
     assert keep_both_name("beach.jpg", {"beach.jpg"}) == "beach (phone).jpg"
     assert keep_both_name("beach.jpg", {"beach.jpg", "beach (phone).jpg"}) == "beach (phone 2).jpg"

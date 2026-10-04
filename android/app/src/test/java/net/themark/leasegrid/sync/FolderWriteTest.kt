@@ -6,9 +6,13 @@ import net.themark.leasegrid.sync.ui.FolderWriteBoard
 import net.themark.leasegrid.sync.ui.StageAdd
 import net.themark.leasegrid.sync.ui.WriteCopy
 import net.themark.leasegrid.sync.ui.WriteSheet
+import net.themark.leasegrid.sync.ui.ADD_SILENCE_MS
+import net.themark.leasegrid.sync.ui.VisibleFile
 import net.themark.leasegrid.sync.ui.chipText
 import net.themark.leasegrid.sync.ui.directoryWritable
 import net.themark.leasegrid.sync.ui.keepBothName
+import net.themark.leasegrid.sync.ui.rowActions
+import net.themark.leasegrid.sync.ui.showPendingProgress
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -108,5 +112,58 @@ class FolderWriteTest {
             "You can download from this folder. Adding files is not available here.",
             WriteCopy.READ_ONLY,
         )
+    }
+
+    @Test
+    fun silenceShowsExistingFailAndDoesNotSayOnFriendnet() {
+        val board = FolderWriteBoard()
+        val pending = board.begin(cap, "lg44-live.txt", "/tmp/lg44-live.txt", 33)
+        board.noteProgress(cap, "lg44-live.txt", 0.99f)
+        assertFalse(board.noteSilence(cap, "lg44-live.txt", pending.token, ADD_SILENCE_MS - 1))
+        var row = board.visibleFiles(cap, emptyList()).single()
+        assertFalse(row.failed)
+        assertTrue(showPendingProgress(row))
+        assertEquals(WriteCopy.PENDING, chipText(row))
+        assertEquals("Not on friendnet yet", chipText(row))
+
+        assertTrue(board.noteSilence(cap, "lg44-live.txt", pending.token, ADD_SILENCE_MS))
+        board.noteProgress(cap, "lg44-live.txt", 0.99f)
+        row = board.visibleFiles(cap, emptyList()).single()
+        assertTrue(row.failed)
+        assertFalse(showPendingProgress(row))
+        assertEquals(Chip.Pending, row.chip)
+        assertEquals("Not on friendnet yet", chipText(row))
+        assertFalse(chipText(row).contains("computer"))
+        assertFalse(chipText(row).startsWith("On friendnet"))
+        assertEquals(listOf("Retry", "Cancel"), rowActions(writable = true, row))
+
+        assertTrue(board.acknowledge(cap, "lg44-live.txt", pending.token))
+        val landed = board.visibleFiles(
+            cap,
+            listOf(ChildRow("lg44-live.txt", "file", "URI:CHK:a:b:1:1:33", 33)),
+        ).single()
+        assertEquals("On friendnet", chipText(landed))
+        assertEquals(listOf("Open", "Remove"), rowActions(writable = true, landed))
+    }
+
+    @Test
+    fun readOnlyFolderHidesRemove() {
+        val landed = VisibleFile(
+            name = "beach.jpg",
+            chip = Chip.Landed,
+            size = 3,
+            cap = "URI:CHK:x:y:1:1:3",
+        )
+        val pending = VisibleFile(
+            name = "lg44-live.txt",
+            chip = Chip.Pending,
+            size = 33,
+            failed = false,
+        )
+        assertEquals(listOf("Open"), rowActions(writable = false, landed))
+        assertFalse(rowActions(writable = false, landed).contains("Remove"))
+        assertEquals(listOf("Open", "Remove"), rowActions(writable = true, landed))
+        assertEquals(listOf("Cancel"), rowActions(writable = true, pending))
+        assertFalse(rowActions(writable = false, pending).contains("Remove"))
     }
 }

@@ -540,6 +540,14 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                     touch()
                 }
             }
+            val silence = launch silence@{
+                delay(ADD_SILENCE_MS)
+                if (board.tokenOf(armed.cap, name) != token) return@silence
+                if (!board.noteSilence(armed.cap, name, token, ADD_SILENCE_MS)) return@silence
+                ticker.cancel()
+                touch()
+                show(FailBanner(WriteCopy.ADD_FAIL, WriteCopy.ADD_NEXT)) { retryUpload(name) }
+            }
             val result = withContext(Dispatchers.IO) {
                 try {
                     dispatch(
@@ -571,6 +579,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             ticker.cancel()
+            silence.cancel()
             if (board.tokenOf(armed.cap, name) != token) return@launch
             if (!result.ok && result.message.contains("already in this folder")) {
                 board.abandon(armed.cap, name, token)
@@ -588,6 +597,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             val seed = result.raw["author_seed_b64"]?.jsonPrimitive?.contentOrNull ?: armed.authorSeedB64
             rememberFolder(armed.copy(phoneDmd = dmd, authorSeedB64 = seed))
             if (!board.acknowledge(armed.cap, name, token)) return@launch
+            fail = null
+            retry = null
             val landedCap = result.raw["cap"]?.jsonPrimitive?.contentOrNull ?: ""
             val landedSize = result.raw["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: size
             val here = place as? Place.Folder

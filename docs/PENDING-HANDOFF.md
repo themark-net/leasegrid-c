@@ -92,8 +92,9 @@ Earlier sections stay. This section is only #44. It does not close #26, #30, or 
 |--|--|
 | **Issue** | [#44](https://github.com/themark-net/leasegrid-c/issues/44) only |
 | **Branch** | `cursor/android-p4b-write-sync-7258` |
+| **Parent that must stay** | `46814dc09ee76600789ffc5de3f46957c2d0f011` |
 | **Product commit** | `993466a62f42c6760e155c1d46b13a1fc9750f63` |
-| **Tip SHA** | the child of that commit on this branch (this handoff line). The pull request head is that tip. |
+| **Tip SHA** | recorded in the follow-up commit on this branch. Parent of the fix is `46814dc09ee76600789ffc5de3f46957c2d0f011`. |
 | **Design** | `docs/design/55`–`59` and `docs/09-ui-track-P4-ANDROID-B-POINTER.md` |
 | **Base** | `1c327c9b1b5c5478e21bbfe3ec19fb1b9c8c9d43` (docs PR #45) |
 
@@ -103,8 +104,9 @@ An already-joined phone can add one file to the folder that is already open.
 
 - **Add file** is on that folder (system picker). It is absent on Folders home, on Welcome, and on a read-only cap.
 - The row stays **Not on friendnet yet**, with progress and Cancel, until the friendnet read-back succeeds. The chip then says **On friendnet**. It does not say "On your computer".
+- If that read-back has not succeeded after 45 seconds, the progress bar stops. The row stays **Not on friendnet yet** and shows the existing FAIL — could not add this file. Next: check network; Retry. A later read-back that does succeed still becomes **On friendnet**.
 - The same name opens a sheet: **Replace**, **Keep both** (`beach (phone).jpg`), **Cancel**.
-- **Remove** confirms and deletes that object on the friendnet, or leaves the row and shows FAIL. **Discard** only drops a pending row that never landed.
+- **Remove** confirms and deletes that object on the friendnet, or leaves the row and shows FAIL. **Discard** only drops a pending row that never landed. **Remove** is hidden when the folder is read-only. Download and Open stay.
 - A read-only folder hides Add file and shows: "You can download from this folder. Adding files is not available here."
 - Slice A download/open still works. Desktop Sync stays the place that creates folders. No write settings screen. No new payment rail.
 
@@ -113,31 +115,33 @@ An already-joined phone can add one file to the folder that is already open.
 | Risk | How it fails | How we recover |
 |------|----------------|----------------|
 | Chip says done before the write lands | Operator trusts a lie | `put` returns ok only after a read-back of the same bytes. The UI chip stays **Not on friendnet yet** until that ok. Progress never reaches a success chip on its own. |
+| Put never returns | Row sits on a progress bar with no error, as in And's step 3 | After 45 seconds the bar stops, the chip stays **Not on friendnet yet**, and the existing FAIL plus Retry show. The put is not cancelled: a later read-back ok still becomes **On friendnet**. Retry sends the same local file. |
+| Rewrite probes shares past `n` | Each missing share can block on the socket timeout, so read-back never runs | Locate stops at the share count in the first share header. A miss is the existing FAIL, not **On friendnet**. |
 | Network dies mid-write | Partial upload, row would look finished | Row stays **Not on friendnet yet**. FAIL — could not add this file. Next: check network; Retry. Retry sends the same local file. Cancel discards it. |
 | Same filename | Silent overwrite | Sheet: Replace / Keep both / Cancel. Cancel deletes the pending copy and leaves the list. |
-| Read-only cap | Add file fails every time | Add file is hidden. Download and Open still work. |
+| Read-only cap | Add file fails every time, or Remove offers a friendnet delete the cap cannot do | Add file stays hidden. Remove is hidden. Download and Open still work. |
 | Remove vs discard | Phone-only delete, or a friendnet delete of a file that never landed | Remove asks, and the copy says the friendnet. Discard's copy says it is not on the friendnet yet. A remove that does not disappear from a fresh listing stays FAIL with the row still there. |
-| Slice A read regresses | Can't download | Live grid test still downloads a file Tahoe put, then puts, and Tahoe `get` reads the phone's bytes back. |
-| Desktop regresses | Sync won't launch | This VM proved Tahoe 1.20 `ls`/`get` against the phone write. And should still smoke-launch desktop Sync on the tip. |
+| Slice A read regresses | Can't download | `android/pytests/test_live_grid.py` did not run on `46814dc09ee76600789ffc5de3f46957c2d0f011`. It is not in CI. Do not treat that file as evidence for this slice. |
+| Desktop regresses | Sync won't launch | This VM did not prove Tahoe `ls`/`get` of a phone write. And should still smoke-launch desktop Sync on the tip. |
 
 ### Dogfood for And (emulator)
 
-Debug APK from this VM:
+And's step 3 on the draft APK from GitHub Actions run `37169908352` (`versionName` `0.4.0-slice-b`, emulator `pixel_api34_lg_dogfood`, API 34) **FAIL**. Phone already joined. Photos already open. Add file put `lg44-live-20261003T230457.txt` (33 bytes, token `lg44-token-20261003T230457-27628`). The row stayed **Not on friendnet yet** for about 90 seconds, with a progress bar and Cancel. It never became **On friendnet**. It never said "On your computer". No on-screen error. The desktop Photos folder was empty before and after. Steps before the add had already passed. This VM cannot see that grid. Do not claim a live pass.
 
-`android/app/build/outputs/apk/debug/app-debug.apk` (about 52 MB). Install with `adb install -r`.
+This fix: a small add completes put, then a read-back of those same bytes, and only then the chip says **On friendnet**. If read-back does not succeed, the row stays **Not on friendnet yet** and shows the existing FAIL plus Retry. Not an endless progress bar.
 
-The repo's Gradle build produced that APK here after the Android SDK platform 34 and build-tools 34 were installed in the VM (`ANDROID_HOME`). Chaquopy warned that host Python 3.12 cannot compile `.pyc` for the embedded 3.11; the APK still packaged. Unit tests `testDebugUnitTest` passed, including the chip / clash / discard rules.
+Debug APK: the GitHub Actions artifact `leasegrid-sync-android-slice-a-debug.apk` from the run on this tip. Install with `adb install -r`.
 
 Prereqs: emulator API 34+; a phone already joined to a folder desktop Sync can also see; one small new file; one file already in that folder.
 
 1. Launch. Confirm Folders, not a join form, and no Tahoe WUI.
 2. Open the known writable folder. Confirm **Add file** is on that screen, not on Folders and not in Settings.
-3. Add the new file. Confirm the row reads **Not on friendnet yet** before it reads **On friendnet**.
+3. Add the new file. Confirm the row reads **Not on friendnet yet** before it reads **On friendnet**. If the friendnet does not read the bytes back, confirm FAIL — could not add this file. / Next: check network; Retry. — and that the progress bar is not still moving. The chip must not say On friendnet in that case.
 4. From desktop Sync, or `tahoe get` of that file cap, read those bytes.
 5. Add a file with the same name. Confirm Replace / Keep both / Cancel. Cancel leaves the list unchanged. Keep both shows a distinct name.
 6. Airplane mode, add another file. Confirm FAIL + Retry, and the chip is not On friendnet.
 7. Download/open one file that was already in the folder.
-8. If a read-only folder is in the lab, confirm Add file is absent and the read-only line is shown.
+8. If a read-only folder is in the lab, confirm Add file is absent, Remove is absent, Download/Open still work, and the read-only line is shown.
 9. Remove an On friendnet file only after the confirm sheet. Discard a pending file from Cancel; that sheet must not say the friendnet lost a copy.
 10. Note PASS/FAIL, the APK path above, the emulator image, the tip SHA, and issue #44. No Mark drip.
 

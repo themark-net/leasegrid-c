@@ -571,14 +571,42 @@ def _fetch_share(server: StorageServer, kind: str, si: bytes, num: int) -> Optio
     return body
 
 
+def _announced_total(blob: bytes) -> Optional[int]:
+    """Share count from an SDMF header. None when the header is not usable."""
+    if len(blob) < MUTABLE.size:
+        return None
+    try:
+        total = int(MUTABLE.unpack_from(blob, 0)[5])
+    except struct.error:
+        return None
+    if total < 1 or total > 256:
+        return None
+    return total
+
+
 def _locate(servers: list[StorageServer], kind: str, si: bytes, total: int) -> dict[int, tuple[StorageServer, bytes]]:
+    """Find shares ``0 .. n-1``.
+
+    ``n`` comes from the first share header. Callers used to pass
+    ``max(total, 16)`` and then probe share numbers the header says do
+    not exist. Each miss can sit on the storage socket timeout, so a
+    put never reaches read-back and the row never fails closed.
+    """
     found: dict[int, tuple[StorageServer, bytes]] = {}
-    for num in range(total):
+    limit = max(int(total), 1)
+    num = 0
+    while num < limit:
         for server in servers:
             blob = _fetch_share(server, kind, si, num)
-            if blob:
-                found[num] = (server, blob)
-                break
+            if not blob:
+                continue
+            found[num] = (server, blob)
+            if kind == "mutable":
+                announced = _announced_total(blob)
+                if announced is not None:
+                    limit = announced
+            break
+        num += 1
     return found
 
 
@@ -777,7 +805,9 @@ def _rewrite_directory(
     readkey = _readkey(writekey)
     si = _tagged_hash(MUTABLE_STORAGEINDEX_TAG, readkey, 16)
     # Learn k/n from an existing share when the folder was created elsewhere.
-    located = _locate(servers, "mutable", si, max(total, 16))
+    # Do not scan past that n. Missing higher share numbers are not a
+    # reason to wait out another socket timeout before read-back.
+    located = _locate(servers, "mutable", si, max(int(total), 1))
     if not located:
         raise WriteFail(message, nxt)
     sample = next(iter(located.values()))[1]

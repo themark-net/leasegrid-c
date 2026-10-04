@@ -285,26 +285,36 @@ private fun FileRowCard(model: AppModel, folder: net.themark.leasegrid.sync.sess
             Text(row.name, fontWeight = FontWeight.Medium)
             if (row.chip == Chip.Pending) {
                 Text(label, style = MaterialTheme.typography.bodySmall)
-                LinearProgressIndicator(
-                    progress = row.progress.coerceIn(0f, 0.9f),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (showPendingProgress(row)) {
+                    LinearProgressIndicator(
+                        progress = { row.progress.coerceIn(0f, 0.9f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                val actions = rowActions(model.folderWritable(folder), row)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (row.failed) {
+                    if ("Retry" in actions) {
                         Button(onClick = { model.retryUpload(row.name) }) { Text("Retry") }
                     }
-                    OutlinedButton(onClick = { model.askDiscard(row.name) }) { Text("Cancel") }
+                    if ("Cancel" in actions) {
+                        OutlinedButton(onClick = { model.askDiscard(row.name) }) { Text("Cancel") }
+                    }
                 }
             } else {
                 Text(
                     "$label · ${formatByteSize(row.size)}",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                val actions = rowActions(model.folderWritable(folder), row)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = {
-                        model.openChild(ChildRow(row.name, "file", row.cap, row.size), folder)
-                    }) { Text("Open") }
-                    TextButton(onClick = { model.askRemove(row.name, row.cap) }) { Text("Remove") }
+                    if ("Open" in actions) {
+                        TextButton(onClick = {
+                            model.openChild(ChildRow(row.name, "file", row.cap, row.size), folder)
+                        }) { Text("Open") }
+                    }
+                    if ("Remove" in actions) {
+                        TextButton(onClick = { model.askRemove(row.name, row.cap) }) { Text("Remove") }
+                    }
                 }
             }
         }

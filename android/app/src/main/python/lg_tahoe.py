@@ -182,6 +182,9 @@ def _http_get(host: str, port: int, tubid: str, path: str, swiss: str, timeout: 
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             ssock = ctx.wrap_socket(raw, server_hostname=use_host)
+            # wrap_socket can drop the connect timeout. A stalled read
+            # must still raise, or a folder put never returns.
+            ssock.settimeout(timeout)
             der = ssock.getpeercert(binary_form=True)
             if der and _cert_tubid(der) != tubid.lower():
                 ssock.close()
@@ -260,6 +263,10 @@ def http_storage(
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             ssock = ctx.wrap_socket(raw, server_hostname=use_host)
+            # wrap_socket can drop the connect timeout. A stalled write
+            # must still raise, or read-back never runs and the row
+            # stays on a progress bar.
+            ssock.settimeout(timeout)
             der = ssock.getpeercert(binary_form=True)
             if der and _cert_tubid(der) != tubid.lower():
                 ssock.close()

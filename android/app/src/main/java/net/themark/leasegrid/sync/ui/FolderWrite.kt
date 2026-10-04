@@ -76,6 +76,29 @@ fun chipText(row: VisibleFile): String = when (row.chip) {
     Chip.Landed -> WriteCopy.LANDED
 }
 
+/**
+ * A put that has not returned by this deadline is silence, not success.
+ * The row stays [WriteCopy.PENDING] and the existing FAIL applies.
+ * One storage call may still be inside its socket timeout; a later
+ * read-back ok is still allowed to acknowledge.
+ */
+const val ADD_SILENCE_MS = 45_000L
+
+/** A failed pending row is not a moving progress bar. */
+fun showPendingProgress(row: VisibleFile): Boolean =
+    row.chip == Chip.Pending && !row.failed
+
+/**
+ * Remove is a friendnet delete. A read-only folder does not offer it.
+ * Download/Open stay. Pending rows use Cancel, not Remove.
+ */
+fun rowActions(writable: Boolean, row: VisibleFile): List<String> {
+    if (row.chip == Chip.Pending) {
+        return if (row.failed) listOf("Retry", "Cancel") else listOf("Cancel")
+    }
+    return if (writable) listOf("Open", "Remove") else listOf("Open")
+}
+
 sealed class WriteSheet {
     data class Clash(
         val folder: String,
@@ -184,8 +207,27 @@ class FolderWriteBoard {
 
     fun noteProgress(folderCap: String, name: String, progress: Float) {
         val item = pending[key(folderCap, name)] ?: return
+        if (item.failed) return
         val capped = progress.coerceIn(0f, 0.9f)
         pending[key(folderCap, name)] = item.copy(progress = capped)
+    }
+
+    /**
+     * No read-back yet. Marks the pending row failed once [elapsedMs]
+     * reaches [ADD_SILENCE_MS]. Does not change the chip to On friendnet.
+     * Returns false while the row is still inside the budget, or already gone.
+     */
+    fun noteSilence(folderCap: String, name: String, token: Long, elapsedMs: Long): Boolean {
+        if (elapsedMs < ADD_SILENCE_MS) return false
+        val item = pending[key(folderCap, name)] ?: return false
+        if (item.token != token) return false
+        if (!item.failed) {
+            pending[key(folderCap, name)] = item.copy(
+                failed = true,
+                progress = item.progress.coerceAtMost(0.9f),
+            )
+        }
+        return true
     }
 
     /** Drops a pending row that never landed. Not a friendnet remove. */

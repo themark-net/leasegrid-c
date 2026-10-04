@@ -229,6 +229,205 @@ def test_join_list_and_download_round_trip(
             )
             assert downloaded["ok"] is True, downloaded
             assert dest.read_bytes() == src.read_bytes()
+        # Slice B: the phone puts a file, a second client (tahoe get) reads it,
+        # a clash does not overwrite, and remove is acknowledged by a new listing.
+        added = tmp_path / "receipt.pdf"
+        added.write_bytes(b"receipt from the phone\n")
+        servers = learned["servers"]
+        shares = [needed, happy, total]
+        put = json.loads(
+            dispatch(
+                "put",
+                json.dumps(
+                    {
+                        "cap": dircap,
+                        "name": "receipt.pdf",
+                        "path": str(added),
+                        "servers": servers,
+                        "shares": shares,
+                        "replace": False,
+                    }
+                ),
+            )
+        )
+        assert put["ok"] is True, put
+        assert put["name"] == "receipt.pdf"
+        listed_after = json.loads(
+            dispatch("list", json.dumps({"cap": dircap, "servers": servers}))
+        )
+        assert listed_after["ok"] is True, listed_after
+        after = {row["name"]: row for row in listed_after["children"]}
+        assert "receipt.pdf" in after, listed_after
+        phone_out = tmp_path / "out-receipt.pdf"
+        got = json.loads(
+            dispatch(
+                "download",
+                json.dumps(
+                    {
+                        "cap": after["receipt.pdf"]["cap"],
+                        "servers": servers,
+                        "dest": str(phone_out),
+                    }
+                ),
+            )
+        )
+        assert got["ok"] is True, got
+        assert phone_out.read_bytes() == added.read_bytes()
+        desktop = tmp_path / "desktop-receipt.pdf"
+        listed_names = subprocess.check_output(
+            [TAHOE, "ls", "--node-url", url, dircap], text=True
+        )
+        assert "receipt.pdf" in listed_names, listed_names
+        subprocess.check_call(
+            [
+                TAHOE,
+                "get",
+                "--node-url",
+                url,
+                after["receipt.pdf"]["cap"],
+                str(desktop),
+            ]
+        )
+        assert desktop.read_bytes() == added.read_bytes()
+        clash = json.loads(
+            dispatch(
+                "put",
+                json.dumps(
+                    {
+                        "cap": dircap,
+                        "name": "receipt.pdf",
+                        "path": str(blob),
+                        "servers": servers,
+                        "shares": shares,
+                        "replace": False,
+                    }
+                ),
+            )
+        )
+        assert clash["ok"] is False, clash
+        assert "already" in clash["message"]
+        assert phone_out.read_bytes() == added.read_bytes()
+        replaced = json.loads(
+            dispatch(
+                "put",
+                json.dumps(
+                    {
+                        "cap": dircap,
+                        "name": "receipt.pdf",
+                        "path": str(blob),
+                        "servers": servers,
+                        "shares": shares,
+                        "replace": True,
+                    }
+                ),
+            )
+        )
+        assert replaced["ok"] is True, replaced
+        replaced_list = json.loads(
+            dispatch("list", json.dumps({"cap": dircap, "servers": servers}))
+        )
+        replaced_cap = {row["name"]: row for row in replaced_list["children"]}["receipt.pdf"]["cap"]
+        subprocess.check_call(
+            [TAHOE, "get", "--node-url", url, replaced_cap, str(desktop)]
+        )
+        assert desktop.read_bytes() == blob.read_bytes()
+        replaced_names = subprocess.check_output(
+            [TAHOE, "ls", "--node-url", url, dircap], text=True
+        )
+        assert "receipt.pdf" in replaced_names
+        removed = json.loads(
+            dispatch(
+                "remove",
+                json.dumps(
+                    {
+                        "cap": dircap,
+                        "name": "receipt.pdf",
+                        "servers": servers,
+                        "shares": shares,
+                    }
+                ),
+            )
+        )
+        assert removed["ok"] is True, removed
+        listed_gone = json.loads(
+            dispatch("list", json.dumps({"cap": dircap, "servers": servers}))
+        )
+        gone_names = {row["name"] for row in listed_gone["children"]}
+        assert "receipt.pdf" not in gone_names, listed_gone
+        assert "beach.txt" in gone_names
+        from lg_write import readonly_dir_cap
+
+        ro = json.loads(
+            dispatch(
+                "put",
+                json.dumps(
+                    {
+                        "cap": readonly_dir_cap(dircap),
+                        "name": "nope.txt",
+                        "path": str(added),
+                        "servers": servers,
+                        "shares": shares,
+                    }
+                ),
+            )
+        )
+        assert ro["ok"] is False, ro
+        # A directory of directories is a collective: the file must show up
+        # in the flattened listing, not as a raw child the phone cannot see.
+        collective = subprocess.check_output(
+            [TAHOE, "mkdir", "--node-url", url], text=True
+        ).strip()
+        laptop = subprocess.check_output(
+            [TAHOE, "mkdir", "--node-url", url], text=True
+        ).strip()
+        subprocess.check_call(
+            [TAHOE, "ln", "--node-url", url, laptop, "%s/laptop" % collective]
+        )
+        phone_src = tmp_path / "from-phone.txt"
+        phone_src.write_bytes(b"collective bytes from the phone\n")
+        collective_put = json.loads(
+            dispatch(
+                "put",
+                json.dumps(
+                    {
+                        "cap": collective,
+                        "name": "from-phone.txt",
+                        "path": str(phone_src),
+                        "servers": servers,
+                        "shares": shares,
+                        "replace": False,
+                    }
+                ),
+            )
+        )
+        assert collective_put["ok"] is True, collective_put
+        assert collective_put.get("phone_dmd", "").startswith("URI:DIR2:")
+        collective_list = json.loads(
+            dispatch("list", json.dumps({"cap": collective, "servers": servers}))
+        )
+        assert collective_list["ok"] is True, collective_list
+        collective_names = {row["name"]: row for row in collective_list["children"]}
+        assert "from-phone.txt" in collective_names, collective_list
+        collective_out = tmp_path / "out-from-phone.txt"
+        collective_got = json.loads(
+            dispatch(
+                "download",
+                json.dumps(
+                    {
+                        "cap": collective_names["from-phone.txt"]["cap"],
+                        "servers": servers,
+                        "dest": str(collective_out),
+                    }
+                ),
+            )
+        )
+        assert collective_got["ok"] is True, collective_got
+        assert collective_out.read_bytes() == phone_src.read_bytes()
+        listing = subprocess.check_output(
+            [TAHOE, "ls", "--node-url", url, collective], text=True
+        )
+        assert "phone" in listing
+        assert "laptop" in listing
     finally:
         for proc in procs:
             proc.terminate()

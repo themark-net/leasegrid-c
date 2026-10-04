@@ -27,8 +27,19 @@ class MainActivity : ComponentActivity() {
         readRecovery(uri, uri.lastPathSegment ?: "recovery.leasegrid-recovery")
     }
 
+    private val pickAdd = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val folder = model.addTarget() ?: return@registerForActivityResult
+        if (uri == null) return@registerForActivityResult
+        readAddedFile(folder, uri)
+    }
+
     private fun openRecoveryPicker() {
         pickRecovery.launch(arrayOf("*/*"))
+    }
+
+    private fun openAddPicker() {
+        if (model.addTarget() == null) return
+        pickAdd.launch(arrayOf("*/*"))
     }
 
     /** Fingerprint of the last applied dogfood payload. Not Intent identity. */
@@ -40,7 +51,7 @@ class MainActivity : ComponentActivity() {
         // Before setContent, so a cold-start EXTRA_RECOVERY_FILE composes Import first.
         noteIntent(intent)
         setContent {
-            SyncApp(model, ::openRecoveryPicker)
+            SyncApp(model, ::openRecoveryPicker, ::openAddPicker)
         }
     }
 
@@ -130,6 +141,33 @@ class MainActivity : ComponentActivity() {
     private fun inviteQuery(data: Uri?): String? {
         if (data == null || data.scheme != "leasegrid") return null
         return data.getQueryParameter(DogfoodIntents.QUERY_INVITE)
+    }
+
+    private fun readAddedFile(folder: net.themark.leasegrid.sync.session.FolderRef, uri: Uri) {
+        val name = queryDisplayName(uri) ?: uri.lastPathSegment ?: "file"
+        try {
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("empty stream")
+            model.onFilePicked(folder, name, bytes)
+        } catch (exc: Exception) {
+            model.reportFail(
+                "could not read this file.",
+                "pick it again. (${exc.javaClass.simpleName})",
+            )
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        val projection = arrayOf(android.provider.OpenableColumns.DISPLAY_NAME)
+        return try {
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index < 0) null else cursor.getString(index)
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun readRecovery(uri: Uri, name: String) {

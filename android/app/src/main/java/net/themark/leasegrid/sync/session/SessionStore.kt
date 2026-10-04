@@ -9,7 +9,12 @@ import java.io.File
 data class ServerRef(val furl: String, val nickname: String = "")
 
 @Serializable
-data class FolderRef(val name: String, val cap: String)
+data class FolderRef(
+    val name: String,
+    val cap: String,
+    val phoneDmd: String = "",
+    val authorSeedB64: String = "",
+)
 
 @Serializable
 data class Session(

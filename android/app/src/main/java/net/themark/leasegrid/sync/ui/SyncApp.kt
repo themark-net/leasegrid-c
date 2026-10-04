@@ -61,7 +61,7 @@ private val THREAT = listOf(
 )
 
 @Composable
-fun SyncApp(model: AppModel, onPickRecovery: () -> Unit) {
+fun SyncApp(model: AppModel, onPickRecovery: () -> Unit, onAddFile: () -> Unit) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -75,7 +75,7 @@ fun SyncApp(model: AppModel, onPickRecovery: () -> Unit) {
                     Place.Welcome -> Welcome(model, onPickRecovery)
                     Place.Import -> Import(model, onPickRecovery)
                     Place.Folders -> Folders(model)
-                    is Place.Folder -> FolderDetail(model, place)
+                    is Place.Folder -> FolderDetail(model, place, onAddFile)
                     is Place.Downloading -> Downloading(model, place)
                     is Place.Ready -> Ready(model, place)
                     Place.About -> About(model)
@@ -237,25 +237,138 @@ private fun Folders(model: AppModel) {
 }
 
 @Composable
-private fun FolderDetail(model: AppModel, place: Place.Folder) {
+private fun FolderDetail(model: AppModel, place: Place.Folder, onAddFile: () -> Unit) {
     TextButton(onClick = { model.goFolders() }) { Text("← ${place.folder.name}") }
+    val writable = model.folderWritable(place.folder)
+    if (!writable) {
+        Text(WriteCopy.READ_ONLY)
+    }
+    WriteSheetCard(model)
     FailCard(model)
-    if (place.children.isEmpty()) {
+    val rows = model.visibleFiles(place)
+    if (rows.isEmpty()) {
         Text("This folder has no files this phone can list.")
     }
-    place.children.forEach { row ->
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = { model.openChild(row, place.folder) },
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Text(row.name, fontWeight = FontWeight.Medium)
-                val kind = if (row.kind == "dir") "Folder" else "${row.size} bytes · Tap to download"
-                Text(kind, style = MaterialTheme.typography.bodySmall)
+    rows.forEach { row ->
+        if (row.kind == "dir") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    model.openChild(ChildRow(row.name, "dir", row.cap, row.size), place.folder)
+                },
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(row.name, fontWeight = FontWeight.Medium)
+                    Text("Folder", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        } else {
+            FileRowCard(model, place.folder, row)
+        }
+    }
+    if (writable) {
+        ProbeButton(
+            name = "add_file",
+            enabled = !model.busy,
+            onClick = onAddFile,
+            label = WriteCopy.ADD,
+        )
+    }
+    if (model.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun FileRowCard(model: AppModel, folder: net.themark.leasegrid.sync.session.FolderRef, row: VisibleFile) {
+    val label = chipText(row)
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(row.name, fontWeight = FontWeight.Medium)
+            if (row.chip == Chip.Pending) {
+                Text(label, style = MaterialTheme.typography.bodySmall)
+                if (showPendingProgress(row)) {
+                    LinearProgressIndicator(
+                        progress = { row.progress.coerceIn(0f, 0.9f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                val actions = rowActions(model.folderWritable(folder), row)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if ("Retry" in actions) {
+                        Button(onClick = { model.retryUpload(row.name) }) { Text("Retry") }
+                    }
+                    if ("Cancel" in actions) {
+                        OutlinedButton(onClick = { model.askDiscard(row.name) }) { Text("Cancel") }
+                    }
+                }
+            } else {
+                Text(
+                    "$label · ${formatByteSize(row.size)}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                val actions = rowActions(model.folderWritable(folder), row)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if ("Open" in actions) {
+                        TextButton(onClick = {
+                            model.openChild(ChildRow(row.name, "file", row.cap, row.size), folder)
+                        }) { Text("Open") }
+                    }
+                    if ("Remove" in actions) {
+                        TextButton(onClick = { model.askRemove(row.name, row.cap) }) { Text("Remove") }
+                    }
+                }
             }
         }
     }
-    if (model.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun WriteSheetCard(model: AppModel) {
+    when (val sheet = model.writeSheet()) {
+        null -> return
+        is WriteSheet.Clash -> {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${sheet.name} is already in ${sheet.folder}.", fontWeight = FontWeight.Medium)
+                    Button(onClick = { model.replaceClash() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Replace")
+                    }
+                    Button(onClick = { model.keepBothClash() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Keep both")
+                    }
+                    OutlinedButton(onClick = { model.cancelClash() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+        is WriteSheet.Remove -> {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Remove ${sheet.name} from ${sheet.folder} on the friendnet?",
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text("Other Sync computers will lose this copy.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { model.confirmRemove() }) { Text("Remove") }
+                        OutlinedButton(onClick = { model.cancelSheet() }) { Text("Cancel") }
+                    }
+                }
+            }
+        }
+        is WriteSheet.Discard -> {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Discard ${sheet.name}?", fontWeight = FontWeight.Medium)
+                    Text("It is not on the friendnet yet.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { model.confirmDiscard() }) { Text("Discard") }
+                        OutlinedButton(onClick = { model.cancelSheet() }) { Text("Cancel") }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -285,7 +398,8 @@ private fun About(model: AppModel) {
     Text("Recovery keys are exported from Leasegrid Sync on your computer (U4).")
     Text("This phone imports that same *.leasegrid-recovery file to restore folder access (read / download).")
     Text(SCARY_LOSS, fontWeight = FontWeight.Medium)
-    Text("To add folders or export a new key, use desktop Sync. This phone does not write or sync files back.")
+    Text(WriteCopy.DESKTOP_FOLDERS)
+    Text("This phone can add a file to a folder it already shows. It does not create folders or export a new key.")
     Button(onClick = { model.goImport() }, modifier = Modifier.fillMaxWidth()) { Text("Import recovery key…") }
     FailCard(model)
 }
@@ -294,7 +408,8 @@ private fun About(model: AppModel) {
 private fun Settings(model: AppModel) {
     TextButton(onClick = { model.goFolders() }) { Text("← Settings") }
     Text("Transport honesty: an invite may name I2P or Tor. File reads use the storage address the friendnet announced, which may be LAN or WAN. Loopback addresses are also tried via the emulator host alias.")
-    Text("Write, Magic Folder sync, Offer, and Credit stay on desktop Sync. They are not on this phone.")
+    Text(WriteCopy.DESKTOP_FOLDERS)
+    Text("This phone can add a file to a folder it already shows. There is no write-sync setting here. Offer and Credit are not on this screen.")
     OutlinedButton(onClick = { model.clearDownloads() }, modifier = Modifier.fillMaxWidth()) {
         Text("Clear downloads on this phone")
     }

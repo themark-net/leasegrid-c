@@ -95,11 +95,11 @@ Earlier sections stay. This section is only #44. It does not close #26, #30, or 
 | **Parent that must stay** | `46814dc09ee76600789ffc5de3f46957c2d0f011` |
 | **Product commit** | `993466a62f42c6760e155c1d46b13a1fc9750f63` |
 | **Fix SHA** | `2c31383108c5d1a31943d81165d0eb950bbedeb4` |
-| **Tip SHA** | `2c31383108c5d1a31943d81165d0eb950bbedeb4` |
-
-The behavior change is `2c31383108c5d1a31943d81165d0eb950bbedeb4`, whose parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. This docs commit sits directly on that fix and is the pull request head.
+| **Tip SHA** | `402493dac903418e6fb769a1f71eabbd08646a01` |
 | **Design** | `docs/design/55`–`59` and `docs/09-ui-track-P4-ANDROID-B-POINTER.md` |
 | **Base** | `1c327c9b1b5c5478e21bbfe3ec19fb1b9c8c9d43` (docs PR #45) |
+
+The behavior change is `2c31383108c5d1a31943d81165d0eb950bbedeb4`. Its parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. `402493dac903418e6fb769a1f71eabbd08646a01` records that fix. The pull request head is the commit that spells `402493dac903418e6fb769a1f71eabbd08646a01` in this table.
 
 ### What shipped
 

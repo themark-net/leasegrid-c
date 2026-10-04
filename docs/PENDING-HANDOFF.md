@@ -95,11 +95,29 @@ Earlier sections stay. This section is only #44. It does not close #26, #30, or 
 | **Parent that must stay** | `46814dc09ee76600789ffc5de3f46957c2d0f011` |
 | **Product commit** | `993466a62f42c6760e155c1d46b13a1fc9750f63` |
 | **Fix SHA** | `2c31383108c5d1a31943d81165d0eb950bbedeb4` |
-| **Tip SHA** | `98a9c906bb469f58f5395ffc91166d7ec1290421` |
+| **Tip SHA** | `single new commit; parent 0ba8dc42b2ea743a5548187b5b24fe2f38780400` |
 | **Design** | `docs/design/55`–`59` and `docs/09-ui-track-P4-ANDROID-B-POINTER.md` |
 | **Base** | `1c327c9b1b5c5478e21bbfe3ec19fb1b9c8c9d43` (docs PR #45) |
 
-The behavior change is `2c31383108c5d1a31943d81165d0eb950bbedeb4`. Its parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. The pull request head is the commit directly above `98a9c906bb469f58f5395ffc91166d7ec1290421`. That head only records this SHA. The debug APK is built from the head.
+The 45-second FAIL behavior is `2c31383108c5d1a31943d81165d0eb950bbedeb4`. Its parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. `46814dc09ee76600789ffc5de3f46957c2d0f011` stays in history. This commit's parent is `0ba8dc42b2ea743a5548187b5b24fe2f38780400`. PR #46 stays a draft. No merge. No push.
+
+Dogfood the debug APK from the **new** GitHub Actions run on this commit. Not Actions run `37228703131`. Not `98a9c906bb469f58f5395ffc91166d7ec1290421`. Not `0ba8dc42b2ea743a5548187b5b24fe2f38780400`. `android/pytests/test_live_grid.py` is not in CI and was not run. This is not a live dogfood pass.
+
+### What this commit changes
+
+A phone add into a Magic Folder collective was stored as a raw CHK filenode on the collective root. Photos is `@metadata` plus the read-only `mark` participant. `_is_collective` required every child to be a mutable directory, so `@metadata` made the folder look plain and `put_file` took the raw-CHK path. Magic Folder does not download a CHK on the collective root. It also skips `mark`: that directory is this desktop's upload DMD (`is_self`), and the collective link has no write cap, so the phone cannot rewrite it.
+
+The add is now a signed Magic Folder snapshot in a participant directory the downloader polls (its cap is not the desktop upload directory). The first add links that directory. Later adds reuse it. `@metadata` stays. `mark` is not rewritten. A raw CHK already sitting on the collective root is unlinked in that same rewrite, because the poll treats it as a participant and aborts. Those bytes are not copied into `~/Leasegrid/Photos`. **On friendnet** still requires a read-back of the same bytes.
+
+### What this commit does not change
+
+- Hide-Remove stays. A read-only folder hides Remove. Open stays. Add file stays hidden. Design pack `56`.
+- The 45-second FAIL stays. After 45s with no read-back, the chip stays **Not on friendnet yet** and the existing FAIL + Retry show. **On friendnet** only after a read-back of the same bytes, including when that read-back arrives after FAIL. A stalled add does not sit on a moving bar.
+- Directory rewrite stops at the share count in the first share header.
+- No new Magic Folder, no introducer change, no systemd unit, no VM onboot change, no folder control, no write settings, no new payment rail, no chrome rewrite.
+- Design packs `35`–`39` are not rewritten. Issues #26, #30, and #33 are not touched. Desktop Sync stays primary.
+- PR #46 stays a draft. No merge. No push. No Feature GO.
+- `android/pytests/test_live_grid.py` is not in CI and was not run. No live dogfood pass is claimed.
 
 ### What shipped
 
@@ -120,6 +138,7 @@ An already-joined phone can add one file to the folder that is already open.
 | Chip says done before the write lands | Operator trusts a lie | `put` returns ok only after a read-back of the same bytes. The UI chip stays **Not on friendnet yet** until that ok. Progress never reaches a success chip on its own. |
 | Put never returns | Row sits on a progress bar with no error, as in And's step 3 | After 45 seconds the bar stops, the chip stays **Not on friendnet yet**, and the existing FAIL plus Retry show. The put is not cancelled: a later read-back ok still becomes **On friendnet**. Retry sends the same local file. |
 | Rewrite probes shares past `n` | Each missing share can block on the socket timeout, so read-back never runs | Locate stops at the share count in the first share header. A miss is the existing FAIL, not **On friendnet**. |
+| Phone add is a raw CHK on the collective root | Photos Magic Folder's poll ignores it, or aborts, and `~/Leasegrid/Photos` stays empty | The add is a signed snapshot in a participant directory that is not the desktop's own. `@metadata` stays. The desktop participant is not rewritten. A raw CHK child is unlinked in that same rewrite. **On friendnet** still waits for a read-back of the same bytes. |
 | Network dies mid-write | Partial upload, row would look finished | Row stays **Not on friendnet yet**. FAIL — could not add this file. Next: check network; Retry. Retry sends the same local file. Cancel discards it. |
 | Same filename | Silent overwrite | Sheet: Replace / Keep both / Cancel. Cancel deletes the pending copy and leaves the list. |
 | Read-only cap | Add file fails every time, or Remove offers a friendnet delete the cap cannot do | Add file stays hidden. Remove is hidden. Download and Open still work. |
@@ -133,14 +152,14 @@ And's step 3 on the draft APK from GitHub Actions run `37169908352` (`versionNam
 
 This fix: a small add completes put, then a read-back of those same bytes, and only then the chip says **On friendnet**. If read-back does not succeed, the row stays **Not on friendnet yet** and shows the existing FAIL plus Retry. Not an endless progress bar.
 
-Debug APK: the GitHub Actions artifact `leasegrid-sync-android-slice-a-debug.apk` from the run on this tip. Install with `adb install -r`.
+Debug APK: `leasegrid-sync-android-slice-a-debug.apk` from the **new** GitHub Actions run on this commit. Not Actions run `37228703131`. Not `98a9c906bb469f58f5395ffc91166d7ec1290421`. Not `0ba8dc42b2ea743a5548187b5b24fe2f38780400`. Install with `adb install -r`.
 
 Prereqs: emulator API 34+; a phone already joined to a folder desktop Sync can also see; one small new file; one file already in that folder.
 
 1. Launch. Confirm Folders, not a join form, and no Tahoe WUI.
 2. Open the known writable folder. Confirm **Add file** is on that screen, not on Folders and not in Settings.
 3. Add the new file. Confirm the row reads **Not on friendnet yet** before it reads **On friendnet**. If the friendnet does not read the bytes back, confirm FAIL — could not add this file. / Next: check network; Retry. — and that the progress bar is not still moving. The chip must not say On friendnet in that case.
-4. From desktop Sync, or `tahoe get` of that file cap, read those bytes.
+4. From desktop Sync, confirm the bytes show up in `~/Leasegrid/Photos`. The file is a snapshot under the phone's participant, not a raw CHK on the collective root, and not a new child of `mark`. `tahoe get` of the content cap should match. The two earlier raw CHK names on the collective root are unlinked by a successful add and are not copied into Photos.
 5. Add a file with the same name. Confirm Replace / Keep both / Cancel. Cancel leaves the list unchanged. Keep both shows a distinct name.
 6. Airplane mode, add another file. Confirm FAIL + Retry, and the chip is not On friendnet.
 7. Download/open one file that was already in the folder.

@@ -2,9 +2,9 @@
 
 A writable folder is ``URI:DIR2:`` (not a read-only or immutable cap). The
 chip may say On friendnet only after a read-back of the same bytes. A
-Magic Folder collective (directory of directories) gets a signed snapshot
-in this phone's own participant directory, so desktop Sync can read it
-without a raw file landing in the collective.
+Magic Folder collective stores the bytes as a signed snapshot in a
+participant directory the desktop downloader polls. A raw CHK on the
+collective root is not downloaded.
 """
 
 from __future__ import annotations
@@ -845,11 +845,60 @@ def _is_mutable_dir(ro: str) -> bool:
     return ro.startswith("URI:DIR2") or ro.startswith("URI:SSK")
 
 
+def _participant_entries(entries: list[DirEntry]) -> list[DirEntry]:
+    """Mutable directories linked in a collective. ``@metadata`` is not one."""
+    return [
+        entry
+        for entry in entries
+        if entry.name != "@metadata" and _is_mutable_dir(entry.ro)
+    ]
+
+
 def _is_collective(entries: list[DirEntry]) -> bool:
-    """A Magic Folder collective is directories of mutable directories, not files."""
-    if not entries:
+    """A Magic Folder collective, including one that has ``@metadata``.
+
+    The desktop Photos collective is ``@metadata`` (an immutable file) plus
+    the read-only participant directories. Requiring every child to be a
+    mutable directory missed ``@metadata``, so the add stored a raw CHK on
+    the collective root. Magic Folder does not download that.
+    """
+    if not _participant_entries(entries):
         return False
+    if any(entry.name == "@metadata" for entry in entries):
+        return True
     return all(_is_mutable_dir(entry.ro) for entry in entries)
+
+
+def _without_root_files(entries: list[DirEntry]) -> list[DirEntry]:
+    """Drop children that are not ``@metadata`` and not a participant.
+
+    The downloader treats every other collective child as a participant.
+    Listing a raw CHK there raises, and the poll stops, so those children
+    also hide a snapshot that was linked correctly.
+    """
+    return [
+        entry
+        for entry in entries
+        if entry.name == "@metadata" or _is_mutable_dir(entry.ro)
+    ]
+
+
+def _writable_participant(entry: DirEntry, writekey: bytes) -> str:
+    """Write cap stored on a participant this phone linked. Empty if absent."""
+    if not entry.rw:
+        return ""
+    text = decrypt_rw_uri(writekey, entry.rw).decode("utf-8", "replace").strip()
+    if directory_writable(text):
+        return text
+    return ""
+
+
+def _participant_is_linked(entries: list[DirEntry], writekey: bytes, dmd: str) -> bool:
+    read_only = readonly_dir_cap(dmd)
+    for entry in entries:
+        if entry.ro == read_only or _writable_participant(entry, writekey) == dmd:
+            return True
+    return False
 
 
 def _file_entry(name: str, cap: str, size: int) -> DirEntry:
@@ -967,6 +1016,55 @@ def _put_in_container(
     _commit_entries(container, servers, needed, total, _upsert(entries, child))
 
 
+def _place_in_collective(
+    dir_cap: str,
+    name: str,
+    data: bytes,
+    content_cap: str,
+    servers: list[StorageServer],
+    needed: int,
+    total: int,
+    author_seed: bytes,
+    phone_dmd: str,
+    entries: list[DirEntry],
+) -> dict[str, Any]:
+    """Put a snapshot where Magic Folder's downloader will fetch it.
+
+    The desktop's own participant is linked read-only, and the downloader
+    skips that directory (it is "self"). This phone cannot write it. A
+    participant this phone can write is polled, because its cap is not the
+    desktop upload directory. Reuse that directory when it is already
+    linked. Raw CHK children are removed in the same rewrite: they are not
+    participants, and the poll aborts on them.
+    """
+    writekey, _fp = _parse_write_cap(dir_cap)
+    seed = author_seed if len(author_seed) == 32 else os.urandom(32)
+    snap = _snapshot_cap(name, content_cap, seed, needed, total, servers)
+    dmd = phone_dmd if directory_writable(phone_dmd) else ""
+    if not dmd:
+        for entry in _participant_entries(entries):
+            cap = _writable_participant(entry, writekey)
+            if cap:
+                dmd = cap
+                break
+    child = _file_entry(name, snap, len(data))
+    if dmd:
+        _put_in_container(dmd, name, child, servers, needed, total)
+    else:
+        dmd = _publish_new_directory(pack_entries([child]), needed, total, servers)
+    loaded = _load_entries(dir_cap, servers)
+    fresh = _without_root_files(loaded)
+    changed = len(fresh) != len(loaded)
+    if not _participant_is_linked(fresh, writekey, dmd):
+        fresh = _upsert(fresh, _dir_entry(_phone_dmd_name(fresh), dmd, writekey))
+        changed = True
+    if changed:
+        _commit_entries(dir_cap, servers, needed, total, fresh)
+    if not _read_back(dir_cap, name, data, content_cap, servers):
+        raise WriteFail(ADD_FAIL, ADD_NEXT)
+    return _landed(name, content_cap, len(data), seed, dmd)
+
+
 def put_file(
     dir_cap: str,
     name: str,
@@ -1007,51 +1105,29 @@ def put_file(
     except OSError as exc:
         raise WriteFail(SPACE_FAIL if exc.errno == 28 else ADD_FAIL, SPACE_NEXT if exc.errno == 28 else ADD_NEXT) from exc
     entries = _load_entries(dir_cap, servers)
-    seed = author_seed
-    dmd = phone_dmd
     if _is_collective(entries):
-        if len(seed) != 32:
-            seed = os.urandom(32)
-        snap = _snapshot_cap(name, content_cap, seed, needed, total, servers)
-        writekey, _fp = _parse_write_cap(dir_cap)
-        if dmd and directory_writable(dmd):
-            _put_in_container(dmd, name, _file_entry(name, snap, len(data)), servers, needed, total)
-        else:
-            dmd = _publish_new_directory(
-                pack_entries([_file_entry(name, snap, len(data))]),
-                needed,
-                total,
-                servers,
-            )
-        have = False
-        for entry in entries:
-            if not entry.rw:
-                continue
-            plain = decrypt_rw_uri(writekey, entry.rw)
-            if plain.decode("utf-8", "replace") == dmd:
-                have = True
-                break
-        if not have:
-            fresh = _load_entries(dir_cap, servers)
-            label = _phone_dmd_name(fresh)
-            _commit_entries(
-                dir_cap,
-                servers,
-                needed,
-                total,
-                _upsert(fresh, _dir_entry(label, dmd, writekey)),
-            )
-    else:
-        _commit_entries(
+        return _place_in_collective(
             dir_cap,
+            name,
+            data,
+            content_cap,
             servers,
             needed,
             total,
-            _upsert(entries, _file_entry(name, content_cap, len(data))),
+            author_seed,
+            phone_dmd,
+            entries,
         )
+    _commit_entries(
+        dir_cap,
+        servers,
+        needed,
+        total,
+        _upsert(entries, _file_entry(name, content_cap, len(data))),
+    )
     if not _read_back(dir_cap, name, data, content_cap, servers):
         raise WriteFail(ADD_FAIL, ADD_NEXT)
-    return _landed(name, content_cap, len(data), seed, dmd)
+    return _landed(name, content_cap, len(data), author_seed, phone_dmd)
 
 
 def _read_back(

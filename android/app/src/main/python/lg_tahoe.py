@@ -725,16 +725,48 @@ def list_directory(cap: str, servers: list[StorageServer]) -> list[Child]:
     )
 
 
+def _mutable_dir_cap(cap: str) -> bool:
+    if cap.startswith("URI:DIR2-CHK:") or cap.startswith("URI:DIR2-LIT:"):
+        return False
+    return cap.startswith("URI:DIR2") or cap.startswith("URI:SSK")
+
+
+def _participant_files(entry: Child, servers: list[StorageServer]) -> list[Child]:
+    """Files Magic Folder would see inside one participant directory."""
+    try:
+        inner = [child for child in list_directory(entry.cap, servers) if child.name != "@metadata"]
+    except ReadFail:
+        return []
+    if _looks_like_snapshot(inner):
+        content = _content_child(inner)
+        if content is not None:
+            return [Child(entry.name.rstrip("/"), "file", content.cap, content.size)]
+    snaps, others = _snapshot_files([child for child in inner if child.kind == "dir"], servers)
+    files = [child for child in inner if child.kind == "file"]
+    return files + snaps + others
+
+
 def list_folder_view(cap: str, servers: list[StorageServer]) -> list[Child]:
     """Buyer-facing listing.
 
     Magic Folder collectives are directories of participant directories, and a
     snapshot directory holds the bytes under a child named ``content``. Flatten
     one level of participant dirs, and present snapshot dirs as files.
+    ``@metadata`` is bookkeeping. On a collective it must not hide the
+    participants, and a raw file on the collective root is not a file the
+    downloader will fetch.
     """
-    children = list_directory(cap, servers)
+    raw = list_directory(cap, servers)
+    magic = any(child.name == "@metadata" for child in raw)
+    children = [child for child in raw if child.name != "@metadata"]
     files = [c for c in children if c.kind == "file"]
     dirs = [c for c in children if c.kind == "dir"]
+    mutable = [entry for entry in dirs if _mutable_dir_cap(entry.cap)]
+    if magic and mutable:
+        found: list[Child] = []
+        for entry in mutable:
+            found.extend(_participant_files(entry, servers))
+        return found
     if files:
         return _snapshots_as_files(files, dirs, servers)
     flattened: list[Child] = []

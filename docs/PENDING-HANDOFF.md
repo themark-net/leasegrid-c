@@ -94,7 +94,10 @@ Earlier sections stay. This section is only #44. It does not close #26, #30, or 
 | **Branch** | `cursor/android-p4b-write-sync-7258` |
 | **Parent that must stay** | `46814dc09ee76600789ffc5de3f46957c2d0f011` |
 | **Product commit** | `993466a62f42c6760e155c1d46b13a1fc9750f63` |
-| **Tip SHA** | recorded in the follow-up commit on this branch. Parent of the fix is `46814dc09ee76600789ffc5de3f46957c2d0f011`. |
+| **Fix SHA** | `2c31383108c5d1a31943d81165d0eb950bbedeb4` |
+| **Tip SHA** | `2c31383108c5d1a31943d81165d0eb950bbedeb4` |
+
+The behavior change is `2c31383108c5d1a31943d81165d0eb950bbedeb4`, whose parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. This docs commit sits directly on that fix and is the pull request head.
 | **Design** | `docs/design/55`–`59` and `docs/09-ui-track-P4-ANDROID-B-POINTER.md` |
 | **Base** | `1c327c9b1b5c5478e21bbfe3ec19fb1b9c8c9d43` (docs PR #45) |
 

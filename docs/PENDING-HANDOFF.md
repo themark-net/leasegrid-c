@@ -1,10 +1,12 @@
-# leasegrid-c — pending handoff (CEO pause 2026-09-24 ~11:20pm PT)
+# leasegrid-c — pending handoff (CEO pause dated 2026-09-24 ~11:20pm PT) — main @ `5ac69aa`
+
+**2026-10-09 handoff refresh:** Docs-only update of this file to `main` @ `5ac69aa`. Not Feature GO. Not a new RELEASE. #44 (P4-B Android write) shipped after the 2026-09-24 pause via PR #45 (design pack 55–59, `1c327c9`, merged 2026-10-04) and PR #46 (`cursor/android-p4b-write-sync-7258`, tip `6e7bf01`, merged 2026-10-04 as `5ac69aa`).
 
 **Purpose:** Freeze current queue + design map so another model/harness can take over without bot chat history.
 
-**Repo tip:** `main` @ `83b3e66` (Shell polish #38 / invite #32 shipped). Nimo checkout: `~/DEVELOP/leasegrid-c` (canonical; lab secrets under `lab-private/` if present).
+**Repo tip:** `main` @ `5ac69aa` (merge of PR #46, 2026-10-04; PR tip `6e7bf01`). P4-B Android write sync issue #44 is SHIPPED. Design pack 55–59 landed in PR #45 (`1c327c9`, merged 2026-10-04). Shell polish #38 / invite #32 remain shipped at `83b3e66` (ancestor). Nimo checkout: `~/DEVELOP/leasegrid-c` (canonical; lab secrets under `lab-private/` if present).
 
-**Org posture:** PAUSED. No auto RELEASE / Build / Cursor implement until founder says go. **Public marketing / loud v\* HOLD** (quiet F&F `v0.1.0` already cut). Marketing silent.
+**Org posture (dated 2026-09-24):** PAUSED. No auto RELEASE / Build / Cursor implement until founder says go. **Public marketing / loud v\* HOLD** (quiet F&F `v0.1.0` already cut). Marketing silent. This paragraph is the 2026-09-24 pause. It is not a new RELEASE. #44 shipped after that pause via PR #45 and PR #46. That ship does not lift the pause.
 
 ---
 
@@ -24,8 +26,8 @@
 
 | # | Title | Posture |
 |---|--------|---------|
-| [#26](https://github.com/themark-net/leasegrid-c/issues/26) | Android relative `EXTRA_RECOVERY_FILE` residual | Non-blocking residual (abs path PASS) |
-| [#30](https://github.com/themark-net/leasegrid-c/issues/30) | plant↔maximum Magic Folder HTTP 500 (glibc22) | Residual multi-host; does not block buyer UX |
+| [#26](https://github.com/themark-net/leasegrid-c/issues/26) | Android relative `EXTRA_RECOVERY_FILE` residual | Non-blocking residual (abs path PASS). Feature GO pending, untouched (2026-10-09) |
+| [#30](https://github.com/themark-net/leasegrid-c/issues/30) | plant↔maximum Magic Folder HTTP 500 (glibc22) | Residual multi-host; parked; does not block buyer UX |
 | [#33](https://github.com/themark-net/leasegrid-c/issues/33) | Vision: discoverable introducers / LeaseGrid as introducer | Exploratory only — **no build** |
 
 ## Recently closed (shipped / complete — keep designs)
@@ -37,8 +39,9 @@
 | [#32](https://github.com/themark-net/leasegrid-c/issues/32) | Invite short code + QR + Copy — SHIPPED inside #38; design pack `45`–`49` |
 | [#34](https://github.com/themark-net/leasegrid-c/issues/34) / [#35](https://github.com/themark-net/leasegrid-c/issues/35) | XMR Credit top-up / gate 0d — SHIPPED |
 | [#38](https://github.com/themark-net/leasegrid-c/issues/38) | Sync shell polish — SHIPPED @ `83b3e66` |
+| [#44](https://github.com/themark-net/leasegrid-c/issues/44) | P4-B Android write sync — SHIPPED on `main` @ `5ac69aa` (PR #46 tip `6e7bf01`, merged 2026-10-04). Design pack `55`–`59` via PR #45 (`1c327c9`) |
 
-Open PRs at pause: **none**.
+Open PRs (2026-10-09): **none**.
 
 ---
 
@@ -51,10 +54,11 @@ Full index is already in [`design/README.md`](design/README.md). Summary:
 | U0 buyer journey | `10`–`14` | Design DoD |
 | U2 Credit | `15`–`19` | Design / SHIP |
 | U4 Recovery | `30`–`34` | SHIP |
-| P4-A Android read | `35`–`39` | Design / Slice A; **P4-B write parked** |
+| P4-A Android read | `35`–`39` | Design / Slice A |
 | #27 Buyer storage | `40`–`44` | SHIP |
 | #38 Shell polish (+ #32) | `45`–`49` | SHIP @ `83b3e66` |
 | #28 Offer → settlement | `50`–`54` | Design DoD ready; implement lane was Build-first on nimo |
+| P4-B Android write (#44) | `55`–`59` | SHIPPED (#44, design 55–59, PR #46 @ `5ac69aa`, tip `6e7bf01`; design PR #45) |
 
 Pointers beside `docs/09-ui-track.md`: `09-ui-track-*-POINTER.md`.
 
@@ -64,7 +68,7 @@ Pointers beside `docs/09-ui-track.md`: `09-ui-track-*-POINTER.md`.
 
 1. Confirm #28 Hosted-for-others strip is on tip vs Design DoD `54`; if missing, implement from `54-OFFER-SETTLEMENT-DEVBOT-HANDOFF.md`.
 2. Optional residual #30 (plant↔maximum MF 500) if capacity.
-3. Android P4-B write — parked until Design RELEASE.
+3. Android P4-B write (#44, design 55–59) — shipped on `main` @ `5ac69aa` (PR #46). Not a next candidate.
 4. #33 vision — never auto-start.
 
 ---
@@ -95,11 +99,11 @@ Earlier sections stay. This section is only #44. It does not close #26, #30, or 
 | **Parent that must stay** | `46814dc09ee76600789ffc5de3f46957c2d0f011` |
 | **Product commit** | `993466a62f42c6760e155c1d46b13a1fc9750f63` |
 | **Fix SHA** | `2c31383108c5d1a31943d81165d0eb950bbedeb4` |
-| **Tip SHA** | `single new commit; parent 0ba8dc42b2ea743a5548187b5b24fe2f38780400` |
+| **Tip SHA** | PR #46 merged @ `5ac69aa`; tip `6e7bf01` |
 | **Design** | `docs/design/55`–`59` and `docs/09-ui-track-P4-ANDROID-B-POINTER.md` |
 | **Base** | `1c327c9b1b5c5478e21bbfe3ec19fb1b9c8c9d43` (docs PR #45) |
 
-The 45-second FAIL behavior is `2c31383108c5d1a31943d81165d0eb950bbedeb4`. Its parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. `46814dc09ee76600789ffc5de3f46957c2d0f011` stays in history. This commit's parent is `0ba8dc42b2ea743a5548187b5b24fe2f38780400`. PR #46 stays a draft. No merge. No push.
+The 45-second FAIL behavior is `2c31383108c5d1a31943d81165d0eb950bbedeb4`. Its parent is `46814dc09ee76600789ffc5de3f46957c2d0f011`. `46814dc09ee76600789ffc5de3f46957c2d0f011` stays in history. PR #46 merged to `main` as `5ac69aa` on 2026-10-04. PR tip is `6e7bf01`.
 
 Dogfood the debug APK from the **new** GitHub Actions run on this commit. Not Actions run `37228703131`. Not `98a9c906bb469f58f5395ffc91166d7ec1290421`. Not `0ba8dc42b2ea743a5548187b5b24fe2f38780400`. `android/pytests/test_live_grid.py` is not in CI and was not run. This is not a live dogfood pass.
 
@@ -116,7 +120,7 @@ The add is now a signed Magic Folder snapshot in a participant directory the dow
 - Directory rewrite stops at the share count in the first share header.
 - No new Magic Folder, no introducer change, no systemd unit, no VM onboot change, no folder control, no write settings, no new payment rail, no chrome rewrite.
 - Design packs `35`–`39` are not rewritten. Issues #26, #30, and #33 are not touched. Desktop Sync stays primary.
-- PR #46 stays a draft. No merge. No push. No Feature GO.
+- PR #46 merged to `main` @ `5ac69aa` (tip `6e7bf01`, 2026-10-04). This handoff refresh is docs-only. Not Feature GO. Not a new RELEASE.
 - `android/pytests/test_live_grid.py` is not in CI and was not run. No live dogfood pass is claimed.
 
 ### What shipped
@@ -175,3 +179,40 @@ Prereqs: emulator API 34+; a phone already joined to a folder desktop Sync can a
 - No new payment rail, Credit gate, or Offer step on the write path.
 - No rewrite of `docs/design/35`–`39`.
 - Desktop Sync stays primary. Issues #26, #30, and #33 are untouched.
+
+---
+
+## 2026-10-09 check — Settings deferred list / Credit (U2)
+
+Code read of `src/leasegrid_sync/app.py` on this worktree (`main` @ `5ac69aa`). No code change.
+
+The Settings note (`settingsNote`) builds “Coming later” at lines 1792–1793. The only deferred bullet is:
+
+`.deb package (AppImage / macOS / Windows installers ship now)`
+
+Credit is not in that list.
+
+Credit is a real place:
+
+- More → Credit: line 1156 `more.addAction("Credit")`, wired at line 1158 to `open_credit_place`.
+- Tray menu Credit: line 1910 `menu.addAction("Credit")`, wired at line 1911 to `open_credit_place`.
+- Panel title: line 1558 `QLabel("Credit")` inside `_build_credit_tab`.
+
+`_sync_gated_chrome` (lines 2078–2088) shows the More Credit action, the tray Credit action, and the separate `paymentLecture` label only when `credit_enforced()` is true. That gate is not a Settings deferred line. `paymentLecture` (lines 1805–1811) says “Credit → Top up quotes XMR. Open Credit from More to see the balance.” and starts hidden. It is not the Coming later list.
+
+Design 16 (strike “Credit panel (U2)” from any Settings deferred list), design 17 (strike any “Credit (U2)” deferred line; checklist “Credit not deferred”), and design 19 build-order item 6 (“strike Credit from Settings deferred list”) are DONE on this tip. No code change.
+
+---
+
+## Bot/Build caveat — ci-local venv
+
+`scripts/ci-local.sh` lines 7–19 leave `PYTHON` unset, then pick `/home/mark/tahoe-venv/bin/python` when that file is executable. The script runs `"$PYTHON" -m pip install -q -e ".[dev]"` (and the sync and tahoe extras). That install would repoint Mark’s `tahoe-venv` at whichever worktree is current.
+
+Bot or Build runs must set `PYTHON` to a worktree venv before calling the script:
+
+```bash
+python3 -m venv .venv && PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh
+```
+
+`.venv` lives under the worktree. `.gitignore` line 4 is `.venv/`, so that directory is ignored. Do not commit it. Never run `ci-local` against `tahoe-venv`. This refresh did not run `scripts/ci-local.sh`.
+

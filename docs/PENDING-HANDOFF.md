@@ -126,6 +126,21 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it
 | **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 319 passed, exit 0. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 
+## 2026-10-14 — PR #51 fix round 2 (Magic Folder log tail)
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it from here. Do not tag v0.1.1.
+
+| | |
+|--|--|
+| **Branch** | `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel` |
+| **Parent** | `e6312a4` |
+| **PR** | [#51](https://github.com/themark-net/leasegrid-c/pull/51) is open |
+| **Magic Folder** | A daemon exit no longer pastes `magic-folder.log`. The sentence names known issue #30 (Magic Folder HTTP 500) and points at Retry or a bug per `docs/TESTERS.md`. #30 stays open. |
+| **Mutation** | Re-adding the log text fails `tests/test_sync_backend.py::test_magic_folder_exit_log_tail_is_not_shown` at `assert "pb://" not in blob` (`tests/test_sync_backend.py:602`). |
+| **Left in place** | Other stderr, stdout, and `str(exc)` echoes are listed in the handoff. No other log tail. |
+| **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 320 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)
 
 Not Feature GO. Not a release. No v0.1.1 tag. This round landed in #49, merged to `main` as `9029086`. PR A (tester guide) is merged as #48 (`d326c5b`).

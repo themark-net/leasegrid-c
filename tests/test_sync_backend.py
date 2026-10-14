@@ -572,6 +572,41 @@ def test_start_log_tail_is_not_shown(tmp_path: Path):
     _assert_join_phrase_once(blob)
 
 
+def test_magic_folder_exit_log_tail_is_not_shown(tmp_path: Path, monkeypatch):
+    """A Magic Folder daemon that exits must not paste its log into the buyer text."""
+    monkeypatch.setattr(backend_mod, "_port_free", lambda _port, host="127.0.0.1": True)
+    home = tmp_path / "home"
+    config = home / "magic-folder"
+    config.mkdir(parents=True)
+    (config / "api_token").write_text("not-a-secret\n", encoding="utf-8")
+    log = home / "logs" / "magic-folder.log"
+    log.parent.mkdir(parents=True)
+    # Obviously fake. The window must not grow this line back.
+    seeded = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    log.write_text(
+        "Traceback (most recent call last):\n"
+        '  File "mf.py", line 1, in run\n'
+        "RuntimeError: daemon failed\n" + seeded + "\n",
+        encoding="utf-8",
+    )
+    ctl = MagicFolderCtl(
+        config_dir=config,
+        nodedir=home / "tahoe",
+        mf_bin=_exit_immediately_tahoe(tmp_path),
+    )
+    ctl.log_path = log
+    with pytest.raises(SyncError) as exc:
+        ctl.ensure_running()
+    blob = exc.value.banner()
+    assert "#30" in blob
+    assert "pb://" not in blob
+    assert _FURL_SHAPE.search(blob) is None
+    assert "Traceback" not in blob
+    assert _EXC_CLASS.search(blob) is None
+    assert seeded not in blob
+    assert "daemon failed" not in blob
+
+
 def test_join_permission_denied_is_friendly(tmp_path: Path, monkeypatch):
     """A read-only storage directory must not show Errno text or the path."""
     tahoe_bin = _fake_tahoe(tmp_path)

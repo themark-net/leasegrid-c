@@ -1385,10 +1385,11 @@ class MagicFolderCtl:
         deadline = time.time() + 20
         while time.time() < deadline:
             if self._proc.poll() is not None:
-                tail = _tail(self.log_path)
+                # magic-folder.log can hold a traceback and a furl. Known
+                # issue #30 is the buyer sentence. Do not paste the log tail.
                 raise SyncError(
-                    "folder not added. Magic Folder daemon exited.",
-                    "see %s (%s); Restart Sync." % (self.log_path, tail),
+                    "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
+                    "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
                 )
             if self.is_running():
                 return
@@ -1642,14 +1643,6 @@ def _port_free(port: int, host: str = "127.0.0.1") -> bool:
         return sock.connect_ex((host, port)) != 0
     finally:
         sock.close()
-
-
-def _tail(path: Path, n: int = 180) -> str:
-    try:
-        data = path.read_bytes()[-n:]
-        return data.decode("utf-8", "replace").replace("\n", " ").strip()
-    except OSError:
-        return ""
 
 
 def write_probe_file(folder: Path, name: str = "u1-hello.txt") -> Path:

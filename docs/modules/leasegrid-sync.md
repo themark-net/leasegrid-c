@@ -27,8 +27,8 @@ Headless: `leasegrid-sync --status` · `leasegrid-sync --credit-status`. CI: `QT
 
 | Symptom | Likely cause | Recovery |
 |---------|--------------|----------|
-| Join FAIL, empty/garbage invite | Not a `pb://` furl | Paste introducer furl or Use existing node |
-| Join FAIL, HTTP URL | Buyer pasted WUI | Rejected; use `pb://` or existing nodedir |
+| Join FAIL, empty/garbage invite | Not a short code or join link | Paste a fresh short code or join link; Retry. A raw introducer furl is not the normal path |
+| Join FAIL, HTTP URL | Buyer pasted WUI | Rejected; paste a short code or join link, or use an existing nodedir |
 | Join FAIL, Tahoe unreachable | Client not running | `tahoe run ~/.tahoe` |
 | Add folder FAIL, daemon missing | `magic-folder` not on PATH | Install `magic-folder` 24.3; see U1 dogfood |
 | Add folder FAIL, zero credit | No tokens in Sync wallet | Open Credit → Top up, then Add folder |

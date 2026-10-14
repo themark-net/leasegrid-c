@@ -125,10 +125,13 @@ def parse_invite(raw: str) -> ParsedInvite:
             )
         raise SyncError(
             "could not join this friendnet. That looks like a web URL.",
-            "Leasegrid Sync does not use the Tahoe web UI. Paste a join link, short code, or pb:// furl.",
+            "Leasegrid Sync does not use the Tahoe web UI. Paste a short code or a join link.",
         )
 
-    return ParsedInvite(kind="furl", token=validate_introducer_furl(text))
+    raise SyncError(
+        "could not join this friendnet. Invite code invalid.",
+        "ask your inviter for a fresh short code like 7-word-word, or a join link; Retry.",
+    )
 
 
 def _from_fragment(frag: str, origin: str = "") -> ParsedInvite:
@@ -156,7 +159,10 @@ def qr_svg(data: str) -> str:
     import segno
 
     buf = io.BytesIO()
-    segno.make(data, error="m").save(buf, kind="svg", xmldecl=False, svgns=True, scale=4, border=2)
+    # micro=False: a short code must still be a three-finder QR, not a Micro QR.
+    segno.make(data, error="m", micro=False).save(
+        buf, kind="svg", xmldecl=False, svgns=True, scale=4, border=2
+    )
     return buf.getvalue().decode("ascii")
 
 
@@ -164,7 +170,7 @@ def qr_png(data: str) -> bytes:
     import segno
 
     buf = io.BytesIO()
-    segno.make(data, error="m").save(buf, kind="png", scale=6, border=2)
+    segno.make(data, error="m", micro=False).save(buf, kind="png", scale=6, border=2)
     return buf.getvalue()
 
 

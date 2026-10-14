@@ -81,8 +81,10 @@ deterministic) when `magic-wormhole-mailbox-server` is installed (it is in the
 `export LEASEGRID_WORMHOLE_SERVER="ws://127.0.0.1:45040/v1"`. Without that env the
 client uses Tahoe's public relay, which is also what a real cross-machine invite
 uses (`LEASEGRID_DEVGRID_WORMHOLE=public` makes dev-grid do the same). Codes are
-single-use; a dead code fails in-window with "Invite code … was not accepted;
-ask your inviter for a fresh one".
+single-use; a dead code fails in-window with "Invite code … expired before anyone answered"
+and asks for a fresh one. A rejected code says it was not accepted. A mailbox
+failure says the invite could not be reached. The window does not print the
+raw Tahoe error.
 
 Headless equivalents (CI / no display):
 

@@ -33,7 +33,7 @@ The disk image is ad-hoc signed only. It is not notarized. Gatekeeper reports an
 
 1. Open `Leasegrid_Sync-0.1.0-macos-x86_64.dmg`.
 2. Drag **Leasegrid Sync** onto **Applications**.
-3. On macOS 15 and newer, open **System Settings → Privacy & Security** and click **Open Anyway** for Leasegrid Sync. Control-click → **Open** no longer bypasses Gatekeeper on macOS 15 or newer.
+3. On macOS 15 and newer, try to open **Leasegrid Sync** first (double-click it in Applications). Gatekeeper blocks that launch. **Open Anyway** appears only after the block, in **System Settings → Privacy & Security**. Click **Open Anyway**. Control-click → **Open** no longer bypasses Gatekeeper on macOS 15 or newer.
 4. On macOS 14 and earlier, Control-click **Leasegrid Sync** in Applications and choose **Open**, then **Open** again. If it is still blocked, use **System Settings → Privacy & Security → Open Anyway**.
 
 From the folder that contains the app, this removes the download quarantine flag:
@@ -46,13 +46,13 @@ On Apple Silicon, macOS asks to install Rosetta if this Intel app has not run th
 
 ## Windows (SmartScreen)
 
-The setup and the programs inside it are unsigned. SmartScreen warns that the publisher is unknown.
+The setup and the programs inside it are unsigned. SmartScreen warns that the publisher is unknown. The warning shows when you launch the file. **More info**, then **Run anyway**, is on that dialog. You do not turn SmartScreen off in Settings first.
 
 1. Start `Leasegrid_Sync-0.1.0-win64-setup.exe`.
 2. On **Windows protected your PC**, click **More info**, then **Run anyway**.
-3. Finish setup and start **Leasegrid Sync**.
+3. Finish setup and start **Leasegrid Sync**. Launching the app can show the same dialog.
 
-Zip instead of setup: unzip `Leasegrid_Sync-0.1.0-win64.zip` and start `leasegrid-sync.exe`. The same SmartScreen dialog can appear on that file. `leasegrid-sync-cli.exe` is the console program, not the window.
+Zip instead of setup: unzip `Leasegrid_Sync-0.1.0-win64.zip` and start `leasegrid-sync.exe`. The same SmartScreen dialog can appear on that launch. `leasegrid-sync-cli.exe` is the console program, not the window.
 
 ## Join with an invite
 

@@ -90,26 +90,28 @@ Next agent reads this file + `docs/design/README.md`, picks an **open** issue (#
 
 ---
 
-## 2026-10-14 — #32 invite polish re-check (PR #49)
+## 2026-10-14 — #48 and #49 merged; pre-release follow-up
 
-Not Feature GO. Not a release. No v0.1.1 tag. PR #49 open, not merged. PR A (tester guide) merged as #48.
+Not Feature GO. Not a release. No v0.1.1 tag. No pull request from this follow-up.
+
+#48 (`d326c5b`, tester guide) and #49 (`9029086`, invite polish) are merged. `main` is `9029086`. This follow-up is `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel`, based on that `main`.
 
 | | |
 |--|--|
-| **Issue** | [#32](https://github.com/themark-net/leasegrid-c/issues/32) re-check. The issue stays closed. |
-| **Branch** | `build/ff-0111-invite-polish` in worktree `tmp/ff-0111-invite` |
-| **Parent** | `main` @ `9393cc3` (this file’s earlier sections still describe `5ac69aa` / #44) |
-| **Already shipped** | `83b3e66` share card: short code, QR, Copy code, on Offer/share. Join already pasted a short code or join link. |
-| **Behavior** | `0815516` — join failure copy no longer says to paste a `pb://` furl. Share QR is a three-finder symbol at native size. Tests decode the QR, check the clipboard, and join after a bad, garbled, and expired code. |
-| **CI** | Local `scripts/ci-local.sh` with `/tmp/lg-ff-invite-venv`: 304 passed, exit 0. GitHub Actions runs on PR #49. |
+| **Issue** | [#32](https://github.com/themark-net/leasegrid-c/issues/32) stays closed. |
+| **main** | `9029086`. #48 is `d326c5b`. #49 is the merge of the invite-polish follow-up. |
+| **This branch** | `build/ff-0111-prerelease` |
+| **Already shipped** | `83b3e66` share card: short code, QR, Copy code. #49 kept raw introducer furls out of join failure copy, uses a standard QR, and round-trips the code. |
+| **This follow-up** | Missing `tahoe` and a join timeout use the same friendly sentences as expired, rejected, and network failures. Unrecognised stderr is not echoed. macOS 15: try to open the app, then **Open Anyway**. README glibc phrase has one balanced pair of parentheses. |
+| **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 311 passed, exit 0. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
-| **Not done** | Live two-machine wormhole. Phone camera. Android invite still refuses a short code and still names a `pb://` furl in that recovery line (left unchanged: asking for a short code would contradict the refusal). #30, #33, #26. |
+| **Not done** | Live two-machine wormhole. Phone camera. Android invite still refuses a short code and still names a `pb://` furl in that recovery line. #30, #33, #26. Feature GO. A v0.1.1 tag. |
 
 Earlier sections stay. This does not reopen #32 and does not lift the 2026-09-24 pause.
 
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)
 
-Not Feature GO. Not a release. No v0.1.1 tag. PR #49 stays open. PR A (tester guide) is merged as #48 (`d326c5b`), already in this branch as merge `5d501cf`. No rebase.
+Not Feature GO. Not a release. No v0.1.1 tag. This round landed in #49, merged to `main` as `9029086`. PR A (tester guide) is merged as #48 (`d326c5b`).
 
 | | |
 |--|--|

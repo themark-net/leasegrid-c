@@ -19,7 +19,7 @@ Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [
 **U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](docs/ops/u1-dogfood.md).  
 **P1:** CrashPlan shell — folders first, Offer disk pie. Dogfood: [`docs/ops/p1-dogfood.md`](docs/ops/p1-dogfood.md).  
 **U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](docs/ops/u2-dogfood.md).  
-**U3:** Installers for Linux (AppImage for glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+)), macOS (.dmg) and Windows (setup.exe / zip) bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](docs/ops/installers.md).  
+**U3:** Installers for Linux AppImage on glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+), macOS (.dmg), and Windows (setup.exe / zip), bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](docs/ops/installers.md).  
 **Friends and family:** install the unsigned builds, join, add a folder, and report a bug — [`docs/TESTERS.md`](docs/TESTERS.md).
 **U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](docs/ops/u4-recovery.md).  
 **Paid path:** with `LEASEGRID_GATED=1` storage refuses unpaid leases and the client spends Credit per upload: [`docs/ops/paid-path.md`](docs/ops/paid-path.md) (read the denomination finding). XMR quote → redeem runs against a FakeChain in CI ([`docs/07-payment.md`](docs/07-payment.md) S0–S2, S5); the U5 window and live stagenet (gate 0c) are still open.

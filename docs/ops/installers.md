@@ -107,11 +107,19 @@ msvcrt path and the `.bat`-wrapped fake `tahoe` are exercised on Windows there.
 ## Trust and signing (not done)
 
 - **Linux**: unsigned AppImage; verify the SHA-256 from the release page.
-- **macOS**: ad-hoc signed only (`codesign -s -`), not notarized. First launch:
-  right-click → Open, or `xattr -d com.apple.quarantine "Leasegrid Sync.app"`.
+- **macOS**: ad-hoc signed only (`codesign -s -`), not notarized. On macOS 15
+  and newer, Control-click → Open no longer bypasses Gatekeeper. The buyer
+  tries to open Leasegrid Sync first. That blocked launch is what makes
+  **Open Anyway** appear under **System Settings → Privacy & Security**.
+  On macOS 14 and earlier, Control-click → Open still works. An operator can
+  also clear quarantine:
+  `xattr -d com.apple.quarantine "Leasegrid Sync.app"`.
   A Developer ID certificate plus `notarytool` would remove that step.
-- **Windows**: unsigned; SmartScreen warns "unknown publisher" until an EV or
-  OV code-signing certificate signs `setup.exe` and the exes.
+- **Windows**: unsigned. SmartScreen shows **Windows protected your PC**
+  (unknown publisher) when `setup.exe` or an exe is launched. **More info**,
+  then **Run anyway**. That dialog is the launch prompt. It is not a switch
+  you set in Windows Security before the first start. An EV or OV
+  code-signing certificate on `setup.exe` and the exes would remove the warning.
 
 ## Known limits
 

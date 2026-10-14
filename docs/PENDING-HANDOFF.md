@@ -8,6 +8,8 @@
 
 **Org posture (dated 2026-09-24):** PAUSED. No auto RELEASE / Build / Cursor implement until founder says go. **Public marketing / loud v\* HOLD** (quiet F&F `v0.1.0` already cut). Marketing silent. This paragraph is the 2026-09-24 pause. It is not a new RELEASE. #44 shipped after that pause via PR #45 and PR #46. That ship does not lift the pause.
 
+**2026-10-14 docs slice (branch `build/ff-0111-testers-doc`, not merged):** Friends-and-family tester page [`TESTERS.md`](TESTERS.md), linked from the README. Draft notes [`release-notes/v0.1.1-DRAFT.md`](release-notes/v0.1.1-DRAFT.md) are marked DRAFT and are not a release. `v0.1.1` was not tagged or published. Write-up: [`ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md). #30 stays open. #32 stays shipped in source at `83b3e66` and is not in the published v0.1.0 installer files. Not Feature GO.
+
 ---
 
 ## Source of truth

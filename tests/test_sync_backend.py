@@ -599,7 +599,10 @@ def test_magic_folder_exit_log_tail_is_not_shown(tmp_path: Path, monkeypatch):
     with pytest.raises(SyncError) as exc:
         ctl.ensure_running()
     blob = exc.value.banner()
-    assert "#30" in blob
+    assert "Magic Folder stopped while starting" in blob
+    assert str(log) in blob
+    assert "#30" not in blob
+    assert "known issue" not in blob.lower()
     assert "pb://" not in blob
     assert _FURL_SHAPE.search(blob) is None
     assert "Traceback" not in blob

@@ -2093,13 +2093,18 @@ class MainWindow:
             return
         self._join_busy(True, "Connecting to the existing Tahoe node…")
         try:
-            status = self.tahoe.join_existing()
-        except SyncError as exc:
+            try:
+                status = self.tahoe.join_existing()
+            except SyncError as exc:
+                self.show_join_error(exc)
+                return
+            except (OSError, UnicodeDecodeError) as exc:
+                self.show_join_error(join_filesystem_failure(exc))
+                return
+            self._enter_main(status.state, status.detail)
+        finally:
+            # Join stays clickable even when join_existing raises outside SyncError.
             self._join_busy(False)
-            self.show_join_error(exc)
-            return
-        self._join_busy(False)
-        self._enter_main(status.state, status.detail)
 
     def _enter_main(self, state: str, detail: str) -> None:
         self._joined = True

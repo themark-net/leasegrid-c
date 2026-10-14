@@ -257,6 +257,7 @@ def test_scanner_flags_planted_exception_text():
         "def f(e):\n    raise SyncError(f'bad {e}', 'next')\n",
         "def f(err):\n    raise SyncError(f'bad {err}', 'next')\n",
         "def f(exc):\n    raise SyncError('bad %s' % str(exc), 'next')\n",
+        "def f(exc):\n    raise SyncError('Could not start Magic Folder: %s' % exc, 'next')\n",
         "def f(exc):\n    raise SyncError('bad %s' % repr(exc), 'next')\n",
         "def f(exc):\n    raise SyncError('bad %s' % type(exc).__name__, 'next')\n",
         "def f(exc):\n    raise SyncError('bad %s' % (exc.args,), 'next')\n",

@@ -732,17 +732,14 @@ def join_spawn_failure(
 def join_filesystem_failure(exc: BaseException) -> SyncError:
     """Buyer copy when join cannot create a directory or open a file.
 
-    ``str(exc)`` is an errno line plus a path. PermissionError and any other
-    OSError use the same sentence. Do not append ``str(exc)`` on either path.
+    ``str(exc)`` is an errno line plus a path, or a decode reason. Every
+    filesystem failure uses the same sentence. Do not append ``str(exc)``.
     """
-    message = (
+    return SyncError(
         "could not join this friendnet. This computer would not let "
-        "Leasegrid Sync save its files."
+        "Leasegrid Sync save its files.",
+        "check that the Sync folder is writable, then Retry.",
     )
-    hint = "check that the Sync folder is writable, then Retry."
-    if isinstance(exc, PermissionError):
-        return SyncError(message, hint)
-    return SyncError(message, hint)
 
 
 def _join_message(detail: str) -> str:
@@ -1386,11 +1383,12 @@ class MagicFolderCtl:
         deadline = time.time() + 20
         while time.time() < deadline:
             if self._proc.poll() is not None:
-                # magic-folder.log can hold a traceback and a furl. Known
-                # issue #30 is the buyer sentence. Do not paste the log tail.
+                # magic-folder.log can hold a traceback and a furl. A process
+                # exit is not an HTTP 500. Name the log. Do not paste it.
                 raise SyncError(
-                    "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
-                    "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+                    "folder not added. Magic Folder stopped while starting; see %s."
+                    % self.log_path,
+                    "Restart Sync.",
                 )
             if self.is_running():
                 return

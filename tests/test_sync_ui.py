@@ -252,6 +252,41 @@ def test_join_permission_denied_reenables_button(ui: MainWindow):
     assert ui.invite_edit.isEnabled()
 
 
+def test_join_existing_permission_denied_reenables_button(ui: MainWindow):
+    """Read-only tahoe.cfg on Use existing is friendly copy, and Join is clickable."""
+    _ack_join(ui)
+    err = PermissionError(13, "Permission denied", "/read-only/home/tahoe.cfg")
+    with patch.object(ui.tahoe, "join_existing", side_effect=err):
+        ui.on_join_existing()
+    text = ui.join_error.text()
+    assert "save its files" in text
+    assert "Permission denied" not in text
+    assert "Errno" not in text
+    assert "/read-only/home/tahoe.cfg" not in text
+    assert text.lower().count("could not join this friendnet.") <= 1
+    assert_no_raw_user_text(text)
+    assert ui.join_btn.isEnabled()
+    assert ui.existing_btn.isEnabled()
+    assert ui.invite_edit.isEnabled()
+
+
+def test_join_existing_unicode_decode_reenables_button(ui: MainWindow):
+    """An undecodable tahoe.cfg is friendly copy, and Join is clickable again."""
+    _ack_join(ui)
+    err = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "poison-decode-reason")
+    with patch.object(ui.tahoe, "join_existing", side_effect=err):
+        ui.on_join_existing()
+    text = ui.join_error.text()
+    assert "save its files" in text
+    assert "poison-decode-reason" not in text
+    assert "codec" not in text
+    assert "utf-8" not in text
+    assert_no_raw_user_text(text)
+    assert ui.join_btn.isEnabled()
+    assert ui.existing_btn.isEnabled()
+    assert ui.invite_edit.isEnabled()
+
+
 def test_join_other_oserror_text_is_not_shown(ui: MainWindow):
     """A non-permission OSError must not echo its strerror into the window."""
     _ack_join(ui)

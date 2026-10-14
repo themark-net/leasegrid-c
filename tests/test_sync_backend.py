@@ -1260,3 +1260,201 @@ def test_unexpected_error_hides_exception_text():
     blob = err.banner()
     assert "could not list folders. Unexpected error." in blob
     assert_no_raw_user_text(blob)
+
+
+# Obviously fake. Tests must not show any piece of it.
+_INVITE_FURL = "pb://FAKETUBID@127.0.0.1:1/FAKESWISSNUMSECRET"
+
+
+def _assert_no_invite_fragments(blob: str, furl: str = _INVITE_FURL) -> None:
+    rest = furl[len("pb://"):]
+    tub = rest.split("@", 1)[0]
+    swiss = rest.split("/", 1)[1]
+    assert "pb://" not in blob
+    assert tub not in blob
+    assert swiss not in blob
+    assert furl[:8] not in blob
+    assert furl[-6:] not in blob
+    assert (furl[:8] + "…" + furl[-6:]) not in blob
+    assert (furl[:8] + "..." + furl[-6:]) not in blob
+
+
+def _existing_node(tmp_path: Path) -> TahoeClient:
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    return TahoeClient(nodedir=nodedir, tahoe_bin="/bin/true", home=tmp_path / "home")
+
+
+def _offline_join(client: TahoeClient):
+    offline = ConnectionStatus(state="Offline", detail="introducer down")
+    return patch.object(client, "is_reachable", return_value=True), patch.object(
+        client, "wait_connected", return_value=offline
+    )
+
+
+def test_existing_node_furl_join_hides_invite(tmp_path: Path):
+    """A node that is already here must not repeat any of the pasted furl."""
+    client = _existing_node(tmp_path)
+    reachable, waiting = _offline_join(client)
+    with reachable, waiting:
+        with pytest.raises(SyncError) as exc:
+            client.join_invite(_INVITE_FURL)
+    blob = exc.value.banner()
+    assert "not connected to an introducer" in blob
+    assert "pb://" not in blob
+    _assert_no_invite_fragments(blob)
+
+
+def test_existing_node_link_join_hides_invite(tmp_path: Path):
+    """A join link takes the same path. The fragment must not reach the window."""
+    from leasegrid_sync.invite import format_join_url
+
+    client = _existing_node(tmp_path)
+    link = format_join_url(_INVITE_FURL)
+    reachable, waiting = _offline_join(client)
+    with reachable, waiting:
+        with pytest.raises(SyncError) as exc:
+            client.join_invite(link)
+    blob = exc.value.banner()
+    assert "not connected to an introducer" in blob
+    assert link not in blob
+    assert "pb://" not in blob
+    _assert_no_invite_fragments(blob)
+
+
+def test_recovery_import_existing_node_hides_invite(tmp_path: Path):
+    """Import of a recovery key joins with the stored invite and must not show it."""
+    from leasegrid_sync.credit import CreditCtl
+    from leasegrid_sync.recovery import RecoveryBundle, RecoveryCtl, encode_recovery_file
+
+    bundle = RecoveryBundle(introducer_furl=_INVITE_FURL, shares=(2, 3, 3))
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_bytes(encode_recovery_file(bundle, "pw"))
+    home = tmp_path / "home"
+    home.mkdir()
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    tahoe = TahoeClient(nodedir=nodedir, tahoe_bin="/bin/true", home=home)
+    mf = MagicFolderCtl(config_dir=home / "mf", nodedir=nodedir, mf_bin="/bin/true")
+    credit = CreditCtl(home=home)
+    ctl = RecoveryCtl(home, tahoe, mf, credit, folder_root=tmp_path / "LG")
+    reachable, waiting = _offline_join(tahoe)
+    with reachable, waiting:
+        with pytest.raises(SyncError) as exc:
+            ctl.restore(key, "pw")
+    blob = exc.value.banner()
+    assert "not connected to an introducer" in blob
+    assert "pb://" not in blob
+    _assert_no_invite_fragments(blob)
+
+
+def test_magic_folder_readonly_log_dir_is_friendly(tmp_path: Path, monkeypatch):
+    """mkdir and open of the Magic Folder log stay inside the friendly mapping."""
+    if os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("directory mode does not block this user")
+    monkeypatch.setattr(backend_mod, "_port_free", lambda _port, host="127.0.0.1": True)
+    ctl = _mf_api_ready(tmp_path)
+    monkeypatch.setattr(ctl, "is_running", lambda: False)
+
+    parent = tmp_path / "ro-parent"
+    parent.mkdir()
+    parent.chmod(0o555)
+    ctl.log_path = parent / "logs" / "magic-folder.log"
+    try:
+        with pytest.raises(SyncError) as exc:
+            ctl.ensure_running()
+        blob = exc.value.banner()
+        assert "save its files" in blob
+        assert str(ctl.log_path.parent) in blob
+        assert "Permission denied" not in blob
+        assert "Read-only" not in blob
+        assert_no_raw_user_text(blob)
+    finally:
+        parent.chmod(0o755)
+
+    log_dir = tmp_path / "ro-logs"
+    log_dir.mkdir()
+    log_dir.chmod(0o555)
+    ctl.log_path = log_dir / "magic-folder.log"
+    try:
+        with pytest.raises(SyncError) as exc:
+            ctl.ensure_running()
+        blob = exc.value.banner()
+        assert "save its files" in blob
+        assert str(log_dir) in blob
+        assert "Permission denied" not in blob
+        assert "Read-only" not in blob
+        assert_no_raw_user_text(blob)
+    finally:
+        log_dir.chmod(0o755)
+
+
+def test_parse_reserved_space_hides_raw_value():
+    from leasegrid_sync.backend import parse_reserved_space
+
+    raw = _INVITE_FURL
+    with pytest.raises(SyncError) as exc:
+        parse_reserved_space(raw, 1000)
+    blob = exc.value.banner()
+    assert "not a size" in blob
+    assert "reserved_space" in blob
+    assert raw not in blob
+    assert "pb://" not in blob
+    _assert_no_invite_fragments(blob)
+
+
+def test_refresh_http_500_does_not_say_folder_not_added(tmp_path: Path, monkeypatch):
+    """Refresh lists folders. That HTTP 500 is not an add."""
+    ctl = _mf_api_ready(tmp_path)
+
+    def boom(req, timeout=10):
+        raise _poison_http(500)
+
+    monkeypatch.setattr(backend_mod.urllib.request, "urlopen", boom)
+    with patch.object(ctl, "ensure_running", return_value=None):
+        with pytest.raises(SyncError) as exc:
+            ctl.list_folders()
+    blob = exc.value.banner()
+    assert "folder not added" not in blob.lower()
+    assert "could not refresh folders" in blob
+    assert "Magic Folder HTTP 500" in blob
+    assert "#30" in blob
+    assert_no_raw_user_text(blob)
+
+    with pytest.raises(SyncError) as exc:
+        ctl._http_get("/v1/magic-folder")
+    direct = exc.value.banner()
+    assert "folder not added" in direct
+    assert "could not refresh folders" not in direct
+
+
+def test_refresh_row_http_500_does_not_say_folder_not_added(tmp_path: Path, monkeypatch):
+    ctl = _mf_api_ready(tmp_path)
+    payload = b'{"Photos": {"magic_path": "/tmp/Photos", "poll_interval": 5}}'
+
+    class _Body:
+        def read(self):
+            return payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def boom(req, timeout=10):
+        if req.full_url.rstrip("/").endswith("/v1/magic-folder"):
+            return _Body()
+        raise _poison_http(500)
+
+    monkeypatch.setattr(backend_mod.urllib.request, "urlopen", boom)
+    with patch.object(ctl, "ensure_running", return_value=None):
+        rows = ctl.list_folders()
+    assert len(rows) == 1
+    assert rows[0].status == "FAIL"
+    assert "folder not added" not in rows[0].detail.lower()
+    assert "could not refresh folders" in rows[0].detail
+    assert "HTTP 500" in rows[0].detail
+    assert_no_raw_user_text(rows[0].detail)

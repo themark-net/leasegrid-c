@@ -295,7 +295,7 @@ def parse_reserved_space(raw: str, total: int) -> int:
         mult = 1
     if size is None or mult is None:
         raise SyncError(
-            "could not read this disk offer. reserved_space is not a size (%s)." % raw.strip(),
+            "could not read this disk offer. reserved_space is not a size.",
             "set reserved_space to bytes, a size like 1G, or a percent; Retry.",
         )
     return max(0, int(float(size.group(1)) * mult))
@@ -1237,8 +1237,8 @@ class TahoeClient:
                     raise
                 raise SyncError(
                     "could not join this friendnet. A Tahoe node already exists at %s "
-                    "but is not connected to an introducer (invite %s)."
-                    % (self.nodedir, redact_furl(furl)),
+                    "but is not connected to an introducer."
+                    % self.nodedir,
                     "if that node belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
                     "to a new path; otherwise check the introducer is up; Retry.",
                 ) from exc
@@ -1367,8 +1367,14 @@ class MagicFolderCtl:
                 % self.listen_port,
                 "stop the other process or set LEASEGRID_MF_PORT; Restart Sync.",
             )
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_f = open(self.log_path, "ab")
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_f = open(self.log_path, "ab")
+        except OSError as exc:
+            raise SyncError(
+                "folder not added. This computer would not let Leasegrid Sync save its files.",
+                "check that %s is writable, then Restart Sync." % self.log_path.parent,
+            ) from exc
         try:
             self._proc = popen_hidden(
                 [self.require_bin(), "--config", str(self.config_dir), "run"],
@@ -1504,9 +1510,25 @@ class MagicFolderCtl:
         except json.JSONDecodeError:
             return {"raw": body}
 
+    def _refresh_http_message(self, exc: SyncError) -> SyncError:
+        """Listing folders is a refresh. HTTP 500 there is not an add."""
+        prefix = "folder not added. "
+        if exc.message.startswith(prefix) and "HTTP 500" in exc.message:
+            return SyncError(
+                "could not refresh folders. " + exc.message[len(prefix):],
+                exc.next_hint,
+            )
+        return exc
+
     def list_folders(self) -> list[FolderRow]:
         self.ensure_running()
-        data = self._http_get("/v1/magic-folder")
+        try:
+            data = self._http_get("/v1/magic-folder")
+        except SyncError as exc:
+            mapped = self._refresh_http_message(exc)
+            if mapped is not exc:
+                raise mapped from exc
+            raise
         if not isinstance(data, dict):
             return []
         rows = []
@@ -1535,7 +1557,7 @@ class MagicFolderCtl:
                 "/v1/magic-folder/%s/recent-changes?number=5" % quote(name, safe="")
             )
         except SyncError as exc:
-            return "FAIL", exc.message
+            return "FAIL", self._refresh_http_message(exc).message
         nfiles = len(files) if isinstance(files, list) else 0
         last = ""
         if isinstance(recent, list) and recent:

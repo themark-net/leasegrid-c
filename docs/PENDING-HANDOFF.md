@@ -143,7 +143,7 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it
 
 ## 2026-10-14 — #52 raw error text (`build/ff-0111-rawtext`)
 
-Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open on `build/ff-0111-prerelease`. Do not merge it from here. Do not tag v0.1.1. This follow-up has no pull request yet.
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open on `build/ff-0111-prerelease`. PR #53 is open on `build/ff-0111-rawtext`. Do not merge from here. Do not tag v0.1.1.
 
 | | |
 |--|--|
@@ -173,6 +173,27 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays on `build/ff-0111-pre
 | **Mutation: plant** | Putting `'Could not start Magic Folder: %s' % exc` back fails `tests/test_no_raw_exception_text.py::test_sync_package_has_no_raw_exception_text` at `assert not hits` (`tests/test_no_raw_exception_text.py:251`). The hit was `src/leasegrid_sync/backend.py:1379`. The spawn test fails `assert "Could not start Magic Folder." in blob` (`tests/test_sync_backend.py:1218`). The plant was removed. |
 | **Decision** | Row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`: deferred from #51 to this PR. |
 | **CI** | `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → 338 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
+## 2026-10-14 — PR #53 fix round after tester FAIL at `27f9799`
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open on `build/ff-0111-prerelease`. PR #53 stays open on `build/ff-0111-rawtext`. Do not merge from here. Do not tag v0.1.1. Do not push `build/ff-0111-prerelease`.
+
+| | |
+|--|--|
+| **Tester FAIL** | `27f9799` on PR #53. Reviewer passed. |
+| **Invite** | The existing-node introducer failure no longer includes the invite, in any form. Join with a furl, join with a link, and recovery import share that sentence. The node path stays. |
+| **Mutation: invite** | Putting the full invite back fails `assert "pb://" not in blob` in `tests/test_sync_backend.py::test_existing_node_furl_join_hides_invite` (`tests/test_sync_backend.py:1305`), `test_existing_node_link_join_hides_invite` (`tests/test_sync_backend.py:1322`), and `test_recovery_import_existing_node_hides_invite` (`tests/test_sync_backend.py:1349`). Restored. All three passed. |
+| **Magic Folder log** | `ensure_running` creates the log directory and opens the log inside a `try`. A read-only directory is one friendly sentence. The path stays. The errno text does not. |
+| **Mutation: log** | Leaving `mkdir` and `open` outside the `try` raises `PermissionError` at `ctl.ensure_running()` (`tests/test_sync_backend.py:1367`). Echoing the exception fails `assert "Permission denied" not in blob` (`tests/test_sync_backend.py:1371`). Restored. The test passed. |
+| **Scanner** | Every `except ... as <name>` binding is exception text inside that handler, including `ex`. `redact_furl(...)` flowing into buyer text is a hit. `name.banner()` stays allowed. |
+| **Mutation: scanner** | Planted `except OSError as ex` and `redact_furl(...)` in `SyncError` failed `assert not hits` (`tests/test_no_raw_exception_text.py:291`). Hits were `src/leasegrid_sync/backend.py:1721` and `src/leasegrid_sync/backend.py:1725`. Plants removed. The test passed. |
+| **Disk offer** | A bad `reserved_space` value is not copied into the window. |
+| **Mutation: reserved_space** | Putting the raw value back fails `assert raw not in blob` (`tests/test_sync_backend.py:1403`). Restored. The test passed. |
+| **Refresh** | A Magic Folder HTTP 500 while listing folders says "could not refresh folders." It does not say "folder not added." An add still does. #30 stays open. |
+| **Mutation: refresh** | Leaving the add sentence in place fails `assert "folder not added" not in blob.lower()` (`tests/test_sync_backend.py:1420`) and `assert "folder not added" not in rows[0].detail.lower()` (`tests/test_sync_backend.py:1457`). Restored. Both tests passed. |
+| **Parked** | Import dialog truncates the Next line. Not fixed. Row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`. |
+| **CI** | `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → 345 passed, exit 0. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)

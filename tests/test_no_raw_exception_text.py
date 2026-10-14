@@ -8,6 +8,10 @@ Allowlisted log-only uses. These are not sinks, so the scanner ignores them:
   then ``show_unexpected``. The window text is ``unexpected_error``.
 
 A line comment ``# raw-ok:`` skips that line. Use it only for a log write.
+
+Every ``except ... as <name>`` binding is tainted inside that handler, whatever
+the name is. ``redact_furl(...)`` is tainted too: its return value still carries
+part of an invite, so it must not flow into buyer text.
 """
 
 from __future__ import annotations
@@ -31,18 +35,25 @@ class Hit:
     text: str
 
 
-def _is_exc_name(node: ast.AST) -> bool:
-    return isinstance(node, ast.Name) and node.id in EXC_NAMES
+def _is_redact_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id == "redact_furl"
+    if isinstance(func, ast.Attribute):
+        return func.attr == "redact_furl"
+    return False
 
 
-def _is_type_of_exc(node: ast.AST, tainted: set[str], is_text) -> bool:
+def _is_type_of_exc(node: ast.AST, tainted: set[str], is_exc, is_text) -> bool:
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "type"
         and bool(node.args)
         and (
-            _is_exc_name(node.args[0])
+            is_exc(node.args[0])
             or (isinstance(node.args[0], ast.Name) and node.args[0].id in tainted)
             or is_text(node.args[0])
         )
@@ -54,6 +65,12 @@ class _Scanner:
         self.lines = lines
         self.filename = filename
         self.hits: list[Hit] = []
+        # Direct uses of these names are exception text. Attribute access such
+        # as ``exc.banner()`` stays allowed: that string is already buyer copy.
+        self.exc_names = set(EXC_NAMES)
+
+    def _is_exc_name(self, node: ast.AST) -> bool:
+        return isinstance(node, ast.Name) and node.id in self.exc_names
 
     def scan(self, tree: ast.AST) -> list[Hit]:
         self._block(getattr(tree, "body", []), set())
@@ -78,20 +95,22 @@ class _Scanner:
         if isinstance(node, ast.Name):
             return node.id in tainted
         if isinstance(node, ast.Call):
+            if _is_redact_call(node):
+                return True
             func = node.func
             if isinstance(func, ast.Name) and func.id in {"str", "repr"} and node.args:
                 arg = node.args[0]
-                if _is_exc_name(arg) or self._is_text(arg, tainted):
+                if self._is_exc_name(arg) or self._is_text(arg, tainted):
                     return True
                 if (
                     isinstance(arg, ast.Attribute)
                     and arg.attr in {"reason", "args"}
-                    and (_is_exc_name(arg.value) or self._is_text(arg.value, tainted))
+                    and (self._is_exc_name(arg.value) or self._is_text(arg.value, tainted))
                 ):
                     return True
             if isinstance(func, ast.Attribute):
                 if func.attr == "read" and (
-                    _is_exc_name(func.value) or self._is_text(func.value, tainted)
+                    self._is_exc_name(func.value) or self._is_text(func.value, tainted)
                 ):
                     return True
                 if func.attr == "format" and any(
@@ -108,11 +127,11 @@ class _Scanner:
             ):
                 return True
             if node.attr in {"args", "reason"} and (
-                _is_exc_name(node.value) or self._is_text(node.value, tainted)
+                self._is_exc_name(node.value) or self._is_text(node.value, tainted)
             ):
                 return True
             if node.attr == "__name__" and _is_type_of_exc(
-                node.value, tainted, lambda n: self._is_text(n, tainted)
+                node.value, tainted, self._is_exc_name, lambda n: self._is_text(n, tainted)
             ):
                 return True
             return self._is_text(node.value, tainted)
@@ -124,7 +143,7 @@ class _Scanner:
                     continue
                 value = part.value
                 if isinstance(value, ast.Name) and (
-                    value.id in EXC_NAMES or value.id in tainted
+                    value.id in self.exc_names or value.id in tainted
                 ):
                     return True
                 if self._is_text(value, tainted):
@@ -141,14 +160,14 @@ class _Scanner:
         return False
 
     def _value_is_raw(self, node: ast.AST, tainted: set[str]) -> bool:
-        if isinstance(node, ast.Name) and (node.id in EXC_NAMES or node.id in tainted):
+        if isinstance(node, ast.Name) and (node.id in self.exc_names or node.id in tainted):
             return True
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             return any(self._value_is_raw(elt, tainted) for elt in node.elts)
         return self._is_text(node, tainted)
 
     def _arg_is_raw(self, node: ast.AST, tainted: set[str]) -> bool:
-        if isinstance(node, ast.Name) and node.id in EXC_NAMES:
+        if isinstance(node, ast.Name) and node.id in self.exc_names:
             return True
         return self._is_text(node, tainted)
 
@@ -216,12 +235,28 @@ class _Scanner:
             block = getattr(stmt, name, None)
             if isinstance(block, list) and block and isinstance(block[0], ast.stmt):
                 blocks.append(block)
-        if isinstance(stmt, ast.Try):
-            for handler in stmt.handlers:
-                blocks.append(handler.body)
         return blocks
 
+    def _scan_handlers(self, stmt: ast.AST, tainted: set[str]) -> None:
+        """Treat each ``except ... as <name>`` like ``exc`` inside that handler.
+
+        The binding is exception text when it is interpolated. ``name.banner()``
+        stays allowed. Python deletes the binding when the handler ends, so the
+        name does not stay tainted. An assignment of that text still flows out.
+        """
+        for handler in getattr(stmt, "handlers", []) or []:
+            added = None
+            if handler.name and handler.name not in self.exc_names:
+                self.exc_names.add(handler.name)
+                added = handler.name
+            self._block(handler.body, tainted)
+            if added is not None:
+                self.exc_names.discard(added)
+
     def _block(self, stmts: list[ast.stmt], tainted: set[str]) -> None:
+        try_types = (ast.Try,)
+        if hasattr(ast, "TryStar"):
+            try_types = (ast.Try, ast.TryStar)
         for stmt in stmts:
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 self._block(stmt.body, set())
@@ -229,6 +264,11 @@ class _Scanner:
             for expr in self._owned_exprs(stmt):
                 self._flag_calls(expr, tainted)
             self._note_assign(stmt, tainted)
+            if isinstance(stmt, try_types):
+                for block in self._inner_blocks(stmt):
+                    self._block(block, tainted)
+                self._scan_handlers(stmt, tainted)
+                continue
             for block in self._inner_blocks(stmt):
                 self._block(block, tainted)
 
@@ -267,6 +307,10 @@ def test_scanner_flags_planted_exception_text():
         "    raise SyncError('bad %s' % err.split('\\n')[0], 'next')\n",
         "def f(exc):\n    credit_error = '%s' % str(exc)\n",
         "def f(exc):\n    self.status.setText(str(exc))\n",
+        "def f():\n    try:\n        pass\n    except OSError as ex:\n"
+        "        raise SyncError('bad %s' % ex, 'next')\n",
+        "def f(furl):\n    raise SyncError('bad %s' % redact_furl(furl), 'next')\n",
+        "def f(furl):\n    self.status.setText(redact_furl(furl))\n",
     ]
     for src in samples:
         hits = scan_source(src, "plant.py")
@@ -284,5 +328,13 @@ def test_scanner_allows_log_and_safe_banner():
         "def classify(proc):\n"
         "    raw = (proc.stderr or proc.stdout or '').strip()\n"
         "    raise join_process_failure(raw)\n"
+        "def fixed():\n"
+        "    try:\n"
+        "        pass\n"
+        "    except OSError as ex:\n"
+        "        raise SyncError('fixed text', 'next')\n"
+        "def logged(furl):\n"
+        "    redacted = redact_furl(furl)\n"
+        "    f.write(redacted)\n"
     )
     assert scan_source(src, "safe.py") == []

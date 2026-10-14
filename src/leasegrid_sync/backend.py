@@ -476,9 +476,10 @@ def read_disk_offer(nodedir: Path, home: Path) -> DiskSlices:
     try:
         usage = shutil.disk_usage(path)
     except OSError as exc:
+        # ``str(exc)`` is an errno line. The path stays; the errno text does not.
         raise SyncError(
-            "could not read this disk. %s" % exc,
-            "check that the disk is mounted; Retry.",
+            "could not read this disk.",
+            "check that %s is mounted; Retry." % path,
         ) from exc
     if usage.total <= 0:
         raise SyncError(
@@ -564,8 +565,8 @@ def apply_offer_percent(nodedir: Path, home: Path, percent: int) -> DiskSlices:
         usage = shutil.disk_usage(path)
     except OSError as exc:
         raise SyncError(
-            "could not offer disk. %s" % exc,
-            "check that the disk is mounted; Retry.",
+            "could not offer disk.",
+            "check that %s is mounted; Retry." % path,
         ) from exc
     if usage.total <= 0:
         raise SyncError(
@@ -1339,9 +1340,9 @@ class MagicFolderCtl:
             check=False,
         )
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "init failed").strip()
+            # stderr can be a traceback or a furl. Do not paste the first line.
             raise SyncError(
-                "folder not added. Could not initialize Magic Folder: %s" % err.split("\n")[0],
+                "folder not added. Could not initialize Magic Folder.",
                 "fix the Magic Folder config path; Restart Sync.",
             )
 
@@ -1379,7 +1380,7 @@ class MagicFolderCtl:
         except OSError as exc:
             log_f.close()
             raise SyncError(
-                "folder not added. Could not start Magic Folder: %s" % exc,
+                "folder not added. Could not start Magic Folder.",
                 "install magic-folder; Restart Sync.",
             ) from exc
         deadline = time.time() + 20
@@ -1444,14 +1445,7 @@ class MagicFolderCtl:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            try:
-                detail = exc.read().decode("utf-8", "replace")[:300]
-            except Exception:
-                detail = str(exc.reason)
-            raise SyncError(
-                "Magic Folder API error (%s)." % exc.code,
-                detail or "Retry.",
-            ) from exc
+            raise self._http_failure(exc) from exc
         except urllib.error.URLError as exc:
             raise SyncError(
                 "Magic Folder daemon is not reachable.",
@@ -1467,6 +1461,26 @@ class MagicFolderCtl:
                 "see %s; Restart Sync." % self.log_path,
             ) from exc
 
+    def _http_failure(self, exc: urllib.error.HTTPError) -> SyncError:
+        """Buyer copy for a Magic Folder HTTP error.
+
+        The body and ``exc.reason`` can hold a traceback or a furl. Drain the
+        body and do not copy it. Status 500 is known issue #30.
+        """
+        try:
+            exc.read()
+        except Exception:
+            pass
+        if exc.code == 500:
+            return SyncError(
+                "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
+                "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+            )
+        return SyncError(
+            "Magic Folder API error (%s)." % exc.code,
+            "Restart Sync. If it keeps failing, file a bug per docs/TESTERS.md.",
+        )
+
     def _http_post(self, path: str, timeout: float = 30.0, body: Optional[dict] = None) -> Any:
         url = self._base_url() + path
         headers = self._auth_headers()
@@ -1479,14 +1493,7 @@ class MagicFolderCtl:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            try:
-                detail = exc.read().decode("utf-8", "replace")[:300]
-            except Exception:
-                detail = str(exc.reason)
-            raise SyncError(
-                "Magic Folder API error (%s)." % exc.code,
-                detail or "Retry.",
-            ) from exc
+            raise self._http_failure(exc) from exc
         except urllib.error.URLError as exc:
             raise SyncError(
                 "Magic Folder daemon is not reachable.",
@@ -1585,9 +1592,9 @@ class MagicFolderCtl:
             timeout=120,
         )
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "add failed").strip().split("\n")[0]
+            # The first stderr line can be a traceback or a furl. Do not paste it.
             raise SyncError(
-                "folder not added. %s" % err,
+                "folder not added. Magic Folder could not add this folder.",
                 "fix the path; Restart Sync; Retry Add folder.",
             )
         return folder_name

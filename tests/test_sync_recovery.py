@@ -11,15 +11,18 @@ import pytest
 from leasegrid_sync.backend import ConnectionStatus, MagicFolderCtl, SyncError, TahoeClient
 from leasegrid_sync.credit import CreditCtl
 from leasegrid_sync.recovery import (
+    CREDIT_RECOVER_FAIL,
     IMPORT_FAIL_MSG,
     FolderRecord,
     RecoveryBundle,
     RecoveryCtl,
+    create_folder_from_caps,
     decode_recovery_file,
     encode_recovery_file,
     read_introducer_furl,
     read_shares,
 )
+from tests.buyer_text import POISON, assert_no_raw_user_text
 
 FURL = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
 COLLECTIVE = "URI:DIR2:zeymwpndqvrsklpcvovfywvoie:bi6j4lmtwnteznypa3ihn4m7nxm3uavbvdzjl544srrhzhyvj3uq"
@@ -36,6 +39,78 @@ def _bundle() -> RecoveryBundle:
         folders=[FolderRecord("Photos", COLLECTIVE, UPLOAD, "/home/x/Photos", 5, 5, "x")],
         wallet={"issuer-pubkey-id": "ab", "tokens": [{"t": "1", "W": "2"}]},
     )
+
+
+def poisoned_credit_restore(tmp_path: Path):
+    """Restore whose issuer re-collect raises poison. Buyer text stays fixed."""
+    bundle = _bundle()
+    bundle.introducer_furl = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    bundle.wallet = None
+    bundle.folders = []
+    bundle.credit_seed = "ab" * 32
+    key = tmp_path / "poison.leasegrid-recovery"
+    key.write_bytes(encode_recovery_file(bundle, "pw"))
+    home = tmp_path / "poison-home"
+    home.mkdir()
+    nodedir = tmp_path / "poison-tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    tahoe = TahoeClient(nodedir=nodedir, tahoe_bin="/bin/true", home=home)
+    mf = MagicFolderCtl(config_dir=home / "mf", nodedir=nodedir, mf_bin="/bin/true")
+    credit = CreditCtl(home=home, issuer_url="http://127.0.0.1:9")
+    ctl = RecoveryCtl(home, tahoe, mf, credit, folder_root=tmp_path / "LG")
+    status = ConnectionStatus(state="Connected", detail="grid-ok", introducer_ok=True)
+
+    def boom(_bundle):
+        raise RuntimeError(POISON)
+
+    with patch.object(tahoe, "join_invite", return_value=status), patch.object(
+        mf, "ensure_init", return_value=None
+    ), patch.object(ctl, "_recover_credit", boom):
+        return ctl.restore(key, "pw", progress=lambda _text: None)
+
+
+def test_restore_credit_error_hides_exception_text(tmp_path: Path):
+    result = poisoned_credit_restore(tmp_path)
+    assert result.credit_recover_error == CREDIT_RECOVER_FAIL
+    note = (
+        "Credit could not be re-collected yet (%s); Credit → Retry later."
+        % result.credit_recover_error
+    )
+    cli = "error=%s" % result.credit_recover_error
+    assert_no_raw_user_text(note)
+    assert_no_raw_user_text(cli)
+    assert_no_raw_user_text(result.credit_recover_error)
+
+
+def test_restore_folder_failure_hides_exception_text(tmp_path: Path, monkeypatch):
+    class _Cap:
+        @staticmethod
+        def from_string(_text):
+            return _text
+
+    class _Config:
+        def create_magic_folder(self, *_args, **_kwargs):
+            raise RuntimeError(POISON)
+
+    monkeypatch.setattr(
+        "leasegrid_sync.recovery._mf_api",
+        lambda: (lambda path: path, lambda _path: _Config(), lambda name: name, _Cap),
+    )
+    with pytest.raises(SyncError) as exc:
+        create_folder_from_caps(
+            tmp_path / "mf",
+            "Photos",
+            tmp_path / "Photos",
+            "author",
+            COLLECTIVE,
+            UPLOAD,
+            5,
+            5,
+        )
+    blob = exc.value.banner()
+    assert "could not restore folder Photos." in blob
+    assert_no_raw_user_text(blob)
 
 
 def test_threat_ack_persists_beside_last_export(tmp_path: Path):
@@ -368,7 +443,10 @@ def test_export_includes_seed_and_restore_recollects_credit(mf_config: Path, tmp
              patch.object(tahoe_c, "join_invite", return_value=st), \
              patch.object(mf_c, "ensure_init", return_value=None):
             result = ctl_c.restore(key, "pw", progress=lambda t: None)
-        assert result.credit_recovered == 0 and "ClientError" in result.credit_recover_error
+        assert result.credit_recovered == 0
+        assert result.credit_recover_error == CREDIT_RECOVER_FAIL
+        assert "ClientError" not in result.credit_recover_error
+        assert "127.0.0.1" not in result.credit_recover_error
         assert credit_c.topup_state_path.is_file()  # seed is on disk; Credit → Retry can finish later
     finally:
         ihttpd.shutdown()

@@ -204,10 +204,15 @@ def _make_disk_pie(parent):
 
 
 def unexpected_error(exc: BaseException, what: str) -> SyncError:
-    """Wrap a non-SyncError so it can be shown as a FAIL banner instead of aborting."""
-    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
-    msg = "%s Unexpected error: %s%s" % (what, type(exc).__name__, (" — " + detail) if detail else "")
-    return SyncError(msg, UNEXPECTED_NEXT)
+    """Wrap a non-SyncError so it can be shown as a FAIL banner instead of aborting.
+
+    The class name and ``str(exc)`` stay in ``logs/sync-ui.log`` via
+    ``log_exception``. The banner and the REVIEW chip get ``what`` only.
+    """
+    lead = what.strip()
+    if lead.endswith("."):
+        lead = lead[:-1]
+    return SyncError("%s. Unexpected error." % lead, UNEXPECTED_NEXT)
 
 
 def install_excepthook(ui: "MainWindow") -> None:

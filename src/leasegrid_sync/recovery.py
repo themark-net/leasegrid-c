@@ -272,8 +272,9 @@ def create_folder_from_caps(
             int(scan_interval),
         )
     except Exception as exc:  # magic-folder raises its own APIError family
+        # APIError text can name a class and a capability. Keep the folder name.
         raise SyncError(
-            "could not restore folder %s: %s" % (name, exc),
+            "could not restore folder %s." % name,
             "if the folder already exists, leave it; otherwise Retry.",
         ) from exc
 
@@ -357,6 +358,11 @@ class RestoreResult:
     grid: str
     credit_recovered: int = 0  # tokens re-collected from the issuer via the credit seed
     credit_recover_error: str = ""
+
+
+# Buyer sentence when issuer re-collect fails. A ClientError can carry the
+# issuer URL and the HTTP body; neither belongs in the window or the CLI line.
+CREDIT_RECOVER_FAIL = "the issuer did not finish restoring credit"
 
 
 def restored_author_name() -> str:
@@ -522,8 +528,10 @@ class RecoveryCtl:
             say("Re-collecting credit from the issuer…")
             try:
                 credit_recovered = self._recover_credit(bundle)
-            except Exception as exc:  # folders can still land; Credit → Retry later
-                credit_error = "%s: %s" % (type(exc).__name__, str(exc).splitlines()[0] if str(exc) else "")
+            except Exception:
+                # Folders can still land. Credit → Retry later. Do not store
+                # the class name or str(exc); the issuer error can hold a URL.
+                credit_error = CREDIT_RECOVER_FAIL
 
         say("Preparing Magic Folder…")
         self.mf.ensure_init()

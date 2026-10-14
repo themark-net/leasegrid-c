@@ -141,6 +141,22 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it
 | **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 320 passed, exit 0. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 
+## 2026-10-14 — #52 raw error text (`build/ff-0111-rawtext`)
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open on `build/ff-0111-prerelease`. Do not merge it from here. Do not tag v0.1.1. This follow-up has no pull request yet.
+
+| | |
+|--|--|
+| **Issue** | [#52](https://github.com/themark-net/leasegrid-c/issues/52) raw error text in Sync UI. Release blocker for v0.1.1. #30 stays open. |
+| **Branch** | `build/ff-0111-rawtext` in worktree `tmp/ff-0111-rawtext` |
+| **Parent** | `e9de382` on `build/ff-0111-prerelease` (PR #51) |
+| **Decision** | Gate #51 as-is. Do not fold these sites into #51. The blocker label stops a release. Row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`. |
+| **Buyer text** | Paths may stay. Furls, tracebacks, and exception class or module names do not. Magic Folder HTTP 500 names #30. Init and add stderr, unexpected errors, the REVIEW chip, and recovery credit errors use fixed sentences. Disk errno text is dropped. The path stays. |
+| **Mutation** | Re-echoing each site failed the test named in [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md). HTTP POST fails `assert "pb://" not in blob` at `tests/buyer_text.py:21`. Recovery CLI fails `tests/test_sync_cli.py:210`. |
+| **Static check** | `tests/test_no_raw_exception_text.py`. A planted `f"plant {exc}"` failed `assert not hits` at `tests/test_no_raw_exception_text.py:251`, then was removed. |
+| **CI** | `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → 336 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)
 
 Not Feature GO. Not a release. No v0.1.1 tag. This round landed in #49, merged to `main` as `9029086`. PR A (tester guide) is merged as #48 (`d326c5b`).

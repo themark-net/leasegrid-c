@@ -8,6 +8,8 @@
 
 **Org posture (dated 2026-09-24):** PAUSED. No auto RELEASE / Build / Cursor implement until founder says go. **Public marketing / loud v\* HOLD** (quiet F&F `v0.1.0` already cut). Marketing silent. This paragraph is the 2026-09-24 pause. It is not a new RELEASE. #44 shipped after that pause via PR #45 and PR #46. That ship does not lift the pause.
 
+**2026-10-14 docs slice (branch `build/ff-0111-testers-doc`, not merged):** Friends-and-family tester page [`TESTERS.md`](TESTERS.md), linked from the README. Draft notes [`release-notes/v0.1.1-DRAFT.md`](release-notes/v0.1.1-DRAFT.md) are marked DRAFT and are not a release. `v0.1.1` was not tagged or published. Write-up: [`ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md). #30 stays open. #32 stays shipped in source at `83b3e66` and is not in the published v0.1.0 installer files. Not Feature GO.
+
 ---
 
 ## Source of truth
@@ -88,9 +90,9 @@ Next agent reads this file + `docs/design/README.md`, picks an **open** issue (#
 
 ---
 
-## 2026-10-14 — #32 invite polish re-check (branch only)
+## 2026-10-14 — #32 invite polish re-check (PR #49)
 
-Not Feature GO. Not a release. No v0.1.1 tag. No merge. No PR.
+Not Feature GO. Not a release. No v0.1.1 tag. PR #49 open, not merged. PR A (tester guide) merged as #48.
 
 | | |
 |--|--|
@@ -99,7 +101,7 @@ Not Feature GO. Not a release. No v0.1.1 tag. No merge. No PR.
 | **Parent** | `main` @ `9393cc3` (this file’s earlier sections still describe `5ac69aa` / #44) |
 | **Already shipped** | `83b3e66` share card: short code, QR, Copy code, on Offer/share. Join already pasted a short code or join link. |
 | **Behavior** | `0815516` — join failure copy no longer says to paste a `pb://` furl. Share QR is a three-finder symbol at native size. Tests decode the QR, check the clipboard, and join after a bad, garbled, and expired code. |
-| **CI** | Local `scripts/ci-local.sh` with `/tmp/lg-ff-invite-venv`: 304 passed, exit 0. No GitHub Actions run (branch name is outside the workflow triggers; no PR). |
+| **CI** | Local `scripts/ci-local.sh` with `/tmp/lg-ff-invite-venv`: 304 passed, exit 0. GitHub Actions runs on PR #49. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 | **Not done** | Live two-machine wormhole. Phone camera. Android invite (still points at a furl). #30, #33, #26. |
 

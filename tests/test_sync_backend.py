@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -154,6 +155,12 @@ if sub in ("create-node", "create-client"):
         sys.exit(1)
     if join and join[0] == "--join=1-net-down":
         sys.stderr.write("ConnectionRefusedError: [Errno 111] Connection refused\\n")
+        sys.exit(1)
+    if join and join[0] == "--join=9-weird-error":
+        sys.stderr.write("foo.bar.WeirdError: secret-ish detail\\n")
+        sys.exit(1)
+    if any(a.startswith("--introducer=pb://weird") for a in args):
+        sys.stderr.write("foo.bar.WeirdError: secret-ish detail\\n")
         sys.exit(1)
     if any(a.startswith("--introducer=pb://bad") for a in args):
         sys.stderr.write("Traceback (most recent call last):\\n")
@@ -411,6 +418,104 @@ def test_join_errors_distinguish_expired_rejected_and_network(tmp_path: Path, mo
     assert "expire" not in seen["3-bad-code"].lower()
     assert "not accepted" not in seen["0-dead-code"].lower()
     assert "mailbox" not in seen["0-dead-code"].lower()
+
+
+def _assert_no_spawn_leak(text: str, *banned: str) -> None:
+    """Join banners never carry an exception class, a module, or a path."""
+    for needle in (
+        "FileNotFoundError",
+        "TimeoutExpired",
+        "OSError",
+        "Traceback",
+        "No such file",
+        "timed out after",
+        "Errno",
+        "foo.bar",
+        "WeirdError",
+        "secret-ish",
+    ):
+        assert needle not in text
+    for item in banned:
+        assert item not in text
+
+
+def test_join_missing_tahoe_is_friendly(tmp_path: Path):
+    """A path that is not a binary, and a start of an existing node, stay friendly."""
+    missing = tmp_path / "missing-bin" / "tahoe"
+    home = tmp_path / "home"
+    fresh = TahoeClient(nodedir=home / "tahoe", tahoe_bin=str(missing), home=home)
+    with pytest.raises(SyncError) as exc:
+        fresh.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "not installed" in blob
+    assert "[sync,tahoe]" in blob
+    _assert_no_spawn_leak(blob, str(missing), str(home))
+
+    nodedir = tmp_path / "existing" / "tahoe"
+    nodedir.mkdir(parents=True)
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    started = TahoeClient(nodedir=nodedir, tahoe_bin=str(missing), home=home)
+    with pytest.raises(SyncError) as exc:
+        started.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "not installed" in blob
+    _assert_no_spawn_leak(blob, str(missing))
+
+
+def test_join_timeout_is_friendly(tmp_path: Path, monkeypatch):
+    """TimeoutExpired from create-node is not copied into the banner."""
+    raw_token = str(tmp_path / "raw-exc-token" / "tahoe")
+
+    def raise_timeout(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=[raw_token, *list(cmd)], timeout=kwargs.get("timeout", 1)
+        )
+
+    monkeypatch.setattr("leasegrid_sync.backend.subprocess.run", raise_timeout)
+    home = tmp_path / "home"
+    client = TahoeClient(nodedir=home / "tahoe", tahoe_bin=raw_token, home=home)
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "did not finish" in blob
+    assert "network path" in blob
+    _assert_no_spawn_leak(blob, raw_token, GOOD_FURL, str(home))
+
+    code = "7-guitarist-revenge"
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(code)
+    blob = exc.value.banner()
+    assert "Nobody answered" in blob
+    assert code in blob
+    _assert_no_spawn_leak(blob, raw_token, str(home))
+
+
+def test_join_unrecognised_stderr_is_never_echoed(tmp_path: Path, monkeypatch):
+    """A stderr line we do not recognise is not copied into the buyer banner."""
+    monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=home)
+    with pytest.raises(SyncError) as exc:
+        client.join_invite("9-weird-error")
+    blob = exc.value.banner()
+    assert "not accepted" in blob
+    assert "secret-ish detail" not in blob
+    assert "foo.bar.WeirdError" not in blob
+    _assert_no_raw_failure(blob)
+    _assert_no_spawn_leak(blob)
+    assert not nodedir.exists()
+
+    weird = "pb://weirdweirdweir@127.0.0.1:9/swissnumswiss"
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(weird)
+    blob = exc.value.banner()
+    assert "could not create a node" in blob
+    assert "secret-ish detail" not in blob
+    assert "foo.bar.WeirdError" not in blob
+    _assert_no_raw_failure(blob)
+    _assert_no_spawn_leak(blob, weird)
+    assert not nodedir.exists()
 
 
 def test_join_furl_failure_hides_the_tahoe_traceback(tmp_path: Path):

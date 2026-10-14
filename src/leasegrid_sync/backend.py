@@ -688,6 +688,43 @@ def join_process_failure(invite: str, raw: str, *, code: bool) -> SyncError:
     )
 
 
+def join_tahoe_missing() -> SyncError:
+    """Buyer copy when ``tahoe`` is not on disk. No path and no exception text."""
+    return SyncError(
+        "could not join this friendnet. The Tahoe client is not installed.",
+        "install it next to Sync: pip install 'leasegrid-zkap-lab[sync,tahoe]'; Retry.",
+    )
+
+
+def join_spawn_failure(
+    exc: BaseException, *, invite: str, code: bool, timeout: float
+) -> SyncError:
+    """Buyer copy when ``tahoe create-node`` does not return stderr.
+
+    FileNotFoundError and TimeoutExpired used to be interpolated into the
+    banner. The buyer text matches the expired / rejected / network mapping
+    and never includes the exception, a module, or a filesystem path.
+    """
+    if isinstance(exc, subprocess.TimeoutExpired):
+        if code:
+            return SyncError(
+                "could not join this friendnet. Nobody answered invite code %s in %ds."
+                % (invite, int(timeout)),
+                "your inviter must keep `tahoe invite` running until you join; "
+                "get a fresh code; Retry.",
+            )
+        return SyncError(
+            "could not join this friendnet. Tahoe did not finish creating a node in time.",
+            "check the network path to the introducer; Retry.",
+        )
+    if isinstance(exc, FileNotFoundError):
+        return join_tahoe_missing()
+    return SyncError(
+        "could not join this friendnet. The Tahoe client could not be started.",
+        "install it next to Sync: pip install 'leasegrid-zkap-lab[sync,tahoe]'; Retry.",
+    )
+
+
 def validate_invite(raw: str) -> str:
     """Accept a join URL, a pb:// introducer furl, or a short `tahoe invite` code."""
     from .invite import parse_invite
@@ -759,10 +796,7 @@ class TahoeClient:
 
     def require_bin(self) -> str:
         if not self.tahoe_bin:
-            raise SyncError(
-                "could not join this friendnet. The Tahoe client is not installed.",
-                "install it next to Sync: pip install 'leasegrid-zkap-lab[sync,tahoe]'; Retry.",
-            )
+            raise join_tahoe_missing()
         return self.tahoe_bin
 
     def is_reachable(self) -> bool:
@@ -835,23 +869,11 @@ class TahoeClient:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=timeout, check=False
             )
-        except subprocess.TimeoutExpired as exc:
-            shutil.rmtree(self.nodedir, ignore_errors=True)
-            if code:
-                raise SyncError(
-                    "could not join this friendnet. Nobody answered invite code %s in %ds."
-                    % (invite, int(timeout)),
-                    "your inviter must keep `tahoe invite` running until you join; "
-                    "get a fresh code; Retry.",
-                ) from exc
-            raise SyncError(
-                "could not join this friendnet. tahoe create-node did not run: %s" % exc,
-                "check that tahoe is installed; Retry.",
-            ) from exc
-        except OSError as exc:
-            raise SyncError(
-                "could not join this friendnet. tahoe create-node did not run: %s" % exc,
-                "check that tahoe is installed; Retry.",
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            if isinstance(exc, subprocess.TimeoutExpired):
+                shutil.rmtree(self.nodedir, ignore_errors=True)
+            raise join_spawn_failure(
+                exc, invite=invite, code=bool(code), timeout=timeout
             ) from exc
         if proc.returncode != 0:
             shutil.rmtree(self.nodedir, ignore_errors=True)
@@ -929,10 +951,7 @@ class TahoeClient:
             )
         except OSError as exc:
             log_f.close()
-            raise SyncError(
-                "could not join this friendnet. Tahoe did not start: %s" % exc,
-                "check that tahoe is installed; Retry.",
-            ) from exc
+            raise join_spawn_failure(exc, invite="", code=False, timeout=0) from exc
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._proc.poll() is not None:

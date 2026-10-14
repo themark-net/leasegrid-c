@@ -77,8 +77,22 @@ _ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
 
 
 def decode_qr_png(png: bytes) -> str:
-    """Return the text encoded in a QR code PNG."""
-    modules = _modules_from_png(png)
+    """Return the text encoded in a QR code PNG.
+
+    A tight symbol uses the module grid of the whole image. A dialog grab is
+    larger than the symbol, so the three finders are located in the scene.
+    A finder covered by another widget does not decode.
+    """
+    pixels, width, height = _png_gray(png)
+    if width == height:
+        try:
+            return _payload(_modules_from_pixels(pixels))
+        except ValueError:
+            pass
+    return _payload(_modules_in_scene(pixels))
+
+
+def _payload(modules: list[list[int]]) -> str:
     version = _version(len(modules))
     level, mask = _format(modules)
     groups = _ECC[version][level]
@@ -279,8 +293,195 @@ def _parse_payload(data: bytes, version: int) -> str:
     return "".join(chunks)
 
 
-def _modules_from_png(png: bytes) -> list[list[int]]:
-    pixels, width, height = _png_gray(png)
+# Finder cross-section through its center: 1:1:3:1:1 dark/light runs.
+_FINDER = (
+    "1111111",
+    "1000001",
+    "1011101",
+    "1011101",
+    "1011101",
+    "1000001",
+    "1111111",
+)
+
+
+def _runs(line: list[int]) -> list[tuple[int, int, int]]:
+    """(start, length, value) runs. Value 1 is a dark module."""
+    runs: list[tuple[int, int, int]] = []
+    if not line:
+        return runs
+    start = 0
+    cur = line[0]
+    for i, value in enumerate(line[1:], 1):
+        if value != cur:
+            runs.append((start, i - start, cur))
+            start = i
+            cur = value
+    runs.append((start, len(line) - start, cur))
+    return runs
+
+
+def _finder_lengths(lengths: list[int]) -> bool:
+    total = sum(lengths)
+    if len(lengths) != 5 or total < 7:
+        return False
+    module = total / 7.0
+    if module < 1 or module > 40:
+        return False
+    expect = (1, 1, 3, 1, 1)
+    for got, exp in zip(lengths, expect):
+        if abs(got - exp * module) > max(2.0, module * 0.75):
+            return False
+    if lengths[2] < lengths[0] * 1.5 or lengths[2] < lengths[4] * 1.5:
+        return False
+    return True
+
+
+def _column(pixels: list[list[int]], x: int) -> list[int]:
+    return [row[x] for row in pixels]
+
+
+def _finder_hits(pixels: list[list[int]]) -> list[tuple[float, float, float]]:
+    hits: list[tuple[float, float, float]] = []
+    height = len(pixels)
+    width = len(pixels[0]) if height else 0
+    for y, row in enumerate(pixels):
+        runs = _runs(row)
+        for i in range(len(runs) - 4):
+            window = runs[i:i + 5]
+            if window[0][2] != 1:
+                continue
+            lengths = [item[1] for item in window]
+            if not _finder_lengths(lengths):
+                continue
+            module = sum(lengths) / 7.0
+            cx = window[0][0] + window[0][1] + window[1][1] + window[2][1] / 2.0
+            x = int(round(cx))
+            if x < 0 or x >= width:
+                continue
+            vertical = _runs(_column(pixels, x))
+            for j in range(len(vertical) - 4):
+                vwin = vertical[j:j + 5]
+                if vwin[0][2] != 1:
+                    continue
+                vlen = [item[1] for item in vwin]
+                if not _finder_lengths(vlen):
+                    continue
+                y0 = vwin[0][0]
+                y1 = vwin[4][0] + vwin[4][1]
+                if not (y0 <= y < y1):
+                    continue
+                cy = vwin[2][0] + vwin[2][1] / 2.0
+                hits.append((cx, cy, (module + sum(vlen) / 7.0) / 2.0))
+                break
+    return hits
+
+
+def _cluster_finders(
+    hits: list[tuple[float, float, float]],
+) -> list[list[float]]:
+    clusters: list[list[float]] = []
+    for x, y, module in hits:
+        placed = False
+        for cluster in clusters:
+            limit = max(module * 2.0, 4.0)
+            if abs(cluster[0] - x) <= limit and abs(cluster[1] - y) <= limit:
+                count = cluster[3] + 1
+                cluster[0] = (cluster[0] * cluster[3] + x) / count
+                cluster[1] = (cluster[1] * cluster[3] + y) / count
+                cluster[2] = (cluster[2] * cluster[3] + module) / count
+                cluster[3] = count
+                placed = True
+                break
+        if not placed:
+            clusters.append([x, y, module, 1.0])
+    return clusters
+
+
+def _order_finders(
+    clusters: list[list[float]],
+) -> tuple[list[float], list[float], list[float]]:
+    """Top-left, top-right, bottom-left. The long edge joins the other two."""
+    points = clusters[:3]
+
+    def dist(a: list[float], b: list[float]) -> float:
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+    pairs = (
+        (points[0], points[1], dist(points[0], points[1])),
+        (points[0], points[2], dist(points[0], points[2])),
+        (points[1], points[2], dist(points[1], points[2])),
+    )
+    far = max(pairs, key=lambda item: item[2])
+    ends = (far[0], far[1])
+    top_left = next(point for point in points if point is not ends[0] and point is not ends[1])
+
+    def rightness(point: list[float]) -> float:
+        return (point[0] - top_left[0]) - (point[1] - top_left[1])
+
+    top_right, bottom_left = (
+        (ends[0], ends[1]) if rightness(ends[0]) >= rightness(ends[1]) else (ends[1], ends[0])
+    )
+    return top_left, top_right, bottom_left
+
+
+def _sample_grid(
+    pixels: list[list[int]],
+    top_left: list[float],
+    top_right: list[float],
+    bottom_left: list[float],
+) -> list[list[int]]:
+    module = (top_left[2] + top_right[2] + bottom_left[2]) / 3.0
+    span = ((top_right[0] - top_left[0]) ** 2 + (top_right[1] - top_left[1]) ** 2) ** 0.5
+    if module <= 0 or span <= 0:
+        raise ValueError("QR module size is zero")
+    version = int(round((span / module + 7 - 21) / 4.0)) + 1
+    if version < 1 or version > 10:
+        raise ValueError("QR version %s is outside the invite decoder" % version)
+    n = 21 + (version - 1) * 4
+    pitch = span / float(n - 7)
+    down = (
+        (bottom_left[0] - top_left[0]) ** 2 + (bottom_left[1] - top_left[1]) ** 2
+    ) ** 0.5
+    if abs(down - span) > pitch * 2:
+        raise ValueError("QR finders are not a square")
+    height = len(pixels)
+    width = len(pixels[0]) if height else 0
+    origin_x = top_left[0] - 3.5 * pitch
+    origin_y = top_left[1] - 3.5 * pitch
+    modules: list[list[int]] = []
+    for row in range(n):
+        y = int(round(origin_y + (row + 0.5) * pitch))
+        line: list[int] = []
+        for col in range(n):
+            x = int(round(origin_x + (col + 0.5) * pitch))
+            if x < 0 or y < 0 or x >= width or y >= height:
+                line.append(0)
+            else:
+                line.append(pixels[y][x])
+        modules.append(line)
+    corners = ((0, 0), (0, n - 7), (n - 7, 0))
+    for row0, col0 in corners:
+        for dr in range(7):
+            for dc in range(7):
+                expect = 1 if _FINDER[dr][dc] == "1" else 0
+                if modules[row0 + dr][col0 + dc] != expect:
+                    raise ValueError("QR finder is covered")
+    return modules
+
+
+def _modules_in_scene(pixels: list[list[int]]) -> list[list[int]]:
+    clusters = [item for item in _cluster_finders(_finder_hits(pixels)) if item[3] >= 3]
+    if len(clusters) < 3:
+        raise ValueError("QR finders are covered or missing")
+    clusters.sort(key=lambda item: item[3], reverse=True)
+    top_left, top_right, bottom_left = _order_finders(clusters)
+    return _sample_grid(pixels, top_left, top_right, bottom_left)
+
+
+def _modules_from_pixels(pixels: list[list[int]]) -> list[list[int]]:
+    height = len(pixels)
+    width = len(pixels[0]) if height else 0
     if width != height:
         raise ValueError("QR image is not square")
     y0 = 0
@@ -406,13 +607,22 @@ INVITE_JOIN_TAHOE = "\n".join([
     "        time.sleep(0.2)",
     "if \"create-node\" in args or \"create-client\" in args:",
     "    nodedir = pathlib.Path(args[-1])",
-    "    nodedir.mkdir(parents=True, exist_ok=True)",
+    "    # Real tahoe refuses a basedir that is already there. A join that dies",
+    "    # after mkdir leaves that folder; the caller has to remove it.",
+    "    if nodedir.exists():",
+    "        sys.stderr.write(\"The base directory already exists\\n\")",
+    "        raise SystemExit(1)",
+    "    nodedir.mkdir(parents=True)",
     "    join = [a for a in args if a.startswith(\"--join=\")]",
     "    if join == [\"--join=0-dead-code\"]:",
+    "        sys.stderr.write(\"Traceback (most recent call last):\\n\")",
     "        sys.stderr.write(\"wormhole.errors.LonelyError\\n\")",
     "        raise SystemExit(1)",
+    "    if join == [\"--join=1-net-down\"]:",
+    "        sys.stderr.write(\"ConnectionRefusedError: [Errno 111] Connection refused\\n\")",
+    "        raise SystemExit(1)",
     "    if not join or join[0] != \"--join=7-orange-tunnel\":",
-    "        sys.stderr.write(\"wormhole rejected\\n\")",
+    "        sys.stderr.write(\"wormhole.errors.WrongPasswordError\\n\")",
     "        raise SystemExit(1)",
     "    (nodedir / \"tahoe.cfg\").write_text(",
     "        \"# argv: \" + \" \".join(args) + \"\\n[node]\\nnickname = alice\\n[client]\\n\"",

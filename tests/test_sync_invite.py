@@ -75,6 +75,7 @@ def test_join_url_without_fragment_fails_clearly():
 
 
 def test_invite_page_is_self_contained_i2p_html():
+    pytest.importorskip("segno")
     url = format_join_url(GOOD_FURL, origin="http://alice.i2p/join")
     html = invite_page_html(url, name="alice-friendnet")
     assert "<!doctype html>" in html.lower() or "<!DOCTYPE html>" in html
@@ -87,6 +88,7 @@ def test_invite_page_is_self_contained_i2p_html():
 
 
 def test_qr_svg_encodes_the_url():
+    pytest.importorskip("segno")
     url = format_join_url(GOOD_FURL)
     svg = qr_svg(url)
     assert "<svg" in svg.lower()
@@ -101,6 +103,7 @@ def test_invite_code_line_is_not_a_raw_furl():
 
 
 def test_qr_png_encodes_a_short_code():
+    pytest.importorskip("segno")
     png = qr_png("7-orange-tunnel")
     assert png.startswith(b"\x89PNG")
     assert len(png) > 200
@@ -226,13 +229,58 @@ def test_garbled_invite_does_not_ask_for_a_raw_furl():
     assert "web ui" in exc.value.banner().lower()
 
 
+def _gray_png(grid: list[list[int]]) -> bytes:
+    """Encode a 0/1 grid (1 = dark) as an 8-bit gray PNG."""
+    import struct
+    import zlib
+
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    raw = bytearray()
+    for row in grid:
+        raw.append(0)
+        raw.extend(0 if cell else 255 for cell in row)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    return b"".join(
+        (
+            b"\x89PNG\r\n\x1a\n",
+            chunk(b"IHDR", ihdr),
+            chunk(b"IDAT", zlib.compress(bytes(raw))),
+            chunk(b"IEND", b""),
+        )
+    )
+
+
 def test_qr_png_decodes_to_the_payload_it_was_given():
     """Two different payloads must come back out of the image, not a fixed stamp."""
+    pytest.importorskip("segno")
     short = "7-orange-tunnel"
     other = "9-other-words"
     assert decode_qr_png(qr_png(short)) == short
     assert decode_qr_png(qr_png(other)) == other
     assert decode_qr_png(qr_png(GOOD_FURL)) == GOOD_FURL
+
+
+def test_scene_qr_decodes_until_a_finder_is_covered():
+    """A grab is not a tight symbol. Covering one finder must fail the decode."""
+    pytest.importorskip("segno")
+    from tests.qr_decode import _png_gray
+
+    symbol, width, height = _png_gray(qr_png("7-orange-tunnel"))
+    canvas = [[0] * (width + 36) for _ in range(height + 48)]
+    for y in range(height):
+        canvas[16 + y][12 : 12 + width] = symbol[y]
+    assert decode_qr_png(_gray_png(canvas)) == "7-orange-tunnel"
+    for y in range(height - 36, height):
+        for x in range(48):
+            canvas[16 + y][12 + x] = (x + y) % 2
+    with pytest.raises(ValueError):
+        decode_qr_png(_gray_png(canvas))
 
 
 def _welcome_after_node_url(client: TahoeClient):
@@ -249,6 +297,7 @@ def _welcome_after_node_url(client: TahoeClient):
 
 def test_generated_code_round_trips_after_bad_garbled_and_expired(tmp_path: Path):
     """Share prints a short code. Join rejects garbage, then that code connects."""
+    pytest.importorskip("segno")
     inviter = _joined_nodedir(tmp_path)
     tahoe_bin = write_executable(tmp_path / "bin", INVITE_JOIN_TAHOE)
     session = start_invite_code(inviter, tahoe_bin=tahoe_bin, timeout=5)
@@ -272,13 +321,22 @@ def test_generated_code_round_trips_after_bad_garbled_and_expired(tmp_path: Path
 
         with pytest.raises(SyncError) as exc:
             joiner.join_invite("3-bad-code")
-        assert "not accepted" in exc.value.message
-        assert not joiner.has_nodedir()
+        rejected = exc.value.banner()
+        assert "not accepted" in rejected
+        assert "expire" not in rejected.lower()
+        assert "wormhole." not in rejected and "Error" not in rejected
+        assert "Traceback" not in rejected
+        assert not joiner.nodedir.exists()
 
         with pytest.raises(SyncError) as exc:
             joiner.join_invite("0-dead-code")
-        assert "expire" in exc.value.banner().lower()
-        assert not joiner.has_nodedir()
+        expired = exc.value.banner()
+        assert "expire" in expired.lower()
+        assert "not accepted" not in expired.lower()
+        assert expired != rejected
+        assert "wormhole." not in expired and "Error" not in expired
+        assert "Traceback" not in expired
+        assert not joiner.nodedir.exists()
 
         assert session.alive()
         with patch.object(joiner, "welcome", side_effect=_welcome_after_node_url(joiner)):

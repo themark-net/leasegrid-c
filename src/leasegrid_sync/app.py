@@ -672,6 +672,19 @@ class ImportRecoveryDialog:
         self.dlg.accept()
 
 
+def fit_share_card(dlg) -> None:
+    """Open the card at its size hint.
+
+    Offscreen Qt does not apply size hints (``propagateSizeHints`` is
+    unsupported), so a dialog stays at its minimum height. That compresses
+    the QR slot and the next row paints over the bottom-left finder.
+    """
+    dlg.setMinimumSize(0, 0)
+    hint = dlg.sizeHint()
+    dlg.setMinimumSize(hint)
+    dlg.resize(hint)
+
+
 class InviteSharePanel:
     """#32 share card: short code + QR + Copy. Join link stays collapsed."""
 
@@ -714,6 +727,10 @@ class InviteSharePanel:
         self.join_link = QtWidgets.QLineEdit()
         self.join_link.setObjectName(names["link"])
         self.join_link.setReadOnly(True)
+        # A long join URL must scroll inside the card, not stretch it.
+        self.join_link.setSizePolicy(
+            QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed
+        )
         self.join_link.hide()
         layout.addWidget(self.join_link)
         self.status = QtWidgets.QLabel("")
@@ -738,6 +755,8 @@ class InviteSharePanel:
             self.status.setText(exc.banner())
             self.code_edit.clear()
             self.qr.clear()
+            self.qr.setMinimumSize(160, 160)
+            self.qr.setMaximumSize(16777215, 16777215)
             self.qr.setText("")
             return
         except Exception as exc:
@@ -784,10 +803,13 @@ class InviteSharePanel:
             if not pix.loadFromData(qr_png(payload)) or pix.isNull():
                 raise RuntimeError("empty qr")
             self.qr.setText("")
-            # A 160px shrink is not a whole number of modules, so a camera
-            # reads a broken code. Show the symbol at its own size.
+            # The symbol is 174px for a short code (version 2, scale 6). A
+            # 160px slot lets the Short code row paint over the bottom finder.
+            self.qr.setFixedSize(pix.size())
             self.qr.setPixmap(pix)
         except Exception:
+            self.qr.setMinimumSize(160, 160)
+            self.qr.setMaximumSize(16777215, 16777215)
             self.qr.setText("QR unavailable")
 
 
@@ -824,7 +846,9 @@ class InviteShareDialog:
         done.clicked.connect(self.dlg.accept)
         brow.addWidget(done)
         v.addLayout(brow)
+        self.panel.advanced.toggled.connect(lambda _checked: fit_share_card(self.dlg))
         self.panel.present()
+        fit_share_card(self.dlg)
 
 
 class AddStorageServerDialog:
@@ -908,6 +932,8 @@ class AddStorageServerDialog:
         brow.addStretch(1)
         brow.addWidget(self.add_btn)
         v.addLayout(brow)
+        self.invite_panel.advanced.toggled.connect(lambda _checked: fit_share_card(self.dlg))
+        fit_share_card(self.dlg)
 
     def on_copy_invite(self) -> None:
         self.invite_panel.on_copy()

@@ -137,20 +137,36 @@ elif "create-client" in args:
 else:
     sub = args[0]
 join = [a for a in args if a.startswith("--join=")]
-if sub in ("create-node", "create-client") and join:
-    # tahoe 1.20 --join: basedir exists before the wormhole handshake; the
-    # invited encoding is written as bytes reprs; a dead code fails non-zero.
+if sub in ("create-node", "create-client"):
+    # Real tahoe refuses a basedir that is already there. --join creates the
+    # folder before the handshake, so a dead code leaves it behind unless the
+    # caller deletes it. The next create then fails.
+    if nodedir.exists():
+        sys.stderr.write("The base directory already exists: %s\\n" % nodedir)
+        sys.exit(1)
     nodedir.mkdir(parents=True)
-    if join[0] == "--join=0-dead-code":
+    if join and join[0] == "--join=0-dead-code":
+        sys.stderr.write("Traceback (most recent call last):\\n")
         sys.stderr.write("wormhole.errors.LonelyError\\n")
         sys.exit(1)
-    (nodedir / "tahoe.cfg").write_text(
-        "# argv: " + " ".join(args) + "\\n[node]\\nnickname = alice\\n[client]\\n"
-        "introducer.furl =\\nshares.needed = b'2'\\nshares.happy = b'3'\\n"
-        "shares.total = b'3'\\n", encoding="utf-8")
-elif sub in ("create-node", "create-client"):
-    nodedir.mkdir(parents=True)
-    (nodedir / "tahoe.cfg").write_text("\\n".join(args), encoding="utf-8")
+    if join and join[0] == "--join=3-bad-code":
+        sys.stderr.write("wormhole.errors.WrongPasswordError\\n")
+        sys.exit(1)
+    if join and join[0] == "--join=1-net-down":
+        sys.stderr.write("ConnectionRefusedError: [Errno 111] Connection refused\\n")
+        sys.exit(1)
+    if any(a.startswith("--introducer=pb://bad") for a in args):
+        sys.stderr.write("Traceback (most recent call last):\\n")
+        sys.stderr.write("ValueError: shares.needed\\n")
+        sys.exit(1)
+    if join:
+        # tahoe 1.20 --join writes the invited encoding as bytes reprs.
+        (nodedir / "tahoe.cfg").write_text(
+            "# argv: " + " ".join(args) + "\\n[node]\\nnickname = alice\\n[client]\\n"
+            "introducer.furl =\\nshares.needed = b'2'\\nshares.happy = b'3'\\n"
+            "shares.total = b'3'\\n", encoding="utf-8")
+    else:
+        (nodedir / "tahoe.cfg").write_text("\\n".join(args), encoding="utf-8")
 elif args[0] == "run":
     (nodedir / "node.url").write_text("http://127.0.0.1:1/\\n", encoding="utf-8")
     while True:
@@ -345,17 +361,70 @@ def test_join_wormhole_code_creates_client_via_join(tmp_path: Path, monkeypatch)
         client.stop()
 
 
+def _assert_no_raw_failure(text: str) -> None:
+    assert "wormhole." not in text
+    assert "Error" not in text
+    assert "Traceback" not in text
+
+
 def test_join_wormhole_dead_code_fails_clean_and_leaves_no_nodedir(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
     nodedir = tmp_path / "home" / "tahoe"
     client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
     with pytest.raises(SyncError) as exc:
         client.join_invite("0-dead-code")
-    assert "Invite code 0-dead-code was not accepted" in exc.value.message
+    blob = exc.value.banner()
+    assert "expire" in blob.lower()
+    assert "not accepted" not in blob.lower()
+    _assert_no_raw_failure(blob)
     assert "fresh one" in exc.value.next_hint
-    # a half-made basedir would make the next Join say "client already exists"
+    # The fake refuses a basedir that is already there, so a leftover folder
+    # fails the next create. Cleanup is what lets the retry connect.
     assert not nodedir.exists()
     assert not client.has_nodedir()
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite("7-guitarist-revenge")
+        assert st.state == "Connected"
+    finally:
+        client.stop()
+
+
+def test_join_errors_distinguish_expired_rejected_and_network(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    seen = {}
+    for code, needle in (
+        ("0-dead-code", "expire"),
+        ("3-bad-code", "not accepted"),
+        ("1-net-down", "mailbox"),
+    ):
+        with pytest.raises(SyncError) as exc:
+            client.join_invite(code)
+        blob = exc.value.banner()
+        assert needle in blob.lower()
+        _assert_no_raw_failure(blob)
+        assert not nodedir.exists()
+        seen[code] = exc.value.message
+    assert len(set(seen.values())) == 3
+    assert "expire" not in seen["3-bad-code"].lower()
+    assert "not accepted" not in seen["0-dead-code"].lower()
+    assert "mailbox" not in seen["0-dead-code"].lower()
+
+
+def test_join_furl_failure_hides_the_tahoe_traceback(tmp_path: Path):
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    bad = "pb://badbadbadbad@127.0.0.1:1/swissnumswiss"
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(bad)
+    blob = exc.value.banner()
+    assert "could not create a node" in blob
+    _assert_no_raw_failure(blob)
+    assert "ValueError" not in blob
+    assert bad not in blob
+    assert not nodedir.exists()
 
 
 def test_join_existing_starts_stopped_node(tmp_path: Path):

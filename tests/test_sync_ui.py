@@ -487,7 +487,14 @@ def _patch_invite_code(monkeypatch, code: str = "7-orange-tunnel"):
     )
 
 
+def _assert_no_raw_failure(text: str) -> None:
+    assert "wormhole." not in text
+    assert "Error" not in text
+    assert "Traceback" not in text
+
+
 def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
+    pytest.importorskip("segno")
     """Primary share is short code + QR + Copy. Join link stays advanced."""
     furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
     _write_joined_cfg(ui, furl)
@@ -529,6 +536,7 @@ def test_settings_share_link_qr_and_copy(ui: MainWindow, monkeypatch):
 
 
 def test_share_dialog_is_code_qr_copy_not_raw_furl(ui: MainWindow, monkeypatch):
+    pytest.importorskip("segno")
     furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
     _write_joined_cfg(ui, furl)
     _patch_invite_code(monkeypatch)
@@ -553,7 +561,39 @@ def test_share_dialog_is_code_qr_copy_not_raw_furl(ui: MainWindow, monkeypatch):
     dlg.dlg.close()
 
 
+def test_share_dialog_long_join_link_stays_on_the_card(ui: MainWindow, monkeypatch):
+    """A long advanced link scrolls inside the card. It does not widen it."""
+    pytest.importorskip("segno")
+    furl = "pb://" + ("ab" * 200) + "@grid.example:45001/" + ("cd" * 80)
+    _write_joined_cfg(ui, furl)
+    _patch_invite_code(monkeypatch)
+    monkeypatch.setenv("LEASEGRID_JOIN_ORIGIN", "http://alice.i2p/join")
+    dlg = InviteShareDialog(ui.win, ui, ui.QtWidgets)
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    width = dlg.dlg.width()
+    dlg.panel.advanced.setChecked(True)
+    ui.QtWidgets.QApplication.processEvents()
+    link = dlg.panel.join_link
+    assert not link.isHidden()
+    assert len(link.text()) > 400
+    assert link.text().startswith("http://alice.i2p/join#")
+    assert "pb://" not in link.text().split("#", 1)[0]
+    assert link.geometry().left() >= 0
+    assert link.geometry().right() <= dlg.dlg.width()
+    assert link.geometry().bottom() <= dlg.dlg.height()
+    assert dlg.dlg.width() <= width + 8
+    qr = dlg.panel.qr
+    short = next(
+        w for w in dlg.dlg.findChildren(PyQt5.QtWidgets.QLabel) if w.text() == "Short code"
+    )
+    assert not qr.geometry().intersects(short.geometry())
+    assert decode_qr_png(_png_of(ui, dlg.dlg.grab())) == "7-orange-tunnel"
+    dlg.dlg.close()
+
+
 def test_add_dialog_invite_card_copies_code_and_keeps_paste_furl(ui: MainWindow, monkeypatch):
+    pytest.importorskip("segno")
     furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
     _write_joined_cfg(ui, furl)
     _patch_invite_code(monkeypatch)
@@ -594,6 +634,7 @@ def _welcome_after_node_url(client):
 
 def test_share_qr_copy_then_join_recovers_from_bad_codes(ui: MainWindow, tmp_path):
     """Copy and the on-screen QR are the short code. A bad paste does not block the next one."""
+    pytest.importorskip("segno")
     furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
     _write_joined_cfg(ui, furl)
     ui.tahoe.tahoe_bin = write_executable(tmp_path / "bin", INVITE_JOIN_TAHOE)
@@ -606,8 +647,21 @@ def test_share_qr_copy_then_join_recovers_from_bad_codes(ui: MainWindow, tmp_pat
         assert code == "7-orange-tunnel"
         assert "pb://" not in code
         assert dlg.panel.join_link.isHidden()
-        scanned = decode_qr_png(_png_of(ui, dlg.panel.qr.pixmap()))
+        # Decode the dialog as painted. qr.pixmap() hides a Short code row
+        # that covers the bottom-left finder.
+        scanned = decode_qr_png(_png_of(ui, dlg.dlg.grab()))
         assert scanned == code
+        pix = dlg.panel.qr.pixmap()
+        assert pix is not None and not pix.isNull()
+        assert dlg.panel.qr.width() == pix.width()
+        assert dlg.panel.qr.height() == pix.height()
+        short = next(
+            w
+            for w in dlg.dlg.findChildren(PyQt5.QtWidgets.QLabel)
+            if w.text() == "Short code"
+        )
+        assert not dlg.panel.qr.geometry().intersects(short.geometry())
+        assert not dlg.panel.qr.geometry().intersects(dlg.panel.code_edit.geometry())
         dlg.panel.on_copy()
         clipped = ui.QtWidgets.QApplication.clipboard().text()
         assert clipped == code
@@ -634,17 +688,24 @@ def test_share_qr_copy_then_join_recovers_from_bad_codes(ui: MainWindow, tmp_pat
 
         joiner.invite_edit.setText("3-bad-code")
         joiner.on_join_invite()
-        assert "not accepted" in joiner.join_error.text()
+        rejected = joiner.join_error.text()
+        assert "not accepted" in rejected
+        assert "expire" not in rejected.lower()
+        _assert_no_raw_failure(rejected)
         assert joiner.stack.currentWidget() is joiner.join_page
         assert joiner.join_btn.isEnabled()
-        assert not joiner.tahoe.has_nodedir()
+        assert not joiner.tahoe.nodedir.exists()
 
         joiner.invite_edit.setText("0-dead-code")
         joiner.on_join_invite()
-        assert "expire" in joiner.join_error.text().lower()
+        expired = joiner.join_error.text()
+        assert "expire" in expired.lower()
+        assert "not accepted" not in expired.lower()
+        assert expired != rejected
+        _assert_no_raw_failure(expired)
         assert joiner.stack.currentWidget() is joiner.join_page
         assert joiner.join_btn.isEnabled()
-        assert not joiner.tahoe.has_nodedir()
+        assert not joiner.tahoe.nodedir.exists()
 
         assert ui._invite_session.alive()
         joiner.invite_edit.setText(ui.QtWidgets.QApplication.clipboard().text())

@@ -623,6 +623,71 @@ def fix_joined_shares(cfg_path: Path) -> bool:
     return changed
 
 
+# stderr fragments from magic-wormhole and Tahoe. Matched case-insensitively.
+# The buyer message must not repeat these (no module path, no exception class).
+_EXPIRED_MARKERS = ("lonelyerror", "lonely", "code expired", "has expired")
+_REJECTED_MARKERS = ("wrongpassword", "wrong password", "rejected", "crowded")
+_NETWORK_MARKERS = (
+    "connectionrefused",
+    "connection refused",
+    "connection reset",
+    "connection aborted",
+    "serverconnection",
+    "welcomeerror",
+    "network is unreachable",
+    "network unreachable",
+    "no route to host",
+    "name or service not known",
+    "temporary failure in name resolution",
+    "nodename nor servname",
+    "timed out",
+    "timeout",
+    "gaierror",
+    "could not connect",
+    "failed to connect",
+)
+
+
+def _stderr_mentions(raw: str, markers: tuple[str, ...]) -> bool:
+    text = (raw or "").lower()
+    return any(marker in text for marker in markers)
+
+
+def join_process_failure(invite: str, raw: str, *, code: bool) -> SyncError:
+    """Buyer copy for a failed ``tahoe create-node``. Never echoes stderr."""
+    if code:
+        if _stderr_mentions(raw, _EXPIRED_MARKERS):
+            return SyncError(
+                "could not join this friendnet. Invite code %s expired before anyone answered."
+                % invite,
+                "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
+            )
+        if _stderr_mentions(raw, _NETWORK_MARKERS):
+            return SyncError(
+                "could not join this friendnet. Invite code %s could not reach the invite mailbox."
+                % invite,
+                "check the network path, then Retry.",
+            )
+        if _stderr_mentions(raw, _REJECTED_MARKERS):
+            return SyncError(
+                "could not join this friendnet. Invite code %s was not accepted." % invite,
+                "ask your inviter for a fresh code; Retry.",
+            )
+        return SyncError(
+            "could not join this friendnet. Invite code %s was not accepted." % invite,
+            "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
+        )
+    if _stderr_mentions(raw, _NETWORK_MARKERS):
+        return SyncError(
+            "could not join this friendnet. Tahoe could not reach the friendnet.",
+            "check the network path to the introducer; Retry.",
+        )
+    return SyncError(
+        "could not join this friendnet. Tahoe could not create a node.",
+        "check the invite with your inviter; Retry.",
+    )
+
+
 def validate_invite(raw: str) -> str:
     """Accept a join URL, a pb:// introducer furl, or a short `tahoe invite` code."""
     from .invite import parse_invite
@@ -790,17 +855,8 @@ class TahoeClient:
             ) from exc
         if proc.returncode != 0:
             shutil.rmtree(self.nodedir, ignore_errors=True)
-            err = (proc.stderr or proc.stdout or "create-node failed").strip().split("\n")[-1]
-            if code:
-                raise SyncError(
-                    "could not join this friendnet. Invite code %s was not accepted: %s"
-                    % (invite, err),
-                    "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
-                )
-            raise SyncError(
-                "could not join this friendnet. Tahoe could not create a node: %s" % err,
-                "check the invite code with your inviter; Retry.",
-            )
+            raw = (proc.stderr or proc.stdout or "").strip()
+            raise join_process_failure(invite, raw, code=bool(code))
         if code:
             fix_joined_shares(self.nodedir / "tahoe.cfg")
         self.ensure_credit_plugin()

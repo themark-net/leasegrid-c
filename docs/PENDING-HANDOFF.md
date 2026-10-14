@@ -8,7 +8,7 @@
 
 **Org posture (dated 2026-09-24):** PAUSED. No auto RELEASE / Build / Cursor implement until founder says go. **Public marketing / loud v\* HOLD** (quiet F&F `v0.1.0` already cut). Marketing silent. This paragraph is the 2026-09-24 pause. It is not a new RELEASE. #44 shipped after that pause via PR #45 and PR #46. That ship does not lift the pause.
 
-**2026-10-14 docs slice (branch `build/ff-0111-testers-doc`, not merged):** Friends-and-family tester page [`TESTERS.md`](TESTERS.md), linked from the README. Draft notes [`release-notes/v0.1.1-DRAFT.md`](release-notes/v0.1.1-DRAFT.md) are marked DRAFT and are not a release. `v0.1.1` was not tagged or published. Write-up: [`ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md). #30 stays open. #32 stays shipped in source at `83b3e66` and is not in the published v0.1.0 installer files. Not Feature GO.
+**2026-10-14 docs slice (branch `build/ff-0111-testers-doc`, merged as PR #48, `d326c5b`):** Friends-and-family tester page [`TESTERS.md`](TESTERS.md), linked from the README. Draft notes [`release-notes/v0.1.1-DRAFT.md`](release-notes/v0.1.1-DRAFT.md) are marked DRAFT and are not a release. `v0.1.1` was not tagged or published. Write-up: [`ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md). #30 stays open. #32 stays shipped in source at `83b3e66` and is not in the published v0.1.0 installer files. Not Feature GO.
 
 ---
 
@@ -103,9 +103,26 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #49 open, not merged. PR A (tes
 | **Behavior** | `0815516` — join failure copy no longer says to paste a `pb://` furl. Share QR is a three-finder symbol at native size. Tests decode the QR, check the clipboard, and join after a bad, garbled, and expired code. |
 | **CI** | Local `scripts/ci-local.sh` with `/tmp/lg-ff-invite-venv`: 304 passed, exit 0. GitHub Actions runs on PR #49. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
-| **Not done** | Live two-machine wormhole. Phone camera. Android invite (still points at a furl). #30, #33, #26. |
+| **Not done** | Live two-machine wormhole. Phone camera. Android invite still refuses a short code and still names a `pb://` furl in that recovery line (left unchanged: asking for a short code would contradict the refusal). #30, #33, #26. |
 
 Earlier sections stay. This does not reopen #32 and does not lift the 2026-09-24 pause.
+
+## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #49 stays open. PR A (tester guide) is merged as #48 (`d326c5b`), already in this branch as merge `5d501cf`. No rebase.
+
+| | |
+|--|--|
+| **Branch** | `build/ff-0111-invite-polish` in worktree `tmp/ff-0111-invite` |
+| **Tester FAIL** | `18d921e` |
+| **Code** | `7ab178f` |
+| **CI** | `PYTHON=/tmp/lg-ff-invite-venv/bin/python scripts/ci-local.sh` → 308 passed, exit 0. |
+| **QR** | Share-dialog slot matches the pixmap. The UI test decodes `widget.grab()`. Overlap mutation fails with `QR finder is covered`. |
+| **Join copy** | Expired, rejected, and network failures are different sentences. No `wormhole.`, `Error`, or traceback in the window. |
+| **Node folder** | Test Tahoe refuses an existing basedir. Failed join deletes it. Cleanup mutation fails `assert not nodedir.exists()`. |
+| **Android** | Not changed. `Invite.kt` still does not redeem a short code. |
+| **Docs** | macOS 15+ leads with Open Anyway. One glibc phrase: `glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+)`. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 
 ---
 

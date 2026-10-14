@@ -8,7 +8,7 @@ The installers are unsigned. Details and the CI runners that produce them are in
 
 | Your computer | Download | Runs on |
 |---------------|----------|---------|
-| Linux x86_64 | `Leasegrid_Sync-0.1.0-x86_64.AppImage` | glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+. No `.deb`. |
+| Linux x86_64 | `Leasegrid_Sync-0.1.0-x86_64.AppImage` | glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). No `.deb`. |
 | Mac | `Leasegrid_Sync-0.1.0-macos-x86_64.dmg` | Intel Macs. Apple Silicon only through Rosetta 2. |
 | Windows 10/11 x64 | `Leasegrid_Sync-0.1.0-win64-setup.exe` | Same bits are in `Leasegrid_Sync-0.1.0-win64.zip` if you would rather not run the setup. |
 
@@ -33,8 +33,8 @@ The disk image is ad-hoc signed only. It is not notarized. Gatekeeper reports an
 
 1. Open `Leasegrid_Sync-0.1.0-macos-x86_64.dmg`.
 2. Drag **Leasegrid Sync** onto **Applications**.
-3. In Applications, Control-click **Leasegrid Sync** and choose **Open**, then **Open** again.
-4. If macOS still blocks it, open **System Settings → Privacy & Security** and click **Open Anyway** for Leasegrid Sync.
+3. On macOS 15 and newer, open **System Settings → Privacy & Security** and click **Open Anyway** for Leasegrid Sync. Control-click → **Open** no longer bypasses Gatekeeper on macOS 15 or newer.
+4. On macOS 14 and earlier, Control-click **Leasegrid Sync** in Applications and choose **Open**, then **Open** again. If it is still blocked, use **System Settings → Privacy & Security → Open Anyway**.
 
 From the folder that contains the app, this removes the download quarantine flag:
 
@@ -100,7 +100,7 @@ The chip at the top right does not print the word Connected:
 
 [#30](https://github.com/themark-net/leasegrid-c/issues/30) is open and parked. It does not mean the AppImage failed to start.
 
-On a glibc 2.35 AppImage, unpaid Join reached Connected (introducer up) between the hosts plant and maximum, and the storage count settled from 3 to 0. **Add folder** then returned Magic Folder HTTP 500 on five tries for `mvp-hello.txt`. The folder never reached **Up to date**, and file-status did not list the file. The same class of error later cleared when both homes were on plant. It did not clear on maximum.
+On an AppImage built for glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+), unpaid Join reached Connected (introducer up) between the hosts plant and maximum, and the storage count settled from 3 to 0. **Add folder** then returned Magic Folder HTTP 500 on five tries for `mvp-hello.txt`. The folder never reached **Up to date**, and file-status did not list the file. The same class of error later cleared when both homes were on plant. It did not clear on maximum.
 
 If you see HTTP 500 on Add folder, and the row never says **Up to date**, say that in the bug report and mention #30. A grid that charges for storage can also refuse an upload until **More → Credit** has a balance. That banner points at Credit. #30 was an unpaid join.
 

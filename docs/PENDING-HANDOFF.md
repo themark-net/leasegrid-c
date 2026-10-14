@@ -88,6 +88,25 @@ Next agent reads this file + `docs/design/README.md`, picks an **open** issue (#
 
 ---
 
+## 2026-10-14 — #32 invite polish re-check (branch only)
+
+Not Feature GO. Not a release. No v0.1.1 tag. No merge. No PR.
+
+| | |
+|--|--|
+| **Issue** | [#32](https://github.com/themark-net/leasegrid-c/issues/32) re-check. The issue stays closed. |
+| **Branch** | `build/ff-0111-invite-polish` in worktree `tmp/ff-0111-invite` |
+| **Parent** | `main` @ `9393cc3` (this file’s earlier sections still describe `5ac69aa` / #44) |
+| **Already shipped** | `83b3e66` share card: short code, QR, Copy code, on Offer/share. Join already pasted a short code or join link. |
+| **Behavior** | `0815516` — join failure copy no longer says to paste a `pb://` furl. Share QR is a three-finder symbol at native size. Tests decode the QR, check the clipboard, and join after a bad, garbled, and expired code. |
+| **CI** | Local `scripts/ci-local.sh` with `/tmp/lg-ff-invite-venv`: 304 passed, exit 0. No GitHub Actions run (branch name is outside the workflow triggers; no PR). |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+| **Not done** | Live two-machine wormhole. Phone camera. Android invite (still points at a furl). #30, #33, #26. |
+
+Earlier sections stay. This does not reopen #32 and does not lift the 2026-09-24 pause.
+
+---
+
 ## P4-B Android write sync — issue #44 (this slice)
 
 Earlier sections stay. This section is only #44. It does not close #26, #30, or #33, and it does not rewrite `docs/design/35`–`39`.

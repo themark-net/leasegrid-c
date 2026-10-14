@@ -92,7 +92,7 @@ Next agent reads this file + `docs/design/README.md`, picks an **open** issue (#
 
 ## 2026-10-14 — #48 and #49 merged; pre-release follow-up
 
-Not Feature GO. Not a release. No v0.1.1 tag. No pull request from this follow-up.
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 is open for this follow-up (`build/ff-0111-prerelease`).
 
 #48 (`d326c5b`, tester guide) and #49 (`9029086`, invite polish) are merged. `main` is `9029086`. This follow-up is `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel`, based on that `main`.
 
@@ -108,6 +108,23 @@ Not Feature GO. Not a release. No v0.1.1 tag. No pull request from this follow-u
 | **Not done** | Live two-machine wormhole. Phone camera. Android invite still refuses a short code and still names a `pb://` furl in that recovery line. #30, #33, #26. Feature GO. A v0.1.1 tag. |
 
 Earlier sections stay. This does not reopen #32 and does not lift the 2026-09-24 pause.
+
+## 2026-10-14 — PR #51 fix round after tester FAIL at `b63742b`
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it from here.
+
+| | |
+|--|--|
+| **Branch** | `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel` |
+| **Tester FAIL** | `b63742b` |
+| **PR** | [#51](https://github.com/themark-net/leasegrid-c/pull/51) is open |
+| **Join copy** | No `tahoe.log` tail in the window. Disk errors (`PermissionError` / other `OSError`) are one friendly sentence, and Join is enabled again. The lead phrase appears at most once. Paths in that text stay for friends-and-family reports. |
+| **Mutation: log tail** | Re-adding the tail fails `tests/test_sync_backend.py::test_start_log_tail_is_not_shown` at `assert "pb://" not in blob` (`tests/test_sync_backend.py:566`). |
+| **Mutation: Join button** | Removing the `finally` fails `tests/test_sync_ui.py::test_join_permission_denied_reenables_button` at `assert ui.join_btn.isEnabled()` (`tests/test_sync_ui.py:250`, `assert False`). |
+| **Mutation: OSError echo** | Appending `str(exc)` on the non-permission return fails `tests/test_sync_backend.py::test_join_other_oserror_text_is_not_echoed` at `assert "other OSError text" not in blob` (`tests/test_sync_backend.py:615`). The permission-only test stayed green. The same echo fails `tests/test_sync_ui.py::test_join_other_oserror_text_is_not_shown` (`tests/test_sync_ui.py:262`). Spawn echo fails `tests/test_sync_backend.py::test_join_spawn_oserror_text_is_not_echoed` (`tests/test_sync_backend.py:636`). |
+| **Docs** | SmartScreen reputation and Windows 11 Smart App Control in `docs/ops/installers.md` and `docs/TESTERS.md`. macOS **Open Anyway** lasts about an hour and asks for the login password. Decision row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`. |
+| **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 319 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)
 

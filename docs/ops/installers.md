@@ -119,7 +119,9 @@ msvcrt path and the `.bat`-wrapped fake `tahoe` are exercised on Windows there.
   (unknown publisher) when `setup.exe` or an exe is launched. **More info**,
   then **Run anyway**. That dialog is the launch prompt. It is not a switch
   you set in Windows Security before the first start. An EV or OV
-  code-signing certificate on `setup.exe` and the exes would remove the warning.
+  code-signing certificate does not remove the warning. Since 2024, signed
+  files still show it until that signature builds reputation. On Windows 11,
+  Smart App Control can block the app and offer no **Run anyway**.
 
 ## Known limits
 

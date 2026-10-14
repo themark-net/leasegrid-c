@@ -22,6 +22,7 @@ from leasegrid_sync.app import (  # noqa: E402
     TopUpDialog,
 )
 from leasegrid_sync.backend import ConnectionStatus, SyncError  # noqa: E402
+from tests.qr_decode import INVITE_JOIN_TAHOE, decode_qr_png, write_executable  # noqa: E402
 from leasegrid_sync.credit import (  # noqa: E402
     CreditBalance,
     CreditSnapshot,
@@ -570,6 +571,100 @@ def test_add_dialog_invite_card_copies_code_and_keeps_paste_furl(ui: MainWindow,
     assert "pb://" in dlg.paste_hint.text()
     assert dlg.furl_edit.isVisible()
     dlg.dlg.close()
+
+
+def _png_of(ui: MainWindow, pixmap) -> bytes:
+    buf = ui.QtCore.QBuffer()
+    buf.open(ui.QtCore.QIODevice.WriteOnly)
+    assert pixmap.save(buf, "PNG")
+    return bytes(buf.data())
+
+
+def _welcome_after_node_url(client):
+    def welcome(timeout: float = 5.0):
+        if not (client.nodedir / "node.url").is_file():
+            raise SyncError("could not join this friendnet. Tahoe client is not reachable.")
+        return {
+            "introducers": {"statuses": ["Connected to tcp:127.0.0.1:45001 via tcp"]},
+            "servers": [{"nickname": "storage-1", "connection_status": "connected"}],
+        }
+
+    return welcome
+
+
+def test_share_qr_copy_then_join_recovers_from_bad_codes(ui: MainWindow, tmp_path):
+    """Copy and the on-screen QR are the short code. A bad paste does not block the next one."""
+    furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+    _write_joined_cfg(ui, furl)
+    ui.tahoe.tahoe_bin = write_executable(tmp_path / "bin", INVITE_JOIN_TAHOE)
+    dlg = InviteShareDialog(ui.win, ui, ui.QtWidgets)
+    joiner = None
+    try:
+        dlg.dlg.show()
+        ui.QtWidgets.QApplication.processEvents()
+        code = dlg.panel.code_edit.text()
+        assert code == "7-orange-tunnel"
+        assert "pb://" not in code
+        assert dlg.panel.join_link.isHidden()
+        scanned = decode_qr_png(_png_of(ui, dlg.panel.qr.pixmap()))
+        assert scanned == code
+        dlg.panel.on_copy()
+        clipped = ui.QtWidgets.QApplication.clipboard().text()
+        assert clipped == code
+        assert "pb://" not in clipped
+        assert ui._invite_session is not None and ui._invite_session.alive()
+
+        joiner = MainWindow(
+            nodedir=tmp_path / "joiner" / "tahoe",
+            home=tmp_path / "joiner-home",
+            credit=FakeCredit(),
+            autoload=False,
+        )
+        joiner.tahoe.tahoe_bin = ui.tahoe.tahoe_bin
+        joiner.threat_ack.setChecked(True)
+        joiner.win.show()
+
+        joiner.invite_edit.setText("%%%not-a-code%%%")
+        joiner.on_join_invite()
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert "FAIL" in joiner.join_error.text()
+        assert "pb://" not in joiner.join_error.text()
+        assert joiner.join_btn.isEnabled()
+        assert not joiner.tahoe.has_nodedir()
+
+        joiner.invite_edit.setText("3-bad-code")
+        joiner.on_join_invite()
+        assert "not accepted" in joiner.join_error.text()
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert joiner.join_btn.isEnabled()
+        assert not joiner.tahoe.has_nodedir()
+
+        joiner.invite_edit.setText("0-dead-code")
+        joiner.on_join_invite()
+        assert "expire" in joiner.join_error.text().lower()
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert joiner.join_btn.isEnabled()
+        assert not joiner.tahoe.has_nodedir()
+
+        assert ui._invite_session.alive()
+        joiner.invite_edit.setText(ui.QtWidgets.QApplication.clipboard().text())
+        with patch.object(joiner.tahoe, "welcome", side_effect=_welcome_after_node_url(joiner.tahoe)):
+            with patch.object(joiner.mf, "list_folders", return_value=[]):
+                joiner.on_join_invite()
+        assert joiner.stack.currentWidget() is joiner.main_page
+        assert joiner.join_error.text() == ""
+        cfg = (joiner.tahoe.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--join=%s" % code in cfg
+        assert furl not in cfg
+    finally:
+        dlg.dlg.close()
+        session = getattr(ui, "_invite_session", None)
+        if session is not None:
+            session.close()
+        if joiner is not None:
+            joiner.tahoe.stop()
+            joiner.poll.stop()
+            joiner.win.hide()
 
 
 def test_share_before_join_fails_in_window(ui: MainWindow):

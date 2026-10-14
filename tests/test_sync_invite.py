@@ -5,10 +5,12 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from leasegrid_sync.backend import SyncError, validate_invite, validate_introducer_furl
+from leasegrid_sync.backend import SyncError, TahoeClient, validate_invite, validate_introducer_furl
+from tests.qr_decode import INVITE_JOIN_TAHOE, decode_qr_png, write_executable
 from leasegrid_sync.invite import (
     DEFAULT_JOIN_ORIGIN,
     InviteCodeSession,
@@ -208,3 +210,84 @@ def test_share_url_for_nodedir_puts_furl_in_fragment(tmp_path, monkeypatch):
     with pytest.raises(SyncError) as exc:
         share_url_for_nodedir(tmp_path / "missing")
     assert "No friendnet joined" in exc.value.banner()
+
+
+def test_garbled_invite_does_not_ask_for_a_raw_furl():
+    """A mistyped code must not tell a person to paste an introducer furl."""
+    with pytest.raises(SyncError) as exc:
+        parse_invite("%%%not-a-code%%%")
+    banner = exc.value.banner()
+    assert "FAIL" in banner
+    assert "pb://" not in banner
+    assert "7-word-word" in banner
+    with pytest.raises(SyncError) as exc:
+        parse_invite("http://127.0.0.1:3456/")
+    assert "pb://" not in exc.value.banner()
+    assert "web ui" in exc.value.banner().lower()
+
+
+def test_qr_png_decodes_to_the_payload_it_was_given():
+    """Two different payloads must come back out of the image, not a fixed stamp."""
+    short = "7-orange-tunnel"
+    other = "9-other-words"
+    assert decode_qr_png(qr_png(short)) == short
+    assert decode_qr_png(qr_png(other)) == other
+    assert decode_qr_png(qr_png(GOOD_FURL)) == GOOD_FURL
+
+
+def _welcome_after_node_url(client: TahoeClient):
+    def welcome(timeout: float = 5.0):
+        if not (client.nodedir / "node.url").is_file():
+            raise SyncError("could not join this friendnet. Tahoe client is not reachable.")
+        return {
+            "introducers": {"statuses": ["Connected to tcp:127.0.0.1:45001 via tcp"]},
+            "servers": [{"nickname": "storage-1", "connection_status": "connected"}],
+        }
+
+    return welcome
+
+
+def test_generated_code_round_trips_after_bad_garbled_and_expired(tmp_path: Path):
+    """Share prints a short code. Join rejects garbage, then that code connects."""
+    inviter = _joined_nodedir(tmp_path)
+    tahoe_bin = write_executable(tmp_path / "bin", INVITE_JOIN_TAHOE)
+    session = start_invite_code(inviter, tahoe_bin=tahoe_bin, timeout=5)
+    joiner = TahoeClient(
+        nodedir=tmp_path / "joiner" / "tahoe",
+        tahoe_bin=tahoe_bin,
+        home=tmp_path / "joiner-home",
+    )
+    try:
+        code = session.code
+        assert code == "7-orange-tunnel"
+        assert session.alive()
+        assert decode_qr_png(qr_png(code)) == code
+        assert "pb://" not in code
+
+        with pytest.raises(SyncError) as exc:
+            joiner.join_invite("%%%not-a-code%%%")
+        assert "pb://" not in exc.value.banner()
+        assert "short code" in exc.value.banner()
+        assert not joiner.has_nodedir()
+
+        with pytest.raises(SyncError) as exc:
+            joiner.join_invite("3-bad-code")
+        assert "not accepted" in exc.value.message
+        assert not joiner.has_nodedir()
+
+        with pytest.raises(SyncError) as exc:
+            joiner.join_invite("0-dead-code")
+        assert "expire" in exc.value.banner().lower()
+        assert not joiner.has_nodedir()
+
+        assert session.alive()
+        with patch.object(joiner, "welcome", side_effect=_welcome_after_node_url(joiner)):
+            status = joiner.join_invite(code)
+        assert status.state == "Connected"
+        cfg = (joiner.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--join=%s" % code in cfg
+        assert "--introducer" not in cfg.split("\n", 1)[0]
+        assert GOOD_FURL not in cfg
+    finally:
+        session.close()
+        joiner.stop()

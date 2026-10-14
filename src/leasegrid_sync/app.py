@@ -784,9 +784,9 @@ class InviteSharePanel:
             if not pix.loadFromData(qr_png(payload)) or pix.isNull():
                 raise RuntimeError("empty qr")
             self.qr.setText("")
-            self.qr.setPixmap(
-                pix.scaled(160, 160, self.window.QtCore.Qt.KeepAspectRatio)
-            )
+            # A 160px shrink is not a whole number of modules, so a camera
+            # reads a broken code. Show the symbol at its own size.
+            self.qr.setPixmap(pix)
         except Exception:
             self.qr.setText("QR unavailable")
 

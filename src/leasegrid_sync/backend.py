@@ -704,6 +704,8 @@ def join_spawn_failure(
     FileNotFoundError and TimeoutExpired used to be interpolated into the
     banner. The buyer text matches the expired / rejected / network mapping
     and never includes the exception, a module, or a filesystem path.
+    A generic OSError (anything other than a missing binary) uses the same
+    rule: the strerror is not copied into the window.
     """
     if isinstance(exc, subprocess.TimeoutExpired):
         if code:
@@ -719,10 +721,42 @@ def join_spawn_failure(
         )
     if isinstance(exc, FileNotFoundError):
         return join_tahoe_missing()
+    # Any other spawn failure, including OSError. Do not append str(exc).
     return SyncError(
         "could not join this friendnet. The Tahoe client could not be started.",
         "install it next to Sync: pip install 'leasegrid-zkap-lab[sync,tahoe]'; Retry.",
     )
+
+
+def join_filesystem_failure(exc: BaseException) -> SyncError:
+    """Buyer copy when join cannot create a directory or open a file.
+
+    ``str(exc)`` is an errno line plus a path. PermissionError and any other
+    OSError use the same sentence. Do not append ``str(exc)`` on either path.
+    """
+    message = (
+        "could not join this friendnet. This computer would not let "
+        "Leasegrid Sync save its files."
+    )
+    hint = "check that the Sync folder is writable, then Retry."
+    if isinstance(exc, PermissionError):
+        return SyncError(message, hint)
+    return SyncError(message, hint)
+
+
+def _join_message(detail: str) -> str:
+    """One ``could not join this friendnet.`` lead.
+
+    Connection status already stores that lead inside ``detail`` when welcome()
+    failed. Prefixing it again put the phrase in the window twice.
+    """
+    lead = "could not join this friendnet."
+    text = (detail or "").strip()
+    if text.lower().startswith(lead):
+        return text
+    if not text:
+        return lead
+    return "%s %s" % (lead, text)
 
 
 def validate_invite(raw: str) -> str:
@@ -842,7 +876,10 @@ class TahoeClient:
         ]
         if offer_storage:
             storage_dir = self.home / "storage"
-            storage_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                storage_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise join_filesystem_failure(exc) from exc
             cmd += [
                 "--listen=tcp",
                 "--hostname=%s" % storage_hostname(),
@@ -864,13 +901,17 @@ class TahoeClient:
             ]
             timeout = 120
         cmd.append(str(self.nodedir))
-        self.nodedir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.nodedir.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise join_filesystem_failure(exc) from exc
         try:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=timeout, check=False
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
-            if isinstance(exc, subprocess.TimeoutExpired):
+            # A missing binary can still leave the basedir tahoe was about to use.
+            if isinstance(exc, (subprocess.TimeoutExpired, FileNotFoundError)):
                 shutil.rmtree(self.nodedir, ignore_errors=True)
             raise join_spawn_failure(
                 exc, invite=invite, code=bool(code), timeout=timeout
@@ -942,8 +983,11 @@ class TahoeClient:
             )
         if self._proc is not None and self._proc.poll() is None:
             return
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_f = open(self.log_path, "ab")
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_f = open(self.log_path, "ab")
+        except OSError as exc:
+            raise join_filesystem_failure(exc) from exc
         try:
             self._proc = popen_hidden(
                 [self.require_bin(), "run", str(self.nodedir)],
@@ -955,11 +999,12 @@ class TahoeClient:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._proc.poll() is not None:
-                tail = _tail(self.log_path)
                 self._proc = None
+                # The log can hold a traceback and a furl. The window names the
+                # file (operators asked to keep paths) and does not paste it.
                 raise SyncError(
                     "could not join this friendnet. Tahoe exited while starting.",
-                    "see %s (%s); Retry." % (self.log_path, tail),
+                    "see %s; Retry." % self.log_path,
                 )
             if self.is_reachable():
                 return
@@ -1142,7 +1187,7 @@ class TahoeClient:
             if not self.tahoe_bin:
                 status = self.connection_status()
                 raise SyncError(
-                    "could not join this friendnet. %s" % status.detail,
+                    _join_message(status.detail),
                     "start the Tahoe client (tahoe run %s); Retry." % self.nodedir,
                 )
             # Node is down anyway, so this is the safe moment to (re)enable paying.
@@ -1151,7 +1196,7 @@ class TahoeClient:
         status = self.wait_connected()
         if status.state == "FAIL":
             raise SyncError(
-                "could not join this friendnet. %s" % status.detail,
+                _join_message(status.detail),
                 "start the Tahoe client; check network; Retry.",
             )
         if status.state == "Offline":

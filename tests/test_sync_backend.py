@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 
 from leasegrid_sync import backend as backend_mod
 from leasegrid_sync.backend import (
+    ConnectionStatus,
     MagicFolderCtl,
     SyncError,
     TahoeClient,
@@ -516,6 +518,181 @@ def test_join_unrecognised_stderr_is_never_echoed(tmp_path: Path, monkeypatch):
     _assert_no_raw_failure(blob)
     _assert_no_spawn_leak(blob, weird)
     assert not nodedir.exists()
+
+
+# Furl shape, not a prefix check alone: tub id, host:port, swissnum.
+_FURL_SHAPE = re.compile(r"pb://[^\s/]+@[^\s/]+/[^\s]+", re.IGNORECASE)
+_EXC_CLASS = re.compile(r"\b[A-Za-z_][\w.]*(?:Error|Exception)\b")
+
+
+def _assert_join_phrase_once(text: str) -> None:
+    assert text.lower().count("could not join this friendnet.") <= 1
+
+
+def _exit_immediately_tahoe(tmp_path: Path) -> str:
+    script = tmp_path / "exit_tahoe.py"
+    script.write_text("import sys\nsys.exit(1)\n", encoding="utf-8")
+    if os.name == "nt":
+        bat = tmp_path / "exit_tahoe.bat"
+        bat.write_text('@"%s" "%s" %%*\n' % (sys.executable, script), encoding="utf-8")
+        return str(bat)
+    bin_ = tmp_path / "exit_tahoe"
+    bin_.write_text("#!%s\nimport sys\nsys.exit(1)\n" % sys.executable, encoding="utf-8")
+    bin_.chmod(0o755)
+    return str(bin_)
+
+
+def test_start_log_tail_is_not_shown(tmp_path: Path):
+    """A crashed `tahoe run` must not paste tahoe.log into the buyer text."""
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    nodedir.mkdir(parents=True)
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    log = home / "logs" / "tahoe.log"
+    log.parent.mkdir(parents=True)
+    # Obviously fake. The window must not grow this line back.
+    seeded = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    log.write_text(
+        "Traceback (most recent call last):\n"
+        '  File "/opt/fake-tahoe/src/allmydata/node.py", line 3, in start\n'
+        "RuntimeError: introducer failed\n" + seeded + "\n",
+        encoding="utf-8",
+    )
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_exit_immediately_tahoe(tmp_path), home=home)
+    with pytest.raises(SyncError) as exc:
+        client.start(timeout=3)
+    blob = exc.value.banner()
+    assert "Tahoe exited while starting" in blob
+    assert "pb://" not in blob
+    assert _FURL_SHAPE.search(blob) is None
+    assert "Traceback" not in blob
+    assert _EXC_CLASS.search(blob) is None
+    assert "allmydata" not in blob
+    assert seeded not in blob
+    _assert_join_phrase_once(blob)
+
+
+def test_join_permission_denied_is_friendly(tmp_path: Path, monkeypatch):
+    """A read-only storage directory must not show Errno text or the path."""
+    tahoe_bin = _fake_tahoe(tmp_path)
+    real_mkdir = Path.mkdir
+
+    def mkdir(self, *args, **kwargs):
+        if self.name == "storage":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    home = tmp_path / "home"
+    client = TahoeClient(nodedir=home / "tahoe", tahoe_bin=tahoe_bin, home=home)
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "save its files" in blob
+    assert "Permission denied" not in blob
+    assert "Errno" not in blob
+    assert str(home) not in blob
+    _assert_join_phrase_once(blob)
+    _assert_no_spawn_leak(blob)
+
+
+def test_join_other_oserror_text_is_not_echoed(tmp_path: Path, monkeypatch):
+    """Generic OSError strerror must not appear. Kills an echo on the non-permission branch."""
+    tahoe_bin = _fake_tahoe(tmp_path)
+    real_mkdir = Path.mkdir
+
+    def mkdir(self, *args, **kwargs):
+        if self.name == "storage":
+            raise OSError(5, "other OSError text", str(self))
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    home = tmp_path / "home"
+    client = TahoeClient(nodedir=home / "tahoe", tahoe_bin=tahoe_bin, home=home)
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "other OSError text" not in blob
+    assert "Errno" not in blob
+    assert "save its files" in blob
+    assert str(home) not in blob
+    _assert_join_phrase_once(blob)
+
+
+def test_join_spawn_oserror_text_is_not_echoed(tmp_path: Path, monkeypatch):
+    """`tahoe create-node` raising OSError must not copy the strerror either."""
+
+    def raise_oserror(cmd, **kwargs):
+        raise OSError(5, "other OSError text")
+
+    monkeypatch.setattr("leasegrid_sync.backend.subprocess.run", raise_oserror)
+    home = tmp_path / "home"
+    client = TahoeClient(
+        nodedir=home / "tahoe", tahoe_bin=str(tmp_path / "tahoe-bin"), home=home
+    )
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "other OSError text" not in blob
+    assert "Errno" not in blob
+    assert "could not be started" in blob
+    _assert_join_phrase_once(blob)
+
+
+def test_join_file_not_found_removes_partial_nodedir(tmp_path: Path, monkeypatch):
+    nodedir = tmp_path / "home" / "tahoe"
+
+    def boom(cmd, **kwargs):
+        path = Path(cmd[-1])
+        path.mkdir(parents=True)
+        (path / "partial").write_text("x", encoding="utf-8")
+        raise FileNotFoundError(2, "No such file or directory", cmd[0])
+
+    monkeypatch.setattr("leasegrid_sync.backend.subprocess.run", boom)
+    client = TahoeClient(
+        nodedir=nodedir, tahoe_bin=str(tmp_path / "missing-tahoe"), home=tmp_path / "home"
+    )
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(GOOD_FURL)
+    blob = exc.value.banner()
+    assert "not installed" in blob
+    assert "No such file" not in blob
+    assert not nodedir.exists()
+    _assert_join_phrase_once(blob)
+
+
+def test_join_phrase_appears_at_most_once(tmp_path: Path, monkeypatch):
+    """welcome()'s lead must not be prefixed a second time."""
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    monkeypatch.delenv("LEASEGRID_TAHOE_BIN", raising=False)
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    client = TahoeClient(nodedir=nodedir, home=tmp_path / "home")
+    assert client.tahoe_bin is None
+    with pytest.raises(SyncError) as exc:
+        client.join_existing()
+    blob = exc.value.banner()
+    _assert_join_phrase_once(blob)
+    assert "could not join this friendnet." in blob
+
+    nodedir2 = tmp_path / "up" / "tahoe"
+    nodedir2.mkdir(parents=True)
+    (nodedir2 / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    started = TahoeClient(
+        nodedir=nodedir2, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "up"
+    )
+    fail = ConnectionStatus(
+        state="FAIL",
+        detail="could not join this friendnet. Tahoe client is not reachable.",
+    )
+    with patch.object(started, "is_reachable", return_value=True):
+        with patch.object(started, "wait_connected", return_value=fail):
+            with pytest.raises(SyncError) as exc2:
+                started.join_existing()
+    blob = exc2.value.banner()
+    _assert_join_phrase_once(blob)
+    assert "Tahoe client is not reachable" in blob
 
 
 def test_join_furl_failure_hides_the_tahoe_traceback(tmp_path: Path):

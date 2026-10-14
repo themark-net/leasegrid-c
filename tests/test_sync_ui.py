@@ -234,6 +234,37 @@ def test_empty_invite_fail(ui: MainWindow):
     assert ui.invite_edit.isEnabled()
 
 
+def test_join_permission_denied_reenables_button(ui: MainWindow):
+    """PermissionError is friendly copy, and Join is clickable again."""
+    _ack_join(ui)
+    ui.invite_edit.setText("7-guitarist-revenge")
+    err = PermissionError(13, "Permission denied", "/read-only/home/storage")
+    with patch.object(ui.tahoe, "join_invite", side_effect=err):
+        ui.on_join_invite()
+    text = ui.join_error.text()
+    assert "save its files" in text
+    assert "Permission denied" not in text
+    assert "Errno" not in text
+    assert "/read-only/home/storage" not in text
+    assert text.lower().count("could not join this friendnet.") <= 1
+    assert ui.join_btn.isEnabled()
+    assert ui.invite_edit.isEnabled()
+
+
+def test_join_other_oserror_text_is_not_shown(ui: MainWindow):
+    """A non-permission OSError must not echo its strerror into the window."""
+    _ack_join(ui)
+    ui.invite_edit.setText("7-guitarist-revenge")
+    err = OSError(5, "other OSError text")
+    with patch.object(ui.tahoe, "join_invite", side_effect=err):
+        ui.on_join_invite()
+    text = ui.join_error.text()
+    assert "other OSError text" not in text
+    assert "Errno" not in text
+    assert "save its files" in text
+    assert ui.join_btn.isEnabled()
+
+
 def test_join_invite_success_enters_main(ui: MainWindow):
     st = ConnectionStatus(state="Connected", detail="introducer up · 3 storage", introducer_ok=True)
     seen = {}

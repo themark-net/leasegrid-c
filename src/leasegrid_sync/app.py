@@ -26,6 +26,7 @@ from .backend import (
     format_bytes,
     format_hosted_strip,
     is_wormhole_code,
+    join_filesystem_failure,
     read_disk_offer,
     read_hosted_shares,
     read_local_accepted,
@@ -2068,13 +2069,18 @@ class MainWindow:
             )
         self._join_busy(True, progress)
         try:
-            status = self.tahoe.join_invite(invite, offer_storage=offer)
-        except SyncError as exc:
+            try:
+                status = self.tahoe.join_invite(invite, offer_storage=offer)
+            except SyncError as exc:
+                self.show_join_error(exc)
+                return
+            except OSError as exc:
+                self.show_join_error(join_filesystem_failure(exc))
+                return
+            self._enter_main(status.state, status.detail)
+        finally:
+            # Join stays clickable even when join_invite raises outside SyncError.
             self._join_busy(False)
-            self.show_join_error(exc)
-            return
-        self._join_busy(False)
-        self._enter_main(status.state, status.detail)
 
     def on_join_existing(self) -> None:
         self.clear_errors()

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import builtins
+
 from leasegrid_sync.cli import build_parser, main
+from tests.buyer_text import POISON, assert_no_raw_user_text
 
 
 def test_help_describes_native_not_wui():
@@ -148,6 +151,65 @@ def test_restore_without_threat_ack_fails_closed(tmp_path, monkeypatch, capsys):
     assert code == 1
     assert "FAIL" in err
     assert "threat" in err.lower() or "acknowledg" in err.lower()
+
+
+def test_missing_pyqt_hides_exception_text(monkeypatch, capsys):
+    real = builtins.__import__
+
+    def boom(name, globals=None, locals=None, fromlist=(), level=0):
+        if fromlist and "run_app" in tuple(fromlist):
+            raise ImportError(POISON)
+        return real(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", boom)
+    code = main([])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "PyQt is required" in err
+    assert_no_raw_user_text(err)
+
+
+def test_restore_cli_hides_credit_exception_text(tmp_path, monkeypatch, capsys):
+    from leasegrid_sync.backend import ConnectionStatus
+    from leasegrid_sync.recovery import CREDIT_RECOVER_FAIL, encode_recovery_file
+    from tests.test_sync_recovery import _bundle
+
+    bundle = _bundle()
+    bundle.introducer_furl = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    bundle.wallet = None
+    bundle.folders = []
+    bundle.credit_seed = "ab" * 32
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_bytes(encode_recovery_file(bundle, "pw"))
+    home = tmp_path / "home"
+    home.mkdir()
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    monkeypatch.setenv("LEASEGRID_RECOVERY_PASSPHRASE", "pw")
+    monkeypatch.setenv("LEASEGRID_RECOVERY_ACK_THREAT", "1")
+    monkeypatch.delenv("LEASEGRID_RESTORE_LINGER", raising=False)
+
+    def boom(self, _bundle):
+        raise RuntimeError(POISON)
+
+    monkeypatch.setattr("leasegrid_sync.recovery.RecoveryCtl._recover_credit", boom)
+    monkeypatch.setattr(
+        "leasegrid_sync.backend.TahoeClient.join_invite",
+        lambda self, _invite: ConnectionStatus(
+            state="Connected", detail="grid-ok", introducer_ok=True
+        ),
+    )
+    monkeypatch.setattr("leasegrid_sync.backend.MagicFolderCtl.ensure_init", lambda self: None)
+    code = main(
+        ["--restore-recovery", str(key), "--ack-threat", "--nodedir", str(nodedir)]
+    )
+    captured = capsys.readouterr()
+    assert code == 0, captured.err
+    assert "error=%s" % CREDIT_RECOVER_FAIL in captured.out
+    assert_no_raw_user_text(captured.out)
+    assert_no_raw_user_text(captured.err)
 
 
 def test_credit_status_fail_closed(tmp_path, monkeypatch, capsys):

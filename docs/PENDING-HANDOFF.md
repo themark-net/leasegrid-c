@@ -118,7 +118,7 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it
 | **Branch** | `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel` |
 | **Tester FAIL** | `b63742b` |
 | **PR** | [#51](https://github.com/themark-net/leasegrid-c/pull/51) is open |
-| **Join copy** | No `tahoe.log` tail in the window. Disk errors (`PermissionError` / other `OSError`) are one friendly sentence, and Join is enabled again. The lead phrase appears at most once. Paths in that text stay for friends-and-family reports. |
+| **Join copy** | No `tahoe.log` tail in the window. Disk errors (`PermissionError` / other `OSError`) are one friendly sentence, and `on_join_invite` enables Join again. `on_join_existing` is fixed in the PR #53 scope round. The lead phrase appears at most once. Paths in that text stay for friends-and-family reports. |
 | **Mutation: log tail** | Re-adding the tail fails `tests/test_sync_backend.py::test_start_log_tail_is_not_shown` at `assert "pb://" not in blob` (`tests/test_sync_backend.py:566`). |
 | **Mutation: Join button** | Removing the `finally` fails `tests/test_sync_ui.py::test_join_permission_denied_reenables_button` at `assert ui.join_btn.isEnabled()` (`tests/test_sync_ui.py:250`, `assert False`). |
 | **Mutation: OSError echo** | Appending `str(exc)` on the non-permission return fails `tests/test_sync_backend.py::test_join_other_oserror_text_is_not_echoed` at `assert "other OSError text" not in blob` (`tests/test_sync_backend.py:615`). The permission-only test stayed green. The same echo fails `tests/test_sync_ui.py::test_join_other_oserror_text_is_not_shown` (`tests/test_sync_ui.py:262`). Spawn echo fails `tests/test_sync_backend.py::test_join_spawn_oserror_text_is_not_echoed` (`tests/test_sync_backend.py:636`). |
@@ -139,6 +139,61 @@ Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it
 | **Mutation** | Re-adding the log text fails `tests/test_sync_backend.py::test_magic_folder_exit_log_tail_is_not_shown` at `assert "pb://" not in blob` (`tests/test_sync_backend.py:602`). |
 | **Left in place** | Other stderr, stdout, and `str(exc)` echoes are listed in the handoff. No other log tail. |
 | **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 320 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
+## 2026-10-14 — #52 raw error text (`build/ff-0111-rawtext`)
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open on `build/ff-0111-prerelease`. PR #53 is open on `build/ff-0111-rawtext`. Do not merge from here. Do not tag v0.1.1.
+
+| | |
+|--|--|
+| **Issue** | [#52](https://github.com/themark-net/leasegrid-c/issues/52) raw error text in Sync UI. Release blocker for v0.1.1. #30 stays open. |
+| **Branch** | `build/ff-0111-rawtext` in worktree `tmp/ff-0111-rawtext` |
+| **Parent** | `e9de382` on `build/ff-0111-prerelease` (PR #51) |
+| **Decision** | Gate #51 as-is. Do not fold these sites into #51. The blocker label stops a release. Row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`. |
+| **Buyer text** | Paths may stay. Furls, tracebacks, and exception class or module names do not. Magic Folder HTTP 500 names #30. Init and add stderr, unexpected errors, the REVIEW chip, and recovery credit errors use fixed sentences. Disk errno text is dropped. The path stays. |
+| **Mutation** | Re-echoing each site failed the test named in [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md). HTTP POST fails `assert "pb://" not in blob` at `tests/buyer_text.py:21`. Recovery CLI fails `tests/test_sync_cli.py:210`. |
+| **Static check** | `tests/test_no_raw_exception_text.py`. A planted `f"plant {exc}"` failed `assert not hits` at `tests/test_no_raw_exception_text.py:251`, then was removed. |
+| **CI** | `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → 336 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
+## 2026-10-14 — PR #53 scope on `build/ff-0111-rawtext`
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays on `build/ff-0111-prerelease`. Do not merge from here. Do not tag v0.1.1. Do not push `build/ff-0111-prerelease`.
+
+| | |
+|--|--|
+| **PR** | [#53](https://github.com/themark-net/leasegrid-c/pull/53) on `build/ff-0111-rawtext` |
+| **Parent** | `8eca081` |
+| **Magic Folder** | A daemon process exit says "Magic Folder stopped while starting" and names the log file. It does not name #30. An HTTP 500 still names known issue #30. #30 stays open. |
+| **Use existing** | `on_join_existing` maps a read-only or undecodable `tahoe.cfg` to the same friendly sentence as `on_join_invite`, and `try`/`finally` enables Join again. The #51 "Join is enabled again" line is `on_join_invite`. |
+| **Spawn text** | "Could not start Magic Folder." does not append the exception. The scanner sample covers `'%s' % exc`. |
+| **Mutation: Join button** | Removing the `finally` fails `tests/test_sync_ui.py::test_join_existing_permission_denied_reenables_button` at `assert ui.join_btn.isEnabled()` (`tests/test_sync_ui.py:268`, `assert False`). The decode test fails the same way at `tests/test_sync_ui.py:285`. |
+| **Mutation: echo** | Appending `str(exc)` fails `assert "Permission denied" not in text` (`tests/test_sync_ui.py:263`) and `assert "poison-decode-reason" not in text` (`tests/test_sync_ui.py:281`). |
+| **Mutation: plant** | Putting `'Could not start Magic Folder: %s' % exc` back fails `tests/test_no_raw_exception_text.py::test_sync_package_has_no_raw_exception_text` at `assert not hits` (`tests/test_no_raw_exception_text.py:251`). The hit was `src/leasegrid_sync/backend.py:1379`. The spawn test fails `assert "Could not start Magic Folder." in blob` (`tests/test_sync_backend.py:1218`). The plant was removed. |
+| **Decision** | Row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`: deferred from #51 to this PR. |
+| **CI** | `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → 338 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
+## 2026-10-14 — PR #53 fix round after tester FAIL at `27f9799`
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open on `build/ff-0111-prerelease`. PR #53 stays open on `build/ff-0111-rawtext`. Do not merge from here. Do not tag v0.1.1. Do not push `build/ff-0111-prerelease`.
+
+| | |
+|--|--|
+| **Tester FAIL** | `27f9799` on PR #53. Reviewer passed. |
+| **Invite** | The existing-node introducer failure no longer includes the invite, in any form. Join with a furl, join with a link, and recovery import share that sentence. The node path stays. |
+| **Mutation: invite** | Putting the full invite back fails `assert "pb://" not in blob` in `tests/test_sync_backend.py::test_existing_node_furl_join_hides_invite` (`tests/test_sync_backend.py:1305`), `test_existing_node_link_join_hides_invite` (`tests/test_sync_backend.py:1322`), and `test_recovery_import_existing_node_hides_invite` (`tests/test_sync_backend.py:1349`). Restored. All three passed. |
+| **Magic Folder log** | `ensure_running` creates the log directory and opens the log inside a `try`. A read-only directory is one friendly sentence. The path stays. The errno text does not. |
+| **Mutation: log** | Leaving `mkdir` and `open` outside the `try` raises `PermissionError` at `ctl.ensure_running()` (`tests/test_sync_backend.py:1367`). Echoing the exception fails `assert "Permission denied" not in blob` (`tests/test_sync_backend.py:1371`). Restored. The test passed. |
+| **Scanner** | Every `except ... as <name>` binding is exception text inside that handler, including `ex`. `redact_furl(...)` flowing into buyer text is a hit. `name.banner()` stays allowed. |
+| **Mutation: scanner** | Planted `except OSError as ex` and `redact_furl(...)` in `SyncError` failed `assert not hits` (`tests/test_no_raw_exception_text.py:291`). Hits were `src/leasegrid_sync/backend.py:1721` and `src/leasegrid_sync/backend.py:1725`. Plants removed. The test passed. |
+| **Disk offer** | A bad `reserved_space` value is not copied into the window. |
+| **Mutation: reserved_space** | Putting the raw value back fails `assert raw not in blob` (`tests/test_sync_backend.py:1403`). Restored. The test passed. |
+| **Refresh** | A Magic Folder HTTP 500 while listing folders says "could not refresh folders." It does not say "folder not added." An add still does. #30 stays open. |
+| **Mutation: refresh** | Leaving the add sentence in place fails `assert "folder not added" not in blob.lower()` (`tests/test_sync_backend.py:1420`) and `assert "folder not added" not in rows[0].detail.lower()` (`tests/test_sync_backend.py:1457`). Restored. Both tests passed. |
+| **Parked** | Import dialog truncates the Next line. Not fixed. Row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`. |
+| **CI** | `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → 345 passed, exit 0. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
 
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)

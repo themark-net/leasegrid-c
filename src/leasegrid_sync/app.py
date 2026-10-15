@@ -204,10 +204,15 @@ def _make_disk_pie(parent):
 
 
 def unexpected_error(exc: BaseException, what: str) -> SyncError:
-    """Wrap a non-SyncError so it can be shown as a FAIL banner instead of aborting."""
-    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
-    msg = "%s Unexpected error: %s%s" % (what, type(exc).__name__, (" — " + detail) if detail else "")
-    return SyncError(msg, UNEXPECTED_NEXT)
+    """Wrap a non-SyncError so it can be shown as a FAIL banner instead of aborting.
+
+    The class name and ``str(exc)`` stay in ``logs/sync-ui.log`` via
+    ``log_exception``. The banner and the REVIEW chip get ``what`` only.
+    """
+    lead = what.strip()
+    if lead.endswith("."):
+        lead = lead[:-1]
+    return SyncError("%s. Unexpected error." % lead, UNEXPECTED_NEXT)
 
 
 def install_excepthook(ui: "MainWindow") -> None:
@@ -2088,13 +2093,18 @@ class MainWindow:
             return
         self._join_busy(True, "Connecting to the existing Tahoe node…")
         try:
-            status = self.tahoe.join_existing()
-        except SyncError as exc:
+            try:
+                status = self.tahoe.join_existing()
+            except SyncError as exc:
+                self.show_join_error(exc)
+                return
+            except (OSError, UnicodeDecodeError) as exc:
+                self.show_join_error(join_filesystem_failure(exc))
+                return
+            self._enter_main(status.state, status.detail)
+        finally:
+            # Join stays clickable even when join_existing raises outside SyncError.
             self._join_busy(False)
-            self.show_join_error(exc)
-            return
-        self._join_busy(False)
-        self._enter_main(status.state, status.detail)
 
     def _enter_main(self, state: str, detail: str) -> None:
         self._joined = True

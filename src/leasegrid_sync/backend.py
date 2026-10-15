@@ -295,7 +295,7 @@ def parse_reserved_space(raw: str, total: int) -> int:
         mult = 1
     if size is None or mult is None:
         raise SyncError(
-            "could not read this disk offer. reserved_space is not a size (%s)." % raw.strip(),
+            "could not read this disk offer. reserved_space is not a size.",
             "set reserved_space to bytes, a size like 1G, or a percent; Retry.",
         )
     return max(0, int(float(size.group(1)) * mult))
@@ -476,9 +476,10 @@ def read_disk_offer(nodedir: Path, home: Path) -> DiskSlices:
     try:
         usage = shutil.disk_usage(path)
     except OSError as exc:
+        # ``str(exc)`` is an errno line. The path stays; the errno text does not.
         raise SyncError(
-            "could not read this disk. %s" % exc,
-            "check that the disk is mounted; Retry.",
+            "could not read this disk.",
+            "check that %s is mounted; Retry." % path,
         ) from exc
     if usage.total <= 0:
         raise SyncError(
@@ -564,8 +565,8 @@ def apply_offer_percent(nodedir: Path, home: Path, percent: int) -> DiskSlices:
         usage = shutil.disk_usage(path)
     except OSError as exc:
         raise SyncError(
-            "could not offer disk. %s" % exc,
-            "check that the disk is mounted; Retry.",
+            "could not offer disk.",
+            "check that %s is mounted; Retry." % path,
         ) from exc
     if usage.total <= 0:
         raise SyncError(
@@ -731,17 +732,14 @@ def join_spawn_failure(
 def join_filesystem_failure(exc: BaseException) -> SyncError:
     """Buyer copy when join cannot create a directory or open a file.
 
-    ``str(exc)`` is an errno line plus a path. PermissionError and any other
-    OSError use the same sentence. Do not append ``str(exc)`` on either path.
+    ``str(exc)`` is an errno line plus a path, or a decode reason. Every
+    filesystem failure uses the same sentence. Do not append ``str(exc)``.
     """
-    message = (
+    return SyncError(
         "could not join this friendnet. This computer would not let "
-        "Leasegrid Sync save its files."
+        "Leasegrid Sync save its files.",
+        "check that the Sync folder is writable, then Retry.",
     )
-    hint = "check that the Sync folder is writable, then Retry."
-    if isinstance(exc, PermissionError):
-        return SyncError(message, hint)
-    return SyncError(message, hint)
 
 
 def _join_message(detail: str) -> str:
@@ -1239,8 +1237,8 @@ class TahoeClient:
                     raise
                 raise SyncError(
                     "could not join this friendnet. A Tahoe node already exists at %s "
-                    "but is not connected to an introducer (invite %s)."
-                    % (self.nodedir, redact_furl(furl)),
+                    "but is not connected to an introducer."
+                    % self.nodedir,
                     "if that node belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
                     "to a new path; otherwise check the introducer is up; Retry.",
                 ) from exc
@@ -1339,9 +1337,9 @@ class MagicFolderCtl:
             check=False,
         )
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "init failed").strip()
+            # stderr can be a traceback or a furl. Do not paste the first line.
             raise SyncError(
-                "folder not added. Could not initialize Magic Folder: %s" % err.split("\n")[0],
+                "folder not added. Could not initialize Magic Folder.",
                 "fix the Magic Folder config path; Restart Sync.",
             )
 
@@ -1369,8 +1367,14 @@ class MagicFolderCtl:
                 % self.listen_port,
                 "stop the other process or set LEASEGRID_MF_PORT; Restart Sync.",
             )
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_f = open(self.log_path, "ab")
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_f = open(self.log_path, "ab")
+        except OSError as exc:
+            raise SyncError(
+                "folder not added. This computer would not let Leasegrid Sync save its files.",
+                "check that %s is writable, then Restart Sync." % self.log_path.parent,
+            ) from exc
         try:
             self._proc = popen_hidden(
                 [self.require_bin(), "--config", str(self.config_dir), "run"],
@@ -1379,17 +1383,18 @@ class MagicFolderCtl:
         except OSError as exc:
             log_f.close()
             raise SyncError(
-                "folder not added. Could not start Magic Folder: %s" % exc,
+                "folder not added. Could not start Magic Folder.",
                 "install magic-folder; Restart Sync.",
             ) from exc
         deadline = time.time() + 20
         while time.time() < deadline:
             if self._proc.poll() is not None:
-                # magic-folder.log can hold a traceback and a furl. Known
-                # issue #30 is the buyer sentence. Do not paste the log tail.
+                # magic-folder.log can hold a traceback and a furl. A process
+                # exit is not an HTTP 500. Name the log. Do not paste it.
                 raise SyncError(
-                    "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
-                    "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+                    "folder not added. Magic Folder stopped while starting; see %s."
+                    % self.log_path,
+                    "Restart Sync.",
                 )
             if self.is_running():
                 return
@@ -1444,14 +1449,7 @@ class MagicFolderCtl:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            try:
-                detail = exc.read().decode("utf-8", "replace")[:300]
-            except Exception:
-                detail = str(exc.reason)
-            raise SyncError(
-                "Magic Folder API error (%s)." % exc.code,
-                detail or "Retry.",
-            ) from exc
+            raise self._http_failure(exc) from exc
         except urllib.error.URLError as exc:
             raise SyncError(
                 "Magic Folder daemon is not reachable.",
@@ -1467,6 +1465,26 @@ class MagicFolderCtl:
                 "see %s; Restart Sync." % self.log_path,
             ) from exc
 
+    def _http_failure(self, exc: urllib.error.HTTPError) -> SyncError:
+        """Buyer copy for a Magic Folder HTTP error.
+
+        The body and ``exc.reason`` can hold a traceback or a furl. Drain the
+        body and do not copy it. Status 500 is known issue #30.
+        """
+        try:
+            exc.read()
+        except Exception:
+            pass
+        if exc.code == 500:
+            return SyncError(
+                "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
+                "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+            )
+        return SyncError(
+            "Magic Folder API error (%s)." % exc.code,
+            "Restart Sync. If it keeps failing, file a bug per docs/TESTERS.md.",
+        )
+
     def _http_post(self, path: str, timeout: float = 30.0, body: Optional[dict] = None) -> Any:
         url = self._base_url() + path
         headers = self._auth_headers()
@@ -1479,14 +1497,7 @@ class MagicFolderCtl:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            try:
-                detail = exc.read().decode("utf-8", "replace")[:300]
-            except Exception:
-                detail = str(exc.reason)
-            raise SyncError(
-                "Magic Folder API error (%s)." % exc.code,
-                detail or "Retry.",
-            ) from exc
+            raise self._http_failure(exc) from exc
         except urllib.error.URLError as exc:
             raise SyncError(
                 "Magic Folder daemon is not reachable.",
@@ -1499,9 +1510,25 @@ class MagicFolderCtl:
         except json.JSONDecodeError:
             return {"raw": body}
 
+    def _refresh_http_message(self, exc: SyncError) -> SyncError:
+        """Listing folders is a refresh. HTTP 500 there is not an add."""
+        prefix = "folder not added. "
+        if exc.message.startswith(prefix) and "HTTP 500" in exc.message:
+            return SyncError(
+                "could not refresh folders. " + exc.message[len(prefix):],
+                exc.next_hint,
+            )
+        return exc
+
     def list_folders(self) -> list[FolderRow]:
         self.ensure_running()
-        data = self._http_get("/v1/magic-folder")
+        try:
+            data = self._http_get("/v1/magic-folder")
+        except SyncError as exc:
+            mapped = self._refresh_http_message(exc)
+            if mapped is not exc:
+                raise mapped from exc
+            raise
         if not isinstance(data, dict):
             return []
         rows = []
@@ -1530,7 +1557,7 @@ class MagicFolderCtl:
                 "/v1/magic-folder/%s/recent-changes?number=5" % quote(name, safe="")
             )
         except SyncError as exc:
-            return "FAIL", exc.message
+            return "FAIL", self._refresh_http_message(exc).message
         nfiles = len(files) if isinstance(files, list) else 0
         last = ""
         if isinstance(recent, list) and recent:
@@ -1585,9 +1612,9 @@ class MagicFolderCtl:
             timeout=120,
         )
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "add failed").strip().split("\n")[0]
+            # The first stderr line can be a traceback or a furl. Do not paste it.
             raise SyncError(
-                "folder not added. %s" % err,
+                "folder not added. Magic Folder could not add this folder.",
                 "fix the path; Restart Sync; Retry Add folder.",
             )
         return folder_name

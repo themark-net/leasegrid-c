@@ -23,6 +23,7 @@ from leasegrid_sync.app import (  # noqa: E402
 )
 from leasegrid_sync.backend import ConnectionStatus, SyncError  # noqa: E402
 from tests.qr_decode import INVITE_JOIN_TAHOE, decode_qr_png, write_executable  # noqa: E402
+from tests.buyer_text import POISON, assert_no_raw_user_text  # noqa: E402
 from leasegrid_sync.credit import (  # noqa: E402
     CreditBalance,
     CreditSnapshot,
@@ -251,6 +252,41 @@ def test_join_permission_denied_reenables_button(ui: MainWindow):
     assert ui.invite_edit.isEnabled()
 
 
+def test_join_existing_permission_denied_reenables_button(ui: MainWindow):
+    """Read-only tahoe.cfg on Use existing is friendly copy, and Join is clickable."""
+    _ack_join(ui)
+    err = PermissionError(13, "Permission denied", "/read-only/home/tahoe.cfg")
+    with patch.object(ui.tahoe, "join_existing", side_effect=err):
+        ui.on_join_existing()
+    text = ui.join_error.text()
+    assert "save its files" in text
+    assert "Permission denied" not in text
+    assert "Errno" not in text
+    assert "/read-only/home/tahoe.cfg" not in text
+    assert text.lower().count("could not join this friendnet.") <= 1
+    assert_no_raw_user_text(text)
+    assert ui.join_btn.isEnabled()
+    assert ui.existing_btn.isEnabled()
+    assert ui.invite_edit.isEnabled()
+
+
+def test_join_existing_unicode_decode_reenables_button(ui: MainWindow):
+    """An undecodable tahoe.cfg is friendly copy, and Join is clickable again."""
+    _ack_join(ui)
+    err = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "poison-decode-reason")
+    with patch.object(ui.tahoe, "join_existing", side_effect=err):
+        ui.on_join_existing()
+    text = ui.join_error.text()
+    assert "save its files" in text
+    assert "poison-decode-reason" not in text
+    assert "codec" not in text
+    assert "utf-8" not in text
+    assert_no_raw_user_text(text)
+    assert ui.join_btn.isEnabled()
+    assert ui.existing_btn.isEnabled()
+    assert ui.invite_edit.isEnabled()
+
+
 def test_join_other_oserror_text_is_not_shown(ui: MainWindow):
     """A non-permission OSError must not echo its strerror into the window."""
     _ack_join(ui)
@@ -443,6 +479,21 @@ def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
     assert ui.places.currentWidget() is ui.folders_tab
     assert "Restored 1 folder(s): Photos" in ui.folder_error.text()
     assert "Credit wallet restored" in ui.folder_error.text()
+
+
+def test_restore_credit_error_is_not_shown(ui: MainWindow, tmp_path: Path):
+    from leasegrid_sync.recovery import CREDIT_RECOVER_FAIL
+    from tests.test_sync_recovery import poisoned_credit_restore
+
+    result = poisoned_credit_restore(tmp_path)
+    st = ConnectionStatus(state="Connected", detail="grid-ok", introducer_ok=True)
+    with patch.object(ui.tahoe, "connection_status", return_value=st):
+        with patch.object(ui.mf, "list_folders", return_value=[]):
+            ui.apply_restore_result(result)
+    text = ui.folder_error.text() + "\n" + ui.recovery_status.text()
+    assert CREDIT_RECOVER_FAIL in text
+    assert "Credit → Retry later." in text
+    assert_no_raw_user_text(text)
 
 
 def test_join_page_explains_what_join_does(ui: MainWindow):
@@ -1018,23 +1069,26 @@ def test_window_close_quits_instead_of_hiding_to_tray(ui: MainWindow):
 
 def test_refresh_non_sync_error_stays_in_window(ui: MainWindow):
     _enter(ui)
-    with patch.object(ui.mf, "list_folders", side_effect=RuntimeError("boom")):
+    with patch.object(ui.mf, "list_folders", side_effect=RuntimeError(POISON)):
         ui.refresh()
-    assert ui.folder_error.text().startswith("FAIL")
-    assert "RuntimeError" in ui.folder_error.text()
-    assert "boom" in ui.folder_error.text()
-    assert (ui.home / "logs" / "sync-ui.log").is_file()
+    text = ui.folder_error.text()
+    assert text.startswith("FAIL")
+    assert "could not list folders. Unexpected error." in text
+    assert_no_raw_user_text(text)
+    log = (ui.home / "logs" / "sync-ui.log").read_text(encoding="utf-8")
+    assert "RuntimeError" in log
 
 
 def test_add_folder_non_sync_error_stays_in_window(ui: MainWindow, tmp_path: Path):
     _enter(ui)
     with patch.object(
         ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)
-    ), patch.object(ui.mf, "add_folder", side_effect=RuntimeError("native abort")):
+    ), patch.object(ui.mf, "add_folder", side_effect=RuntimeError(POISON)):
         ui.on_add_folder()
-    assert ui.folder_error.text().startswith("FAIL")
-    assert "native abort" in ui.folder_error.text()
-    assert "folder not added" in ui.folder_error.text().lower()
+    text = ui.folder_error.text()
+    assert text.startswith("FAIL")
+    assert "folder not added. Unexpected error." in text
+    assert_no_raw_user_text(text)
 
 
 def test_status_chip_is_not_tahoe_jargon(ui: MainWindow):
@@ -1336,20 +1390,19 @@ def test_credit_tab_survives_non_sync_error(ui: MainWindow, fake_credit: FakeCre
     tab's currentChanged slot used to let anything but SyncError through.
     """
     _enter(ui)
-    with patch.object(
-        fake_credit, "load_balance", side_effect=RuntimeError("Remote end closed connection")
-    ):
+    with patch.object(fake_credit, "load_balance", side_effect=RuntimeError(POISON)):
         ui.show_place(ui.credit_tab)
     assert not ui.credit_error.isHidden()
     text = ui.credit_error.text()
     assert text.startswith("FAIL")
-    assert "RuntimeError" in text and "Remote end closed" in text
+    assert "could not load credit balance. Unexpected error." in text
     assert "Next:" in text and "sync-ui.log" in text
+    assert_no_raw_user_text(text)
     assert not ui.credit_retry_btn.isHidden()
     assert ui.credit_body.isHidden()
     log = ui.home / "logs" / "sync-ui.log"
     assert log.is_file()
-    assert "RuntimeError: Remote end closed connection" in log.read_text(encoding="utf-8")
+    assert "RuntimeError" in log.read_text(encoding="utf-8")
     ui.credit_retry_btn.click()
     assert not ui.credit_body.isHidden()
     assert "About 8 GiB" in ui.credit_remaining.text()
@@ -1364,24 +1417,25 @@ def test_excepthook_keeps_window_alive_and_shows_review(ui: MainWindow):
         install_excepthook(ui)
         assert sys.excepthook is not saved
         try:
-            raise ValueError("slot blew up")
-        except ValueError as exc:
+            raise RuntimeError(POISON)
+        except RuntimeError as exc:
             sys.excepthook(type(exc), exc, exc.__traceback__)
         banner = ui.win.findChild(PyQt5.QtWidgets.QLabel, "unexpectedReview")
         assert banner is not None and not banner.isHidden()
-        assert "ValueError" in banner.text()
-        assert "slot blew up" in banner.text()
+        assert "Unexpected error." in banner.text()
         assert "sync-ui.log" in banner.text()
+        assert_no_raw_user_text(banner.text())
         assert ui.status_chip.text().startswith("REVIEW")
-        assert (ui.home / "logs" / "sync-ui.log").is_file()
+        assert_no_raw_user_text(ui.status_chip.text())
+        assert "RuntimeError" in (ui.home / "logs" / "sync-ui.log").read_text(encoding="utf-8")
         # a second failure reuses the same banner instead of stacking dialogs
         try:
-            raise KeyError("again")
+            raise KeyError(POISON)
         except KeyError as exc:
             sys.excepthook(type(exc), exc, exc.__traceback__)
         banners = ui.win.findChildren(PyQt5.QtWidgets.QLabel, "unexpectedReview")
         assert len(banners) == 1
-        assert "KeyError" in banners[0].text()
+        assert_no_raw_user_text(banners[0].text())
         banners[0].hide()
     finally:
         sys.excepthook = saved

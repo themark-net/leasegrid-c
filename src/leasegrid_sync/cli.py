@@ -156,10 +156,11 @@ def main(argv: list[str] | None = None) -> int:
         return _join_headless(args, nodedir)
     try:
         from .app import run_app
-    except ImportError as exc:
+    except ImportError:
+        # The ImportError text can name a module. The install sentence is enough.
         print(
-            "PyQt is required for %s. Install with: pip install 'leasegrid-zkap-lab[sync]'\n"
-            "(%s)" % (APP_NAME, exc),
+            "PyQt is required for %s. Install with: pip install 'leasegrid-zkap-lab[sync]'"
+            % APP_NAME,
             file=sys.stderr,
         )
         return 2

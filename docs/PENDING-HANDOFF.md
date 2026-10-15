@@ -90,26 +90,60 @@ Next agent reads this file + `docs/design/README.md`, picks an **open** issue (#
 
 ---
 
-## 2026-10-14 — #32 invite polish re-check (PR #49)
+## 2026-10-14 — #48 and #49 merged; pre-release follow-up
 
-Not Feature GO. Not a release. No v0.1.1 tag. PR #49 open, not merged. PR A (tester guide) merged as #48.
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 is open for this follow-up (`build/ff-0111-prerelease`).
+
+#48 (`d326c5b`, tester guide) and #49 (`9029086`, invite polish) are merged. `main` is `9029086`. This follow-up is `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel`, based on that `main`.
 
 | | |
 |--|--|
-| **Issue** | [#32](https://github.com/themark-net/leasegrid-c/issues/32) re-check. The issue stays closed. |
-| **Branch** | `build/ff-0111-invite-polish` in worktree `tmp/ff-0111-invite` |
-| **Parent** | `main` @ `9393cc3` (this file’s earlier sections still describe `5ac69aa` / #44) |
-| **Already shipped** | `83b3e66` share card: short code, QR, Copy code, on Offer/share. Join already pasted a short code or join link. |
-| **Behavior** | `0815516` — join failure copy no longer says to paste a `pb://` furl. Share QR is a three-finder symbol at native size. Tests decode the QR, check the clipboard, and join after a bad, garbled, and expired code. |
-| **CI** | Local `scripts/ci-local.sh` with `/tmp/lg-ff-invite-venv`: 304 passed, exit 0. GitHub Actions runs on PR #49. |
+| **Issue** | [#32](https://github.com/themark-net/leasegrid-c/issues/32) stays closed. |
+| **main** | `9029086`. #48 is `d326c5b`. #49 is the merge of the invite-polish follow-up. |
+| **This branch** | `build/ff-0111-prerelease` |
+| **Already shipped** | `83b3e66` share card: short code, QR, Copy code. #49 kept raw introducer furls out of join failure copy, uses a standard QR, and round-trips the code. |
+| **This follow-up** | Missing `tahoe` and a join timeout use the same friendly sentences as expired, rejected, and network failures. Unrecognised stderr is not echoed. macOS 15: try to open the app, then **Open Anyway**. README glibc phrase has one balanced pair of parentheses. |
+| **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 311 passed, exit 0. |
 | **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
-| **Not done** | Live two-machine wormhole. Phone camera. Android invite still refuses a short code and still names a `pb://` furl in that recovery line (left unchanged: asking for a short code would contradict the refusal). #30, #33, #26. |
+| **Not done** | Live two-machine wormhole. Phone camera. Android invite still refuses a short code and still names a `pb://` furl in that recovery line. #30, #33, #26. Feature GO. A v0.1.1 tag. |
 
 Earlier sections stay. This does not reopen #32 and does not lift the 2026-09-24 pause.
 
+## 2026-10-14 — PR #51 fix round after tester FAIL at `b63742b`
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it from here.
+
+| | |
+|--|--|
+| **Branch** | `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel` |
+| **Tester FAIL** | `b63742b` |
+| **PR** | [#51](https://github.com/themark-net/leasegrid-c/pull/51) is open |
+| **Join copy** | No `tahoe.log` tail in the window. Disk errors (`PermissionError` / other `OSError`) are one friendly sentence, and Join is enabled again. The lead phrase appears at most once. Paths in that text stay for friends-and-family reports. |
+| **Mutation: log tail** | Re-adding the tail fails `tests/test_sync_backend.py::test_start_log_tail_is_not_shown` at `assert "pb://" not in blob` (`tests/test_sync_backend.py:566`). |
+| **Mutation: Join button** | Removing the `finally` fails `tests/test_sync_ui.py::test_join_permission_denied_reenables_button` at `assert ui.join_btn.isEnabled()` (`tests/test_sync_ui.py:250`, `assert False`). |
+| **Mutation: OSError echo** | Appending `str(exc)` on the non-permission return fails `tests/test_sync_backend.py::test_join_other_oserror_text_is_not_echoed` at `assert "other OSError text" not in blob` (`tests/test_sync_backend.py:615`). The permission-only test stayed green. The same echo fails `tests/test_sync_ui.py::test_join_other_oserror_text_is_not_shown` (`tests/test_sync_ui.py:262`). Spawn echo fails `tests/test_sync_backend.py::test_join_spawn_oserror_text_is_not_echoed` (`tests/test_sync_backend.py:636`). |
+| **Docs** | SmartScreen reputation and Windows 11 Smart App Control in `docs/ops/installers.md` and `docs/TESTERS.md`. macOS **Open Anyway** lasts about an hour and asks for the login password. Decision row in `docs/ops/AUTONOMOUS-DECISIONS-2026-10-14.md`. |
+| **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 319 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
+## 2026-10-14 — PR #51 fix round 2 (Magic Folder log tail)
+
+Not Feature GO. Not a release. No v0.1.1 tag. PR #51 stays open. Do not merge it from here. Do not tag v0.1.1.
+
+| | |
+|--|--|
+| **Branch** | `build/ff-0111-prerelease` in worktree `tmp/ff-0111-prerel` |
+| **Parent** | `e6312a4` |
+| **PR** | [#51](https://github.com/themark-net/leasegrid-c/pull/51) is open |
+| **Magic Folder** | A daemon exit no longer pastes `magic-folder.log`. The sentence names known issue #30 (Magic Folder HTTP 500) and points at Retry or a bug per `docs/TESTERS.md`. #30 stays open. |
+| **Mutation** | Re-adding the log text fails `tests/test_sync_backend.py::test_magic_folder_exit_log_tail_is_not_shown` at `assert "pb://" not in blob` (`tests/test_sync_backend.py:602`). |
+| **Left in place** | Other stderr, stdout, and `str(exc)` echoes are listed in the handoff. No other log tail. |
+| **CI** | `PYTHON=/tmp/lg-ff-prerel-venv/bin/python scripts/ci-local.sh` → 320 passed, exit 0. |
+| **Write-up** | [`docs/ops/HANDOFF-ff-0111-2026-10-14.md`](ops/HANDOFF-ff-0111-2026-10-14.md) |
+
 ## 2026-10-14 — #32 fix round after tester FAIL at `18d921e` (PR #49)
 
-Not Feature GO. Not a release. No v0.1.1 tag. PR #49 stays open. PR A (tester guide) is merged as #48 (`d326c5b`), already in this branch as merge `5d501cf`. No rebase.
+Not Feature GO. Not a release. No v0.1.1 tag. This round landed in #49, merged to `main` as `9029086`. PR A (tester guide) is merged as #48 (`d326c5b`).
 
 | | |
 |--|--|

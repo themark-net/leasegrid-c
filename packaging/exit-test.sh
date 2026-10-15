@@ -98,8 +98,8 @@ dump_tahoe_logs() { # on failure: tail every Sync tahoe.log, pb:// furls redacte
   local f
   for f in "$T"/home*/logs/tahoe.log; do
     [[ -f "$f" ]] || continue
-    echo "---- tail $f (pb:// redacted) ----"
-    tail -n 80 "$f" | sed -E 's#pb://[^[:space:]"]+#pb://REDACTED#g'
+    echo "---- tail $f (allowlisted lines only, secrets redacted) ----"
+    tail -n 200 "$f" | bash "$ROOT/packaging/tahoe-log-filter.sh" | tail -n 80
   done
 }
 on_exit() {
@@ -110,7 +110,7 @@ on_exit() {
 }
 trap on_exit EXIT
 for _ in $(seq 1 90); do grep -q "dev-grid up" "$GRID_LOG" && break; sleep 1; done
-grep -q "dev-grid up" "$GRID_LOG" || { cat "$GRID_LOG"; exit 1; }
+grep -q "dev-grid up" "$GRID_LOG" || { bash "$ROOT/packaging/tahoe-log-filter.sh" < "$GRID_LOG"; exit 1; }
 FURL="$(grep -o 'pb://[^ ]*' "$GRID_LOG" | head -1)"
 RELAY="$(grep -o 'ws://127.0.0.1:[0-9]*/v1' "$GRID_LOG" | head -1)"
 test -n "$FURL"; test -n "$RELAY"
@@ -151,7 +151,8 @@ grep -q "XMR top-up" "$T/home/credit-recent.json"
 echo "==> paid upload with those XMR tokens"
 # Bounded retry, exit test only (#59): on Windows the join step's tahoe can
 # still hold the node dir/port for a moment, so a fresh start may report
-# "Tahoe exited while starting". Retry that exact failure at most twice.
+# "Tahoe exited while starting". Retry at most twice when the output contains
+# that phrase (substring match, grep -q).
 for attempt in 1 2 3; do
   rc=0
   SYNC_HOME="$T/home" OUT="$T/dogfood.out" client --dogfood-folder "$T/sync" || rc=$?
@@ -165,7 +166,7 @@ for attempt in 1 2 3; do
   [[ $rc -ne 0 ]] || rc=1; exit "$rc"
 done
 grep -q "^U1 dogfood" "$T/dogfood.out"
-grep -q "$NEEDLE" "$T/home/logs/tahoe.log" || { echo "tahoe.log lacks '$NEEDLE' (did a system tahoe run?)"; head -5 "$T/home/logs/tahoe.log"; exit 1; }
+grep -q "$NEEDLE" "$T/home/logs/tahoe.log" || { echo "tahoe.log lacks '$NEEDLE' (did a system tahoe run?)"; head -5 "$T/home/logs/tahoe.log" | bash "$ROOT/packaging/tahoe-log-filter.sh"; exit 1; }
 for p in 8711 8712 8713; do
   info="$(curl -fsS "http://127.0.0.1:$p/v0/info")"
   echo "$info" | grep -q '"spent": [1-9]' || { echo "no spend on :$p: $info"; exit 1; }

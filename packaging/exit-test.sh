@@ -94,7 +94,21 @@ cleanup() {
     kill "${INVITE_PID:-}" 2>/dev/null || true
   fi
 }
-trap cleanup EXIT
+dump_tahoe_logs() { # on failure: tail every Sync tahoe.log, pb:// furls redacted (#59)
+  local f
+  for f in "$T"/home*/logs/tahoe.log; do
+    [[ -f "$f" ]] || continue
+    echo "---- tail $f (pb:// redacted) ----"
+    tail -n 80 "$f" | sed -E 's#pb://[^[:space:]"]+#pb://REDACTED#g'
+  done
+}
+on_exit() {
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then dump_tahoe_logs || true; fi
+  cleanup
+  return "$rc"
+}
+trap on_exit EXIT
 for _ in $(seq 1 90); do grep -q "dev-grid up" "$GRID_LOG" && break; sleep 1; done
 grep -q "dev-grid up" "$GRID_LOG" || { cat "$GRID_LOG"; exit 1; }
 FURL="$(grep -o 'pb://[^ ]*' "$GRID_LOG" | head -1)"
@@ -135,7 +149,21 @@ grep -q "^20" "$T/credit.out"
 grep -q "XMR top-up" "$T/home/credit-recent.json"
 
 echo "==> paid upload with those XMR tokens"
-SYNC_HOME="$T/home" OUT="$T/dogfood.out" client --dogfood-folder "$T/sync"
+# Bounded retry, exit test only (#59): on Windows the join step's tahoe can
+# still hold the node dir/port for a moment, so a fresh start may report
+# "Tahoe exited while starting". Retry that exact failure at most twice.
+for attempt in 1 2 3; do
+  rc=0
+  SYNC_HOME="$T/home" OUT="$T/dogfood.out" client --dogfood-folder "$T/sync" || rc=$?
+  if grep -q "^U1 dogfood" "$T/dogfood.out"; then break; fi
+  if [[ $attempt -lt 3 ]] && grep -q "Tahoe exited while starting" "$T/dogfood.out"; then
+    echo "==> retry $attempt/2 after 'Tahoe exited while starting'"
+    dump_tahoe_logs || true
+    sleep 10
+    continue
+  fi
+  [[ $rc -ne 0 ]] || rc=1; exit "$rc"
+done
 grep -q "^U1 dogfood" "$T/dogfood.out"
 grep -q "$NEEDLE" "$T/home/logs/tahoe.log" || { echo "tahoe.log lacks '$NEEDLE' (did a system tahoe run?)"; head -5 "$T/home/logs/tahoe.log"; exit 1; }
 for p in 8711 8712 8713; do

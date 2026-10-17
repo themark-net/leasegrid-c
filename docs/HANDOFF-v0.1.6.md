@@ -50,8 +50,9 @@ ci-local from a linked worktree no longer retargets another venv. Rebased onto v
 ## Fix round after Tester FAIL @ bd7b09e
 
 Tester failed PR #73 at `bd7b09e`. Reviewer passed. Items 1–9 are DONE. None skipped.
-Final ci-local on this commit: 484 passed, 5 xfailed, 4 warnings in 42.77s.
-Head is this commit (`v0.1.6 fixes: handoff`), parent `1613d0d`.
+Final ci-local: 484 passed, 5 xfailed. GHA at `9230bd5`: ubuntu/macOS test green; windows-2022 475 passed, 9 skipped, 5 xfailed.
+Windows CI fix (`9230bd5`): the two item-2 tests asserted width 700/500, but the layout's minimum width on windows-2022 is 863 px, so Qt clamped the size before saving. They now compare with the width actually saved. No skip; the on-screen rule applies on Windows. The unconditional-`move()` mutation is still RED.
+Head is the commit that last edits this file (`v0.1.6 fixes: handoff counts after Windows CI fix`).
 
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|

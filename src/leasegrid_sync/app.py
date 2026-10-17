@@ -2143,6 +2143,18 @@ class MainWindow:
     def _init_tray(self) -> None:
         QtWidgets = self.QtWidgets
         QtGui = self.QtGui
+        # The menu exists even when this platform has no tray icon, so Quit is
+        # the same action a tray would show. The icon is shown only when a tray
+        # is actually there.
+        menu = QtWidgets.QMenu()
+        menu.setObjectName("trayMenu")
+        open_act = menu.addAction("Open Sync")
+        open_act.triggered.connect(self.show)
+        self.tray_credit_action = menu.addAction("Credit")
+        self.tray_credit_action.triggered.connect(self.open_credit_place)
+        quit_act = menu.addAction("Quit")
+        quit_act.triggered.connect(self._on_tray_quit)
+        self.tray_menu = menu
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QtWidgets.QSystemTrayIcon(self.win)
@@ -2150,13 +2162,6 @@ class MainWindow:
         pix.fill(QtGui.QColor("#1f6feb"))
         self.tray.setIcon(QtGui.QIcon(pix))
         self.tray.setToolTip(APP_NAME)
-        menu = QtWidgets.QMenu()
-        open_act = menu.addAction("Open Sync")
-        open_act.triggered.connect(self.show)
-        self.tray_credit_action = menu.addAction("Credit")
-        self.tray_credit_action.triggered.connect(self.open_credit_place)
-        quit_act = menu.addAction("Quit")
-        quit_act.triggered.connect(self.quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
@@ -2174,24 +2179,37 @@ class MainWindow:
         proc = getattr(session, "proc", None)
         return proc is not None and proc.poll() is None
 
+    def _confirm_quit(self) -> bool:
+        """True when the app should quit. A live invite asks first.
+
+        Keep open is the default, including Esc. The window close and the tray
+        Quit item both use this.
+        """
+        if not self._invite_process_running():
+            return True
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QMessageBox(self.win)
+        box.setObjectName("inviteClosePrompt")
+        box.setWindowTitle(APP_NAME)
+        box.setText(INVITE_CLOSE_QUESTION)
+        quit_btn = box.addButton("Quit", QtWidgets.QMessageBox.AcceptRole)
+        keep_btn = box.addButton("Keep open", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(keep_btn)
+        box.exec_()
+        return box.clickedButton() is quit_btn
+
+    def _on_tray_quit(self) -> None:
+        if self._confirm_quit():
+            self.quit()
+
     def _on_close(self, event) -> None:
         """The window is the app. X quits; hiding to tray looked like a crash.
 
         A running invite asks first. Keep open leaves the window and the invite.
         """
-        if self._invite_process_running():
-            QtWidgets = self.QtWidgets
-            box = QtWidgets.QMessageBox(self.win)
-            box.setObjectName("inviteClosePrompt")
-            box.setWindowTitle(APP_NAME)
-            box.setText(INVITE_CLOSE_QUESTION)
-            quit_btn = box.addButton("Quit", QtWidgets.QMessageBox.AcceptRole)
-            keep_btn = box.addButton("Keep open", QtWidgets.QMessageBox.RejectRole)
-            box.setDefaultButton(keep_btn)
-            box.exec_()
-            if box.clickedButton() is not quit_btn:
-                event.ignore()
-                return
+        if not self._confirm_quit():
+            event.ignore()
+            return
         event.accept()
         self.quit()
 

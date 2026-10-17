@@ -100,6 +100,51 @@ def test_quit_accepts_close_and_closes_the_invite(tmp_path: Path, monkeypatch) -
         _close(window)
 
 
+def _trigger_tray_quit(window: MainWindow) -> None:
+    menu = getattr(window, "tray_menu", None)
+    if menu is None and window.tray is not None:
+        menu = window.tray.contextMenu()
+    if menu is None:
+        raise AssertionError("tray Quit is not available")
+    for action in menu.actions():
+        if action.text() == "Quit":
+            action.trigger()
+            return
+    raise AssertionError("tray Quit missing")
+
+
+def test_tray_quit_keep_open_leaves_the_invite_running(tmp_path: Path, monkeypatch) -> None:
+    window = _window(tmp_path)
+    session = _live_session()
+    window._invite_session = session
+    exec_, clicked = _choose("Keep open")
+    monkeypatch.setattr(window.QtWidgets.QMessageBox, "exec_", exec_)
+    monkeypatch.setattr(window.QtWidgets.QMessageBox, "clickedButton", clicked)
+    try:
+        _trigger_tray_quit(window)
+        assert not getattr(window, "_quitting", False)
+        assert session.proc is not None and session.proc.poll() is None
+        assert window._invite_session is session
+    finally:
+        session.close()
+        _close(window)
+
+
+def test_tray_quit_with_no_invite_quits(tmp_path: Path) -> None:
+    window = _window(tmp_path)
+    called: list[bool] = []
+    try:
+        with patch.object(window, "quit", side_effect=lambda: called.append(True)), patch.object(
+            window.QtWidgets.QMessageBox,
+            "__init__",
+            side_effect=AssertionError("dialog"),
+        ):
+            _trigger_tray_quit(window)
+        assert called == [True]
+    finally:
+        _close(window)
+
+
 def test_close_without_a_live_invite_quits_without_a_dialog(tmp_path: Path) -> None:
     window = _window(tmp_path)
     event = window.QtGui.QCloseEvent()

@@ -54,3 +54,7 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
 4. rotation shrinks the live file | DONE | ci-local: 477 passed, 5 xfailed, 4 warnings in 42.69s | files: tests/test_sync_ui_log.py, this log | err: none
    Tests: test_rotation_leaves_a_short_live_file_and_the_old_bytes_once
    RED without fix: test_rotation_leaves_a_short_live_file_and_the_old_bytes_once at tests/test_sync_ui_log.py:64 (copy the bytes instead of os.replace)
+
+5. tray Quit asks | DONE | ci-local: 479 passed, 5 xfailed, 4 warnings in 42.89s | files: app.py, tests/test_sync_close_invite.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_tray_quit_keep_open_leaves_the_invite_running, test_tray_quit_with_no_invite_quits
+   RED without fix: test_tray_quit_keep_open_leaves_the_invite_running at tests/test_sync_close_invite.py:125 (tray Quit connected straight to quit())

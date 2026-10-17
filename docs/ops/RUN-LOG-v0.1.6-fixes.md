@@ -63,3 +63,8 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
    Tests: test_a_file_path_never_reaches_open_url
    RED without fix: test_a_file_path_never_reaches_open_url at tests/test_sync_open_folder.py:91 (exists() instead of is_dir())
    Tester-guide wording for the new banner is item 9.
+
+7. geometry file | DONE | ci-local: 482 passed, 5 xfailed, 4 warnings in 43.37s | files: app.py, tests/test_sync_window_geometry.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_deeply_nested_geometry_file_uses_the_default_size, test_failed_geometry_replace_keeps_the_previous_file
+   RED without fix: test_deeply_nested_geometry_file_uses_the_default_size at tests/test_sync_window_geometry.py:127 (narrow except lets RecursionError out)
+   RED without fix: test_failed_geometry_replace_keeps_the_previous_file at tests/test_sync_window_geometry.py:154 (write the file directly instead of os.replace)

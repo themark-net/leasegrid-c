@@ -2297,7 +2297,9 @@ class MainWindow:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             blob = base64.b64decode(raw["geometry"], validate=True)
-        except (OSError, ValueError, KeyError, TypeError):
+        except Exception:
+            # Includes RecursionError from a deeply nested file, and KeyError
+            # when "geometry" is missing. Any parse failure keeps the default.
             return
         saved = _saved_frame(blob)
         if saved is None:
@@ -2318,8 +2320,11 @@ class MainWindow:
     def _save_window_geometry(self) -> None:
         try:
             blob = bytes(self.win.saveGeometry())
-            text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")})
-            (self.home / WINDOW_GEOMETRY_FILE).write_text(text + "\n", encoding="utf-8")
+            text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")}) + "\n"
+            path = self.home / WINDOW_GEOMETRY_FILE
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, path)
         except OSError:
             return
 

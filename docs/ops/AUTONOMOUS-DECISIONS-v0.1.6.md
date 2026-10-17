@@ -21,3 +21,5 @@ One line per choice: `choice | alternatives | why`
 - A left-of-screen frame is pulled into availableGeometry when Qt leaves it there | rely on Qt's clamp alone | offscreen clamped y=-650 to y=18 but left x=-196 in place
 - Tray menu is built even when the platform has no tray icon | skip the tray-quit test offscreen | offscreen has no system tray; an unshown menu does not change the window, and Quit is the same action
 - A file path says "That path is not a folder" | reuse the missing-folder banner | the file is on the computer, so "not on this computer any more" would be wrong
+- Geometry read catches Exception | only ValueError, RecursionError, OSError, and TypeError | a missing geometry key is a KeyError and must fall back too; RecursionError is a RuntimeError
+- Geometry write-failure test patches os.replace | a read-only directory | a read-only directory does not block rename on Windows

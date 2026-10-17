@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,42 @@ def test_title_bar_left_of_the_screen_stays_on_screen(tmp_path: Path) -> None:
         assert _title_grab_inside(second)
     finally:
         _hide(second)
+
+
+def test_deeply_nested_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "window-geometry.json").write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
+    finally:
+        _hide(window)
+
+
+def test_failed_geometry_replace_keeps_the_previous_file(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        window.win.resize(1000, 980)
+        window.win.move(15, 10)
+        window._save_window_geometry()
+        path = home / "window-geometry.json"
+        good = path.read_bytes()
+
+        def fail_replace(*_args, **_kwargs):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(os, "replace", fail_replace)
+        window.win.resize(700, 500)
+        window._save_window_geometry()
+        assert path.read_bytes() == good
+    finally:
+        _hide(window)
 
 
 def test_corrupt_geometry_file_uses_the_default_size(tmp_path: Path) -> None:

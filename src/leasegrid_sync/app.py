@@ -176,11 +176,12 @@ def acquire_instance_lock(home: Path) -> bool:
 
     Qt's default stale time (30s) recovers an empty file, a garbage file, or a
     lock from another machine once that file is old. A crash mid-write leaves
-    the same file with no readable PID while it is still new, so that file is
-    removed and the lock is tried once more. A readable live PID is still
-    refused. The QLockFile object stays referenced until a clean quit, or the
-    destructor would unlock it early. Returns False when another live process
-    holds the lock.
+    the same file with no readable PID while it is still new. Wait briefly so a
+    starter that is still writing its PID can finish. Only if the PID is still
+    unreadable is that file removed and the lock tried once more. A readable
+    PID is refused. The QLockFile object stays referenced until a clean quit,
+    or the destructor would unlock it early. Returns False when another live
+    process holds the lock.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -192,6 +193,9 @@ def acquire_instance_lock(home: Path) -> bool:
         return True
     lock = QLockFile(str(path))
     if not lock.tryLock(0):
+        if not _lock_pid_readable(lock):
+            # The other starter may be between O_EXCL create and the PID write.
+            time.sleep(0.1)
         if _lock_pid_readable(lock):
             return False
         lock.removeStaleLockFile()

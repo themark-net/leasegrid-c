@@ -34,8 +34,8 @@ Risks:
 
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
-| 1 | DONE | this commit | old-path squatter, free lock, mode 0755, symlink dir, wrong uid, file and fifo, long home, UserAccessOption; existing two-process handoff still passes | see below |
-| 2 | pending | | | |
+| 1 | DONE | 176274f | old-path squatter, free lock, mode 0755, symlink dir, wrong uid, file and fifo, long home, UserAccessOption; existing two-process handoff still passes | see below |
+| 2 | DONE | this commit | test_empty_lock_mid_write_is_not_taken; empty, garbage, and six-start tests stay green | RED: no retry → test_empty_lock_mid_write_is_not_taken |
 | 3 | pending | | | |
 | handoff | pending | | | |
 
@@ -53,3 +53,11 @@ RED: no fallback → test_long_home_still_hands_off
 RED: the option is removed → test_join_server_is_user_only
 
 The client checks the lock before any connect. The socket lives in a 0700 directory (`<home>/run`, else `$XDG_RUNTIME_DIR/leasegrid-sync`, else `$TMPDIR/leasegrid-sync-<uid>`). A symlink, the wrong uid, mode `& 0o077 != 0`, or a non-socket is refused and the planted listener reads 0 bytes. Windows keeps the lock gate and sets `QLocalServer.UserAccessOption` before `listen`. The pipe owner is not checked from the client.
+
+state: DONE | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → 553 passed, 5 xfailed, 4 warnings in 80.48s | files: app.py, tests/test_sync_instance_lock.py | err: none
+
+Item 2 ci-local: PASS, 553 passed, 5 xfailed, 4 warnings in 80.48s.
+
+RED: no retry → test_empty_lock_mid_write_is_not_taken (`assert True is False`)
+
+When `tryLock(0)` fails and the PID is not readable, wait 100 ms and look again. Remove the file only if it is still unreadable. A helper that writes a live pid and hostname about 50 ms after creating an empty file keeps the lock.

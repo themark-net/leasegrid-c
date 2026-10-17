@@ -68,3 +68,8 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 568 passed, 5 xfailed, 4 warnings in 122.98s | files: tests/test_sync_signal_quit.py, tests/test_sync_process_group.py | err: none
   The drop-in names no mutant. The module fixture asserts every recorded stub pid is dead after the file. The signal stub now writes a grandchild pid, and finally SIGKILLs only the pids in those files.
+
+## 10 handoff
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 568 passed, 5 xfailed, 4 warnings in 119.32s | files: docs/HANDOFF-v0.1.7.md, docs/ops/RUN-LOG-v0.1.7-fixes2.md, docs/ops/HANDOFF-v0.1.7-fixes2-2026-10-17.md | err: none
+  v0.1.8 candidates are listed in the handoff. Docs only, so no mutant. CI: see PR checks.

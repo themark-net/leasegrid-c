@@ -1951,7 +1951,30 @@ class MainWindow:
         self.payment_lecture.setObjectName("paymentLecture")
         self.payment_lecture.hide()
         sl.addWidget(self.payment_lecture)
+        self.open_logs_btn = QtWidgets.QPushButton("Open logs folder")
+        self.open_logs_btn.setObjectName("openLogsButton")
+        self.open_logs_btn.setAutoDefault(False)
+        self.open_logs_btn.clicked.connect(self.on_open_logs)
+        sl.addWidget(self.open_logs_btn)
+        self.settings_status = QtWidgets.QLabel("")
+        self.settings_status.setObjectName("settingsStatus")
+        self.settings_status.setWordWrap(True)
+        self.settings_status.setTextInteractionFlags(self.QtCore.Qt.TextSelectableByMouse)
+        sl.addWidget(self.settings_status)
         sl.addStretch(1)
+
+    def on_open_logs(self) -> None:
+        """Open <Sync home>/logs. On failure, show the path in Settings."""
+        logs = self.home / "logs"
+        try:
+            logs.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.settings_status.setText(str(logs))
+            return
+        QtCore, QtGui, _QtWidgets = _qt_api()
+        opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(logs)))
+        if not opened:
+            self.settings_status.setText(str(logs))
 
     def on_join_details(self) -> None:
         QtWidgets = self.QtWidgets

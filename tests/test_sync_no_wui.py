@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,14 +12,17 @@ BANNED = (
     "open the web ui",
     "open tahoe wui",
     "webbrowser.open",
-    "qdesktopservices.openurl",
 )
 
 
 def test_sync_package_has_no_wui_product_path():
     blob = []
-    for path in SYNC.rglob("*.py"):
-        blob.append(path.read_text(encoding="utf-8"))
+    for path in sorted(SYNC.rglob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        blob.append(source)
+        # A local folder may be opened. A web URL here would be the Tahoe WUI.
+        for arg in re.findall(r"openUrl\(([^)]*)\)", source):
+            assert "fromLocalFile" in arg, "%s opens a non-local URL: %s" % (path.name, arg)
     text = "\n".join(blob).lower()
     for needle in BANNED:
         assert needle.lower() not in text, "WUI product path found: %s" % needle

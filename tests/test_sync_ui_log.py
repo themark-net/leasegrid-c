@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
+
+import pytest
 
 from leasegrid_sync.app import UI_LOG_NAME, log_exception
 
@@ -44,7 +48,33 @@ def test_log_rotates_when_over_one_mebibyte_and_keeps_one_backup(tmp_path: Path)
     assert "second-rotate" in path.read_text(encoding="utf-8")
 
 
+def _assert_entry_appended(home: Path, path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert "rotate-failed" in text
+    assert "kept" in text
+    assert text.encode("utf-8").startswith(b"D")
+
+
 def test_rotation_failure_still_appends_and_does_not_raise(tmp_path: Path) -> None:
+    """A backup name that can't be replaced (a non-empty directory) fails on every OS."""
+    home = tmp_path / "home"
+    path = _log(home)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"D" * (_LIMIT + 1))
+    blocker = _backup(home)
+    blocker.mkdir()
+    (blocker / "busy").write_text("x", encoding="utf-8")
+    returned = log_exception(home, "rotate-failed", RuntimeError("kept"))
+    assert returned == path
+    assert blocker.is_dir()
+    _assert_entry_appended(home, path)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="a read-only directory does not block rename on Windows or as root",
+)
+def test_rotation_in_read_only_dir_still_appends(tmp_path: Path) -> None:
     home = tmp_path / "home"
     path = _log(home)
     path.parent.mkdir(parents=True)
@@ -57,7 +87,4 @@ def test_rotation_failure_still_appends_and_does_not_raise(tmp_path: Path) -> No
         path.parent.chmod(0o755)
     assert returned == path
     assert not _backup(home).exists()
-    text = path.read_text(encoding="utf-8")
-    assert "rotate-failed" in text
-    assert "kept" in text
-    assert text.encode("utf-8").startswith(b"D")
+    _assert_entry_appended(home, path)

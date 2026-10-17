@@ -7,12 +7,22 @@ reverted script cannot point a shared interpreter at the temp tree.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "ci-local.sh"
 SHARED_PYTHON = "/home/mark/tahoe-venv/bin/python"
+
+# ci-local.sh is a POSIX dev script. On Windows, bash on PATH may be WSL.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("bash") is None,
+    reason="ci-local.sh runs under POSIX bash; Windows bash on PATH may be WSL",
+)
 
 
 def _git(repo: Path, *args: str) -> None:

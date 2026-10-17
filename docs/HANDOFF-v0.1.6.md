@@ -1,14 +1,15 @@
 # Handoff — Leasegrid Sync v0.1.6
 
 Branch: `build/v0.1.6-batch`
-Base: `ef174345aede2ef686a890cac1cd7edb75e4cae3` (v0.1.4, `origin/main`)
-Version bump: `fcb994d`. Tip: the commit that adds this file.
-Rebase onto v0.1.5 when it lands. Expected conflicts: version/notes files only.
+Base: `86a28c8217855f6f16387c08041c08674b50434d` (v0.1.5, `origin/main`). Built on v0.1.4 `ef17434`, then rebased.
+Commit SHAs in the item table are from before the rebase; match commits by subject (`v0.1.6 item N`).
+Rebase conflicts: TESTER-GUIDE bug-report list (kept both), version/asset links (took 0.1.6), README/TESTERS What's new (v0.1.6 bullets plus v0.1.5's #30 correction, which `test_tester_pages` requires). Release notes now point back at v0.1.5 @ `86a28c8`.
 
 ## Tests
 
 Baseline: 406 passed, 1 xfailed, 4 warnings, 39.71s. Failing tests: none.
-Final ci-local: PASS, 433 passed, 1 xfailed, 4 warnings, 41.06s.
+Final ci-local before rebase: PASS, 433 passed, 1 xfailed.
+After rebase onto v0.1.5: ci-local PASS, 468 passed, 5 xfailed (all v0.1.5 log-filter strict xfails).
 
 ## Items
 
@@ -44,4 +45,4 @@ One Sync window per home. Closing during an invite asks first.
 Settings can open the logs folder and copy a bug report with no invite or join link.
 Double-click a folder to open it. The window remembers its size and place.
 Quit reaps Tahoe and Magic Folder, and sync-ui.log rotates past 1 MiB.
-ci-local from a linked worktree no longer retargets another venv. Rebase onto v0.1.5 before review.
+ci-local from a linked worktree no longer retargets another venv. Rebased onto v0.1.5.

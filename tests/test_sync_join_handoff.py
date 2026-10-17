@@ -204,7 +204,7 @@ def test_second_launch_fills_the_open_join_field(tmp_path: Path) -> None:
         assert FAKE_INVITE not in out
         assert FAKE_INVITE not in err
         _assert_log_has_no_invite(home, err_path)
-        os.kill(app.pid, signal.SIGTERM if sys.platform != "win32" else signal.SIGBREAK)
+        os.kill(app.pid, signal.SIGTERM if sys.platform != "win32" else signal.CTRL_BREAK_EVENT)
         assert _wait_until(lambda: app.poll() is not None, 15)
         assert app.returncode == 0
         assert not instance_lock_path(home).exists()

@@ -180,6 +180,11 @@ def _lock_pid_readable(lock) -> bool:
     return False
 
 
+def _lock_writer_grace() -> None:
+    """Give a starter that has created the lock time to write its PID."""
+    time.sleep(0.1)
+
+
 def acquire_instance_lock(home: Path) -> bool:
     """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
 
@@ -204,7 +209,7 @@ def acquire_instance_lock(home: Path) -> bool:
     if not lock.tryLock(0):
         if not _lock_pid_readable(lock):
             # The other starter may be between O_EXCL create and the PID write.
-            time.sleep(0.1)
+            _lock_writer_grace()
         if _lock_pid_readable(lock):
             return False
         lock.removeStaleLockFile()

@@ -290,7 +290,7 @@ def test_copy_bug_report_has_about_line_and_no_secrets(tmp_path: Path) -> None:
         assert "Joined: yes" in clip
         assert "1 folder: Up to date" in clip
         assert "secret-folder-name" not in clip
-        assert str(window.home / "logs") in clip
+        assert display_path(window.home / "logs") in clip
         assert_no_raw_user_text(clip)
         assert "pb://" not in clip
         assert "FAKE-SWISS" not in clip

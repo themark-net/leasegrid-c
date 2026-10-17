@@ -33,10 +33,21 @@ import json
 import os
 import signal
 import sys
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
+
+class _QuickServer(ThreadingHTTPServer):
+    # HTTPServer.server_bind calls socket.getfqdn(host). On macOS runners that
+    # reverse lookup can stall for many seconds, past the start timeout.
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -62,7 +73,7 @@ def main():
     if "run" not in args:
         sys.exit(0)
     nodedir = Path(args[args.index("run") + 1])
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = _QuickServer(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     (nodedir / "node.url").write_text("http://127.0.0.1:%d/\\n" % port, encoding="utf-8")
     pidfile = os.environ.get("LEASEGRID_TEST_TAHOE_PIDFILE", "")
@@ -202,7 +213,12 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
         assert pidfile.is_file(), "stub Tahoe did not start"
         stub_pid = int(pidfile.read_text(encoding="utf-8").strip())
         assert stub_pid > 0
-        os.kill(proc.pid, sig)
+        # os.kill(pid, SIGBREAK) on Windows is TerminateProcess(pid, 21), not a
+        # console event. CTRL_BREAK_EVENT reaches the child's process group.
+        send = sig
+        if sys.platform == "win32" and sig == getattr(signal, "SIGBREAK", None):
+            send = signal.CTRL_BREAK_EVENT
+        os.kill(proc.pid, send)
         assert _wait_until(lambda: proc.poll() is not None, 20)
         assert proc.returncode == 0
         assert not lock.exists()

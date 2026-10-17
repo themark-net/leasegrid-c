@@ -21,8 +21,19 @@ _MARKER = b"OLD-DAEMON-LOG\n"
 _STUB = r"""
 import json
 import sys
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+
+
+class _QuickServer(ThreadingHTTPServer):
+    # HTTPServer.server_bind calls socket.getfqdn(host). On macOS runners that
+    # reverse lookup can stall for many seconds, past the start timeout.
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,7 +65,7 @@ def main() -> None:
     nodedir = None
     if args[0] == "run":
         nodedir = Path(args[1])
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = _QuickServer(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     if nodedir is not None:
         (nodedir / "node.url").write_text("http://127.0.0.1:%d/\n" % port, encoding="utf-8")

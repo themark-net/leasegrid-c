@@ -21,10 +21,21 @@ import signal
 import subprocess
 import sys
 import time
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
+
+class _QuickServer(ThreadingHTTPServer):
+    # HTTPServer.server_bind calls socket.getfqdn(host). On macOS runners that
+    # reverse lookup can stall for many seconds, past the start timeout.
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -65,7 +76,7 @@ def main() -> None:
         deadline = time.time() + 5
         while time.time() < deadline and not Path(child_file).is_file():
             time.sleep(0.02)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = _QuickServer(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     (nodedir / "node.url").write_text("http://127.0.0.1:%d/\n" % port, encoding="utf-8")
     leader_file = os.environ.get("LEASEGRID_TEST_LEADER_PID", "")

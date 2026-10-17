@@ -229,73 +229,39 @@ def test_garbage_lock_older_than_stale_time_is_recovered(tmp_path: Path, monkeyp
     _recovered(monkeypatch, home)
 
 
-_MID_WRITE = r"""
-import os
-import socket
-import sys
-import time
-from pathlib import Path
-
-path = Path(sys.argv[1])
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_bytes(b"")
-print("READY", flush=True)
-time.sleep(0.05)
-# pid, application name, hostname. getLockInfo treats a positive pid as readable.
-payload = "%d\nleasegrid-sync\n%s\n" % (os.getpid(), socket.gethostname())
-path.write_bytes(payload.encode("utf-8"))
-print("WROTE", flush=True)
-time.sleep(30)
-"""
-
-
-def test_empty_lock_mid_write_is_not_taken(tmp_path: Path) -> None:
+def test_empty_lock_mid_write_is_not_taken(tmp_path: Path, monkeypatch) -> None:
     """A PID that appears during the short wait keeps the lock.
 
-    The helper leaves an empty file, then writes a live pid about 50 ms later.
-    Stealing the file on the first unreadable look would start a second instance.
+    Another starter has created the lock file but not yet written its PID.
+    The grace hook stands in for that starter finishing its write during the
+    wait, so the order is the same on every runner. Stealing the file on the
+    first unreadable look would start a second instance.
     """
-    from PyQt5.QtCore import QLockFile
-
+    import leasegrid_sync.app as appmod
     from leasegrid_sync.app import acquire_instance_lock, release_instance_lock
 
-    QLockFile(str(tmp_path / "warm.lock"))
     home = tmp_path / "home"
     home.mkdir()
     lock = instance_lock_path(home)
-    proc = subprocess.Popen(
-        [sys.executable, "-c", _MID_WRITE, str(lock)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    took = False
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_bytes(b"")
+    # pid, application name, hostname: the shape QLockFile writes.
+    payload = "%d\nleasegrid-sync\n%s\n" % (os.getpid(), socket.gethostname())
+    graced: list[bool] = []
+
+    def finish_write() -> None:
+        graced.append(True)
+        lock.write_bytes(payload.encode("utf-8"))
+
+    monkeypatch.setattr(appmod, "_lock_writer_grace", finish_write)
+    took = acquire_instance_lock(home)
     try:
-        assert proc.stdout is not None
-        line = ""
-        box: list[str] = []
-
-        def _read_ready() -> None:
-            box.append(proc.stdout.readline() if proc.stdout is not None else "")
-
-        reader = threading.Thread(target=_read_ready, daemon=True)
-        reader.start()
-        reader.join(5)
-        assert not reader.is_alive(), "helper did not report READY"
-        line = box[0].strip() if box else ""
-        assert line == "READY"
-        assert lock.read_bytes() == b""
-        took = acquire_instance_lock(home)
+        assert graced == [True], "the empty lock was not given a grace wait"
         assert took is False
-        text = lock.read_text(encoding="utf-8")
-        assert text.startswith("%d\n" % proc.pid)
-        assert socket.gethostname() in text
+        assert lock.read_text(encoding="utf-8") == payload
     finally:
         if took:
             release_instance_lock()
-        if proc.poll() is None:
-            proc.kill()
-        proc.wait(timeout=5)
 
 
 def test_fresh_empty_lock_relaunches_at_once(tmp_path: Path, monkeypatch) -> None:

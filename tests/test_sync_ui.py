@@ -464,6 +464,65 @@ def test_import_dialog_missing_file_and_fail(ui: MainWindow, tmp_path):
     assert dlg.import_btn.text() == "Retry import"
 
 
+def _assert_import_status_visible(dlg) -> None:
+    """Banner height covers the wrapped text, and the label sits inside the dialog."""
+    label = dlg.status
+    dialog = dlg.dlg
+    dialog.layout().activate()
+    dlg.QtWidgets.QApplication.processEvents()
+    assert "Next:" in label.text()
+    needed = label.heightForWidth(label.width())
+    if needed < 1:
+        needed = label.sizeHint().height()
+    assert label.geometry().height() >= needed
+    bottom = label.mapTo(dialog, label.rect().bottomLeft()).y()
+    assert bottom <= dialog.contentsRect().bottom()
+
+
+def test_import_dialog_missing_file_shows_whole_next_line(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=tmp_path / "nope")
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert "File not found" in dlg.status.text()
+    _assert_import_status_visible(dlg)
+    dlg.dlg.hide()
+
+
+def test_import_dialog_restore_error_shows_whole_next_line(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=key)
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    long_message = (
+        "could not import this recovery key. Wrong passphrase, corrupt file, "
+        "or incompatible grid. The backup did not match this friendnet and the "
+        "passphrase check failed after several tries."
+    )
+    next_line = (
+        "check passphrase; try the file from your backup; confirm this is the "
+        "friendnet that wrote the key; Retry."
+    )
+    with patch.object(
+        ui.recovery,
+        "restore",
+        side_effect=SyncError(long_message, next_line),
+    ):
+        dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert "Next:" in dlg.status.text()
+    assert "check passphrase" in dlg.status.text()
+    assert_no_raw_user_text(dlg.status.text())
+    _assert_import_status_visible(dlg)
+    dlg.dlg.hide()
+
+
 def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
     from leasegrid_sync.recovery import RestoreResult
 

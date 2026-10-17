@@ -17,3 +17,5 @@ One line per choice: `choice | alternatives | why`
 - Age empty, garbage, and foreign locks by 120s with os.utime | sleep 30s in the test | the file only has to be older than Qt's 30s stale time
 - Foreign lock is three lines (pid, app name, other hostname) | rewrite a live lock's hostname and boot id | a probed 3-line other-host file older than 30s is taken; a fresh one is not
 - Live-holder refusal is checked as soon as the first process prints WINDOW_SHOWN | wait 35s past the stale time | the holder is alive and the lock is younger than 30s; a probe also kept an aged live lock refused
+- Title-bar check is an 80 by 28 grab at the top-left | require the whole frame inside the screen | the offscreen desktop is 800x600 and the round-trip window is 1000x980, so the full strip cannot fit
+- A left-of-screen frame is pulled into availableGeometry when Qt leaves it there | rely on Qt's clamp alone | offscreen clamped y=-650 to y=18 but left x=-196 in place

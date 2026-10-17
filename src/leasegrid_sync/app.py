@@ -1131,6 +1131,9 @@ class DisconnectServerDialog:
 WINDOW_GEOMETRY_FILE = "window-geometry.json"
 DEFAULT_WINDOW_SIZE = (920, 620)
 _GEOM_MAGIC = 0x1D9D0CB
+# The part of the title bar a person drags. The whole frame can be wider than
+# the desktop and still be a normal on-screen window.
+_TITLE_GRAB = (80, 28)
 
 
 def _saved_frame(blob: bytes) -> Optional[tuple]:
@@ -2195,9 +2198,16 @@ class MainWindow:
     def show(self) -> None:
         self.win.show()
         pending = getattr(self, "_pending_geometry_pos", None)
-        if pending is not None:
+        on_screen = getattr(self, "_pending_title_on_screen", None)
+        self._pending_geometry_pos = None
+        self._pending_title_on_screen = None
+        # A saved title bar that is off a screen stays at Qt's clamp. Pull only
+        # when that clamp left the grab rect outside (the offscreen plugin does
+        # this for a window that starts left of the desktop).
+        if on_screen is False:
+            self._pull_title_bar_on_screen()
+        if pending is not None and on_screen:
             self.win.move(*pending)
-            self._pending_geometry_pos = None
         self.win.raise_()
         self.win.activateWindow()
 
@@ -2220,6 +2230,49 @@ class MainWindow:
             return True
         return any(screen.availableGeometry().intersects(rect) for screen in screens)
 
+    def _title_grab(self, rect):
+        width = min(max(rect.width(), 1), _TITLE_GRAB[0])
+        height = min(max(rect.height(), 1), _TITLE_GRAB[1])
+        return self.QtCore.QRect(rect.x(), rect.y(), width, height)
+
+    def _title_bar_on_a_screen(self, rect) -> bool:
+        """True when the saved title-bar grab lies inside a screen's available area."""
+        strip = self._title_grab(rect)
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return True
+        return any(screen.availableGeometry().contains(strip) for screen in screens)
+
+    def _pull_title_bar_on_screen(self) -> None:
+        """Move the least amount that puts the title-bar grab inside a screen."""
+        frame = self.win.frameGeometry()
+        if self._title_bar_on_a_screen(frame):
+            return
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return
+        screen = screens[0].availableGeometry()
+        for candidate in screens:
+            area = candidate.availableGeometry()
+            if area.intersects(frame):
+                screen = area
+                break
+        strip = self._title_grab(frame)
+        x, y = strip.x(), strip.y()
+        if x < screen.left():
+            x = screen.left()
+        if y < screen.top():
+            y = screen.top()
+        right = screen.left() + screen.width()
+        bottom = screen.top() + screen.height()
+        if x + strip.width() > right:
+            x = right - strip.width()
+        if y + strip.height() > bottom:
+            y = bottom - strip.height()
+        dx, dy = x - strip.x(), y - strip.y()
+        if dx or dy:
+            self.win.move(self.win.x() + dx, self.win.y() + dy)
+
     def _restore_window_geometry(self) -> None:
         """Apply a saved frame when it is still on a screen. Otherwise keep the default."""
         path = self.home / WINDOW_GEOMETRY_FILE
@@ -2239,8 +2292,10 @@ class MainWindow:
             self.win.move(0, 0)
             return
         # show() on the offscreen plugin nudges a restored frame. Put the
-        # saved top-left back on the first show, then leave later shows alone.
+        # saved top-left back on the first show only when that title bar is
+        # actually on a screen. An off-screen top-left would undo Qt's clamp.
         self._pending_geometry_pos = (rect.x(), rect.y())
+        self._pending_title_on_screen = self._title_bar_on_a_screen(rect)
 
     def _save_window_geometry(self) -> None:
         try:

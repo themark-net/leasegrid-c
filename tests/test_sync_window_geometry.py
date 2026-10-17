@@ -68,6 +68,57 @@ def test_offscreen_geometry_falls_back_to_the_default_size(tmp_path: Path) -> No
         _hide(second)
 
 
+def _title_grab_inside(window: MainWindow) -> bool:
+    frame = window.win.frameGeometry()
+    strip = window.QtCore.QRect(
+        frame.x(),
+        frame.y(),
+        min(frame.width(), 80),
+        min(frame.height(), 28),
+    )
+    screens = window.QtGui.QGuiApplication.screens()
+    return any(screen.availableGeometry().contains(strip) for screen in screens)
+
+
+def _save_moved(home: Path, x: int, y: int, width: int, height: int) -> None:
+    first = MainWindow(home=home, autoload=False)
+    try:
+        first.win.show()
+        first.QtWidgets.QApplication.processEvents()
+        first.win.resize(width, height)
+        first.win.move(x, y)
+        first.QtWidgets.QApplication.processEvents()
+        first.quit()
+    finally:
+        _hide(first)
+
+
+def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    _save_moved(home, 40, -650, 700, 700)
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert second.win.width() == 700
+        assert _title_grab_inside(second)
+    finally:
+        _hide(second)
+
+
+def test_title_bar_left_of_the_screen_stays_on_screen(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    _save_moved(home, -200, 40, 500, 400)
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert second.win.width() == 500
+        assert _title_grab_inside(second)
+    finally:
+        _hide(second)
+
+
 def test_corrupt_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

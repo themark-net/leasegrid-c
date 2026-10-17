@@ -42,3 +42,7 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
    Tests: test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered, test_live_app_refuses_a_second_launch_and_releases_on_quit
    RED without fix: test_live_app_refuses_a_second_launch_and_releases_on_quit at tests/test_sync_instance_lock.py:330 (deleted `_INSTANCE_LOCK = lock`; the lock file was already gone while the first window was up)
    RED without fix: test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered at tests/test_sync_instance_lock.py:209 (`setStaleLockTime(0)` put back)
+
+2. B2 geometry | DONE | ci-local: 475 passed, 5 xfailed, 4 warnings in 42.54s | files: app.py, tests/test_sync_window_geometry.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_title_bar_above_the_screen_stays_on_screen, test_title_bar_left_of_the_screen_stays_on_screen, test_geometry_round_trips_across_two_windows
+   RED without fix: test_title_bar_above_the_screen_stays_on_screen at tests/test_sync_window_geometry.py:104 and test_title_bar_left_of_the_screen_stays_on_screen at tests/test_sync_window_geometry.py:117 (unconditional move() put back)

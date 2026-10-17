@@ -18,6 +18,16 @@ import pytest
 
 from leasegrid_sync.app import instance_lock_path
 
+# The real module entry leaves _TEST_HOOKS false. This driver arms it, then calls main.
+_HOOKED_MAIN = """\
+import sys
+import leasegrid_sync.app as appmod
+appmod._TEST_HOOKS = True
+from leasegrid_sync.cli import main
+rc = main(sys.argv[1:])
+raise SystemExit(0 if rc is None else int(rc))
+"""
+
 _STUB = """
 import json
 import os
@@ -171,11 +181,13 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
     env["LEASEGRID_TEST_SIGNAL_READY"] = str(ready)
     env["QT_QPA_PLATFORM"] = "offscreen"
     err_f = err_path.open("w", encoding="utf-8")
+    driver = tmp_path / "hooked_main.py"
+    driver.write_text(_HOOKED_MAIN, encoding="utf-8")
     kwargs = {}
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
-        [sys.executable, "-m", "leasegrid_sync", "--offscreen", "--nodedir", str(nodedir)],
+        [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir)],
         stdout=subprocess.DEVNULL,
         stderr=err_f,
         env=env,

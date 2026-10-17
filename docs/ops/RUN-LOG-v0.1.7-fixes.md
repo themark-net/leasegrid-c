@@ -35,8 +35,8 @@ Risks:
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
 | 1 | DONE | 176274f | old-path squatter, free lock, mode 0755, symlink dir, wrong uid, file and fifo, long home, UserAccessOption; existing two-process handoff still passes | see below |
-| 2 | DONE | this commit | test_empty_lock_mid_write_is_not_taken; empty, garbage, and six-start tests stay green | RED: no retry → test_empty_lock_mid_write_is_not_taken |
-| 3 | pending | | | |
+| 2 | DONE | ceac025 | test_empty_lock_mid_write_is_not_taken; empty, garbage, and six-start tests stay green | RED: no retry → test_empty_lock_mid_write_is_not_taken |
+| 3 | DONE | this commit | test_real_entry_does_not_dump_an_invite_from_the_env, test_handed_invite_is_not_dumped_when_hooks_are_off; join and signal drivers set _TEST_HOOKS | RED: the gate is removed → test_real_entry_does_not_dump_an_invite_from_the_env |
 | handoff | pending | | | |
 
 state: DONE | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → 552 passed, 5 xfailed, 4 warnings in 80.83s | files: app.py, test_sync_join_handoff.py, test_sync_join_handoff_private.py | err: none
@@ -61,3 +61,12 @@ Item 2 ci-local: PASS, 553 passed, 5 xfailed, 4 warnings in 80.48s.
 RED: no retry → test_empty_lock_mid_write_is_not_taken (`assert True is False`)
 
 When `tryLock(0)` fails and the PID is not readable, wait 100 ms and look again. Remove the file only if it is still unreadable. A helper that writes a live pid and hostname about 50 ms after creating an empty file keeps the lock.
+
+state: DONE | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → 555 passed, 5 xfailed, 4 warnings in 81.53s | files: app.py, tests/test_sync_join_handoff.py, tests/test_sync_signal_quit.py | err: none
+
+Item 3 ci-local: PASS, 555 passed, 5 xfailed, 4 warnings in 81.53s.
+
+RED: the gate is removed → test_real_entry_does_not_dump_an_invite_from_the_env (dump file exists)
+RED: the gate is removed → test_handed_invite_is_not_dumped_when_hooks_are_off (dump file exists)
+
+`LEASEGRID_TEST_INVITE_DUMP`, `LEASEGRID_TEST_JOIN_READY`, and `LEASEGRID_TEST_SIGNAL_READY` are inert unless `app._TEST_HOOKS` is true. Only the test drivers set that flag before `main()`. The real `python -m leasegrid_sync` entry does not. An env var alone writes no dump file.

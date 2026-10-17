@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -17,12 +18,23 @@ from leasegrid_sync.app import (  # noqa: E402
     ALREADY_RUNNING,
     HANDED_INVITE_DROPPED,
     MainWindow,
+    hand_join_invite,
     instance_lock_path,
     join_endpoint,
 )
 
 # A wormhole-shaped fake. Not a secret, and the app must not write it to the log.
 FAKE_INVITE = "7-guitarist-revenge"
+
+# The real module entry leaves _TEST_HOOKS false. This driver arms it, then calls main.
+_HOOKED_MAIN = """\
+import sys
+import leasegrid_sync.app as appmod
+appmod._TEST_HOOKS = True
+from leasegrid_sync.cli import main
+rc = main(sys.argv[1:])
+raise SystemExit(0 if rc is None else int(rc))
+"""
 
 _SECOND = r"""
 import os
@@ -154,12 +166,14 @@ def test_second_launch_fills_the_open_join_field(tmp_path: Path) -> None:
     err_path = tmp_path / "app.err"
     env = _env(home, nodedir, ready, dump)
     err_f = err_path.open("w", encoding="utf-8")
+    driver = tmp_path / "hooked_main.py"
+    driver.write_text(_HOOKED_MAIN, encoding="utf-8")
     kwargs: dict = {}
     if sys.platform == "win32":
         # A new group so SIGBREAK reaches this process and not the pytest console.
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     app = subprocess.Popen(
-        [sys.executable, "-m", "leasegrid_sync", "--offscreen", "--nodedir", str(nodedir)],
+        [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir)],
         stdout=subprocess.DEVNULL,
         stderr=err_f,
         env=env,
@@ -273,3 +287,89 @@ def test_already_joined_window_drops_the_handed_invite(tmp_path: Path) -> None:
     finally:
         window.poll.stop()
         window.win.hide()
+
+
+def test_handed_invite_is_not_dumped_when_hooks_are_off(tmp_path: Path, monkeypatch) -> None:
+    """The invite field still fills. The dump file is a test hook."""
+    import leasegrid_sync.app as appmod
+
+    appmod._TEST_HOOKS = False
+    dump = tmp_path / "invite-dump"
+    monkeypatch.setenv("LEASEGRID_TEST_INVITE_DUMP", str(dump))
+    home = tmp_path / "home"
+    window = MainWindow(nodedir=tmp_path / "missing-node", home=home, autoload=False)
+    try:
+        window.receive_handed_invite(FAKE_INVITE)
+        assert window.invite_edit.text() == FAKE_INVITE
+        assert not dump.exists()
+    finally:
+        appmod._TEST_HOOKS = False
+        window.poll.stop()
+        window.win.hide()
+
+
+def test_real_entry_does_not_dump_an_invite_from_the_env(tmp_path: Path, monkeypatch) -> None:
+    """python -m leasegrid_sync never arms the hooks. The env var alone writes nothing."""
+    home = tmp_path / "home"
+    nodedir = tmp_path / "missing-node"
+    dump = tmp_path / "invite-dump"
+    ready = tmp_path / "join-ready"
+    err_path = tmp_path / "app.err"
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    env = os.environ.copy()
+    env["LEASEGRID_SYNC_HOME"] = str(home)
+    env["LEASEGRID_TEST_INVITE_DUMP"] = str(dump)
+    env["LEASEGRID_TEST_JOIN_READY"] = str(ready)
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env.pop("LEASEGRID_TAHOE_BIN", None)
+    env.pop("LEASEGRID_MAGIC_FOLDER_BIN", None)
+    err_f = err_path.open("w", encoding="utf-8")
+    kwargs: dict = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "leasegrid_sync", "--offscreen", "--nodedir", str(nodedir)],
+        stdout=subprocess.DEVNULL,
+        stderr=err_f,
+        env=env,
+        **kwargs,
+    )
+
+    def listening() -> bool:
+        if proc.poll() is not None:
+            return True
+        if not instance_lock_path(home).is_file():
+            return False
+        if sys.platform == "win32":
+            return True
+        endpoint = join_endpoint(home)
+        if not endpoint:
+            return False
+        try:
+            mode = os.lstat(endpoint).st_mode
+        except OSError:
+            return False
+        return stat.S_ISSOCK(mode)
+
+    try:
+        assert _wait_until(listening, 25), err_path.read_text(encoding="utf-8")
+        assert proc.poll() is None, err_path.read_text(encoding="utf-8")
+        sent = False
+        deadline = time.time() + 10
+        while time.time() < deadline and proc.poll() is None:
+            if hand_join_invite(FAKE_INVITE) == "sent":
+                sent = True
+                break
+            time.sleep(0.05)
+        assert sent, err_path.read_text(encoding="utf-8")
+        deadline = time.time() + 1
+        while time.time() < deadline and not dump.exists():
+            time.sleep(0.05)
+        assert not dump.exists()
+        assert not ready.exists()
+        log = home / "logs" / "sync-ui.log"
+        if log.is_file():
+            assert FAKE_INVITE not in log.read_text(encoding="utf-8")
+    finally:
+        err_f.close()
+        _reap(proc)

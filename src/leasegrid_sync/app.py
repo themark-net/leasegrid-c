@@ -131,6 +131,15 @@ HANDED_INVITE_DROPPED = (
 )
 _JOIN_HANDOFF_MAX = 4096
 _INSTANCE_LOCK = None
+# Test drivers in tests/ set this before main(). An env var alone does nothing.
+_TEST_HOOKS = False
+
+
+def _test_env(name: str) -> str:
+    """Read a LEASEGRID_TEST_* variable only when a test driver armed the hooks."""
+    if not _TEST_HOOKS:
+        return ""
+    return os.environ.get(name) or ""
 
 
 def display_path(path: object) -> str:
@@ -531,7 +540,7 @@ def _start_join_server(ui) -> None:
 
     server.newConnection.connect(on_new)
     ui._join_server = server
-    ready = os.environ.get("LEASEGRID_TEST_JOIN_READY")
+    ready = _test_env("LEASEGRID_TEST_JOIN_READY")
     if ready:
         try:
             Path(ready).write_text("ready\n", encoding="utf-8")
@@ -2733,7 +2742,7 @@ class MainWindow:
 
     def _dump_handed_invite(self) -> None:
         """Test hook. Production launches do not set the path, and nothing is logged."""
-        path = os.environ.get("LEASEGRID_TEST_INVITE_DUMP")
+        path = _test_env("LEASEGRID_TEST_INVITE_DUMP")
         if not path:
             return
         try:
@@ -3607,7 +3616,7 @@ def _install_signal_quit(ui) -> None:
     timer.timeout.connect(_on_signal)
     timer.start()
     ui._signal_quit_state = (read_s, write_s, notifier, timer, prev_fd, previous)
-    ready = os.environ.get("LEASEGRID_TEST_SIGNAL_READY")
+    ready = _test_env("LEASEGRID_TEST_SIGNAL_READY")
     if ready:
         try:
             Path(ready).write_text("ready\n", encoding="utf-8")

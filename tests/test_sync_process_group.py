@@ -7,7 +7,6 @@ TahoeClient.start, which is the real popen_hidden path.
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -16,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from tests.proc_util import kill_pid, pid_alive
 
 from leasegrid_sync.backend import TahoeClient, popen_hidden, reap_child
 
@@ -118,15 +118,8 @@ def _is_zombie(pid: int) -> bool:
 
 
 def _reaped(pid: int) -> bool:
-    if pid <= 0 or _is_zombie(pid):
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return True
-    except OSError:
-        return True
-    return False
+    # Not os.kill(pid, 0): on Windows that terminates the process.
+    return pid > 0 and not pid_alive(pid)
 
 
 def _wait_reaped(pid: int, timeout: float = 5.0) -> bool:
@@ -211,7 +204,7 @@ def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
             _remember(pid)
             if not _reaped(pid):
                 try:
-                    os.kill(pid, signal.SIGKILL)
+                    kill_pid(pid)
                 except OSError:
                     pass
 

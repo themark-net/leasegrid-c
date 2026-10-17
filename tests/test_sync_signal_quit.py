@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
+from tests.proc_util import kill_pid, pid_alive
 
 from leasegrid_sync.app import instance_lock_path
 
@@ -170,15 +171,8 @@ def _is_zombie(pid: int) -> bool:
 
 
 def _reaped(pid: int) -> bool:
-    if _is_zombie(pid):
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return True
-    except OSError:
-        return True
-    return False
+    # Not os.kill(pid, 0): on Windows that terminates the process.
+    return pid > 0 and not pid_alive(pid)
 
 
 # Pids the stubs wrote. The module fixture asserts every one is gone.
@@ -206,7 +200,7 @@ def _kill_pid(pid: int) -> None:
     if pid <= 0 or _reaped(pid):
         return
     try:
-        os.kill(pid, signal.SIGKILL)
+        kill_pid(pid)
     except OSError:
         return
     deadline = time.time() + 2

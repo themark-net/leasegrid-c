@@ -74,3 +74,21 @@ Head is the commit that last edits this file (`v0.1.6 fixes: handoff counts afte
 - The `--join <invite>` second-launch case.
 - A design doc for the v0.1.6 UI additions.
 - Import `ALREADY_RUNNING` and `INVITE_CLOSE_QUESTION` into the tester-guide test (10c/10d).
+- 11e: skipping the frame pre-check still survives the geometry tests.
+- Qt treats a fresh lock from another host as stale after about 30 seconds, so a shared Sync home can refuse a launch for that long.
+
+## Fix round 2 after Tester FAIL @ 3455c8f
+
+Tester failed PR #73 at `3455c8f`. Reviewer had passed. B1 and B2 stayed fixed. B3 and B4 are fixed. Items 1–6 are DONE. None skipped.
+Final ci-local: 496 passed, 5 xfailed, 4 warnings in 43.72s.
+Corrected B3 claim: a saved frame that cannot be decoded, is out of range, or raises while it is applied leaves the default size, and the window still opens. That includes a one-bit sign flip of frame-left and a frame of `(0, 0, 2^31-1, 2^31-1)`. A missing file is not an error and is not logged. The old sentence "Any parse failure keeps the default" was false for the sign flip: `QRect` raised `OverflowError` and the process never started.
+Last behavior commit: `1e4cf0b`. Head is the commit that last edits this file (`v0.1.6 fix2: handoff`).
+
+| # | Status | Commit | Tests | RED without fix |
+|---|--------|--------|-------|-----------------|
+| 1 | DONE | cd99d36 | test_saved_frame_rejects_a_sign_flipped_left, test_sign_flipped_frame_opens_at_the_default_size, test_max_int_frame_opens_at_the_default_size, test_sign_flipped_geometry_launches_the_real_app, test_partial_geometry_restore_keeps_the_default_size | :267 drop range check (window tests stayed green). :301 drop the outer try (corrupt JSON and deep nesting too) |
+| 2 | DONE | 6a79024 | test_bug_report_omits_secrets_planted_in_logs_and_env | :165 for 7c', 7d', 7f', 7g', 7e', and 7h'. 7e' also test_copy_bug_report_has_about_line_and_no_secrets at :236 |
+| 3 | DONE | 977c56b | test_title_bar_partly_off_the_left_edge_stays_on_screen | :160 (`contains` → `intersects`; the fully-off cases stayed green) |
+| 4 | DONE | 35c3b90 | the three title-bar tests, width 1000 | :126, :140, :159 (skip restore, `920 == 1000`). :121 if the request is the 920 default |
+| 5 | DONE | 8fae733 | test_failed_geometry_replace_keeps_the_previous_file | :197 (no `tmp.unlink()`) |
+| 6 | DONE | 1e4cf0b | test_scrub_bug_report_code_boundaries | :86 and :84 (old whitespace regex). :86 (drop `IGNORECASE`, caps only) |

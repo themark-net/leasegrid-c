@@ -91,3 +91,9 @@ A code is 1–3 digits and exactly two letter-words, case-insensitive, bounded b
 
 RED: restore the old whitespace regex → `test_scrub_bug_report_code_boundaries` at tests/test_sync_settings_actions.py:86 (three punctuation rows) and :84 (`12-03-2026`, `500-from-server-side`). The caps row stayed green; the old regex already matched it.
 RED: drop `re.IGNORECASE` → the caps row at tests/test_sync_settings_actions.py:86.
+
+## Finish
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 496 passed, 5 xfailed, 4 warnings in 43.72s, ci-local PASS | files: HANDOFF, this log | err: none
+
+Items 1–6 are DONE. None skipped. Handoff section written.

@@ -118,6 +118,8 @@ Include:
 
 - Operating system (Windows 11, macOS and whether it is Apple Silicon, Ubuntu version, and so on).
 - The About line from **More → Settings** (`version 0.1.5` on this build).
+- **Open logs folder** (More → Settings) opens that logs folder.
+- **Copy bug-report details** (More → Settings) copies the About line, OS, chip, join state, folder Status, and the logs path.
 - The clicks, in order, and the exact FAIL line.
 - The chip text, and the folder Status if you added a folder.
 - The `logs` folder from the Sync home. Useful files there are `sync-ui.log` (older lines rotate to `sync-ui.log.1`), `tahoe.log`, and `magic-folder.log`.

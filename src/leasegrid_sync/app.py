@@ -6,6 +6,7 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 from __future__ import annotations
 
 import os
+import platform
 import re
 import sys
 import time
@@ -1956,6 +1957,11 @@ class MainWindow:
         self.open_logs_btn.setAutoDefault(False)
         self.open_logs_btn.clicked.connect(self.on_open_logs)
         sl.addWidget(self.open_logs_btn)
+        self.copy_bug_btn = QtWidgets.QPushButton("Copy bug-report details")
+        self.copy_bug_btn.setObjectName("copyBugReport")
+        self.copy_bug_btn.setAutoDefault(False)
+        self.copy_bug_btn.clicked.connect(self.on_copy_bug_report)
+        sl.addWidget(self.copy_bug_btn)
         self.settings_status = QtWidgets.QLabel("")
         self.settings_status.setObjectName("settingsStatus")
         self.settings_status.setWordWrap(True)
@@ -1975,6 +1981,33 @@ class MainWindow:
         opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(logs)))
         if not opened:
             self.settings_status.setText(str(logs))
+
+    def bug_report_text(self) -> str:
+        """Short clipboard report. No invite, furl, recovery key, or wallet."""
+        statuses: list[str] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            statuses.append(item.text() if item is not None else "")
+        if len(statuses) == 1:
+            folders = "1 folder: %s" % statuses[0]
+        else:
+            folders = "%d folders" % len(statuses)
+            if statuses:
+                folders += ": " + ", ".join(statuses)
+        return "\n".join(
+            [
+                about_line(),
+                platform.platform(),
+                "Chip: %s" % self.status_chip.text(),
+                "Joined: %s" % ("yes" if self._joined else "no"),
+                folders,
+                "Logs: %s" % (self.home / "logs"),
+            ]
+        )
+
+    def on_copy_bug_report(self) -> None:
+        self.QtWidgets.QApplication.clipboard().setText(self.bug_report_text())
+        self.settings_status.setText("Copied. Paste it into your bug report.")
 
     def on_join_details(self) -> None:
         QtWidgets = self.QtWidgets

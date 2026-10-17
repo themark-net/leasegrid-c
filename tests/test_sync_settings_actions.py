@@ -1,7 +1,10 @@
-"""More → Settings: open the logs folder."""
+"""More → Settings: open the logs folder and copy a bug report."""
 
 from __future__ import annotations
 
+import platform
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,8 +12,9 @@ import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import MainWindow  # noqa: E402
-from leasegrid_sync.backend import SyncError  # noqa: E402
+from leasegrid_sync.app import MainWindow, about_line  # noqa: E402
+from leasegrid_sync.backend import FolderRow, SyncError  # noqa: E402
+from leasegrid_sync.invite import InviteCodeSession  # noqa: E402
 from tests.buyer_text import assert_no_raw_user_text  # noqa: E402
 
 
@@ -60,4 +64,50 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
         assert_no_raw_user_text(text)
         assert (window.home / "logs").is_dir()
     finally:
+        _close(window)
+
+
+def test_copy_bug_report_has_about_line_and_no_secrets(tmp_path: Path) -> None:
+    window = _window(tmp_path)
+    furl = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    (window.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[node]\nintroducer.furl = %s\n" % furl,
+        encoding="utf-8",
+    )
+    (window.home / "credit-wallet.json").write_text('{"seed":"SECRET-WALLET"}\n', encoding="utf-8")
+    window.share_url_edit.setText("http://example.i2p/join#invite-fragment")
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    window._invite_session = InviteCodeSession(code="7-planted-invite", proc=proc)
+    window._joined = True
+    window.status_chip.setText("Online — 1 computer storing files")
+    window._render_rows(
+        [FolderRow(name="secret-folder-name", path="/tmp/secret-folder-name", status="Up to date")]
+    )
+    button = window.settings_tab.findChild(window.QtWidgets.QPushButton, "copyBugReport")
+    assert button is not None and button.text() == "Copy bug-report details"
+    try:
+        window.QtWidgets.QApplication.clipboard().setText("STALE")
+        button.click()
+        clip = window.QtWidgets.QApplication.clipboard().text()
+        assert about_line() in clip
+        assert platform.platform() in clip
+        assert "Chip: Online — 1 computer storing files" in clip
+        assert "Joined: yes" in clip
+        assert "1 folder: Up to date" in clip
+        assert "secret-folder-name" not in clip
+        assert str(window.home / "logs") in clip
+        assert_no_raw_user_text(clip)
+        assert "pb://" not in clip
+        assert "FAKE-SWISS" not in clip
+        assert "7-planted-invite" not in clip
+        assert "SECRET-WALLET" not in clip
+        assert "invite-fragment" not in clip
+        assert window.settings_status.text() == "Copied. Paste it into your bug report."
+    finally:
+        if window._invite_session is not None:
+            window._invite_session.close()
         _close(window)

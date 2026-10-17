@@ -116,7 +116,9 @@ def _save_moved(home: Path, x: int, y: int, width: int, height: int) -> int:
 
 def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    saved_width = _save_moved(home, 40, -650, 700, 700)
+    # 1000 is above the 920 default and the 863 px windows-2022 minimum.
+    saved_width = _save_moved(home, 40, -650, 1000, 700)
+    assert saved_width != DEFAULT_WINDOW_SIZE[0]
     second = MainWindow(home=home, autoload=False)
     try:
         second.show()
@@ -129,7 +131,8 @@ def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
 
 def test_title_bar_left_of_the_screen_stays_on_screen(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    saved_width = _save_moved(home, -200, 40, 500, 400)
+    saved_width = _save_moved(home, -200, 40, 1000, 400)
+    assert saved_width != DEFAULT_WINDOW_SIZE[0]
     second = MainWindow(home=home, autoload=False)
     try:
         second.show()
@@ -147,7 +150,8 @@ def test_title_bar_partly_off_the_left_edge_stays_on_screen(tmp_path: Path) -> N
     to end fully inside availableGeometry.
     """
     home = tmp_path / "home"
-    saved_width = _save_moved(home, -40, 40, 700, 500)
+    saved_width = _save_moved(home, -40, 40, 1000, 500)
+    assert saved_width != DEFAULT_WINDOW_SIZE[0]
     second = MainWindow(home=home, autoload=False)
     try:
         second.show()

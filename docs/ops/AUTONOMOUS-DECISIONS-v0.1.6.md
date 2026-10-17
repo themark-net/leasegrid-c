@@ -29,3 +29,4 @@ One line per choice: `choice | alternatives | why`
 - Frame-left is the int32 at `_GEOM_HEADER.size` in the saveGeometry blob | a hard-coded byte offset | the drop-in says to locate the field from the layout `_saved_frame` reads
 - A partial restore is proved by patching `restoreGeometry` to resize and raise | only a corrupt blob | a blob rejected by the range check never reaches QRect, so it does not prove the except block puts the default size back
 - `bug_report_lines()` is the pre-scrub allowlist `bug_report_text()` joins and scrubs | keep one function and inspect the clipboard only | the four raw-dump mutants are masked once scrub runs, so the test has to see the lines first
+- The three title-bar tests request a width of 1000 | 1100, or the screen width | 1000 is already kept by the round-trip test on an 800px offscreen desktop, and it is above the 920 default and the 863 px windows minimum

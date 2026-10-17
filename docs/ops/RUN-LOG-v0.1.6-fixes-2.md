@@ -68,7 +68,12 @@ RED: `contains` → `intersects` in `_title_bar_on_a_screen` → `test_title_bar
 
 ### 4. Saved width
 
-Pending.
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 490 passed, 5 xfailed, 4 warnings in 43.50s, ci-local PASS | files: test_sync_window_geometry.py, decisions | err: none
+
+The three title-bar tests request 1000 px wide and assert `saved_width != DEFAULT_WINDOW_SIZE[0]`. On this offscreen desktop Qt saved 1000, which is not 920.
+
+RED: skip restore (`saved = _saved_frame(blob)` → `return`) → the three tests at tests/test_sync_window_geometry.py:126, :140, and :159 (`assert 920 == 1000`).
+RED: requesting 920 in the above-screen test → `test_title_bar_above_the_screen_stays_on_screen` at :121 (`assert 920 != 920`).
 
 ### 5. Geometry tmp
 

@@ -93,3 +93,16 @@ Last behavior commit: `1e4cf0b`. Head is the commit that last edits this file (`
 | 4 | DONE | 35c3b90 | the three title-bar tests, width 1000 | :126, :140, :159 (skip restore, `920 == 1000`). :121 if the request is the 920 default |
 | 5 | DONE | 8fae733 | test_failed_geometry_replace_keeps_the_previous_file | :197 (no `tmp.unlink()`) |
 | 6 | DONE | 1e4cf0b | test_scrub_bug_report_code_boundaries | :86 and :84 (old whitespace regex). :86 (drop `IGNORECASE`, caps only) |
+
+## Fix round 3 after Tester FAIL @ 8a70dd3 (B5)
+
+Tester failed PR #73 at `8a70dd3` on B5. Reviewer had passed. A saved window is a version-2 record, and `restoreGeometry` is not called. Items 1–3 are DONE. None skipped.
+Final ci-local: 516 passed, 5 xfailed, 4 warnings in 43.12s.
+Fuzz, 1534 cases (old-blob bit flips plus record extremes), in subprocess chunks: offscreen 0 crashes, 0 title-bar misses, 0 larger than the no-file control (920×947), 0 sides ≥ 10000. xcb under `xvfb-run -a` at 1920×1080: 0 crashes, 0 title-bar misses, 0 larger than the screen union, 0 sides ≥ 10000.
+Last behavior commit: `747c824`. Head is the commit that last edits this file (`v0.1.6 fix3: handoff`).
+
+| # | Status | Commit | Tests | RED without fix |
+|---|--------|--------|-------|-----------------|
+| 1 | DONE | 0a987e8 | test_corrupt_old_blob_launches_the_real_app, test_window_record_rejects_one_bad_field, test_oversized_record_uses_the_default_size, test_guard_resets_a_size_the_fitter_let_through | drop each of the bool, int, x, y, width, height, and maximized checks (its own case). `restoreGeometry` on an old blob: BEFORE_SHOW height 16777215, and the in-process test SIGSEGV. Drop the guard while the fitter is bypassed: SIGSEGV. The oversized-record tests stayed green on the fitter alone. |
+| 2 | DONE | 747c824 | test_scrub_bug_report_code_boundaries | drop the wordlist: `404-not-found`, `1-way-sync`, `3-day-trip`, `500-from-server-side`. Drop the dot: `v0.1.6-guitarist-revenge`. `v0.1.6-rc-final` stayed green on each single drop. |
+| 3 | DONE | 03397d7 | docs/HANDOFF-v0.1.6.md (the 11e line and the B3 claim) | docs only; no behavior mutation |

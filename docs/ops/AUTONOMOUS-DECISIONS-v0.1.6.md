@@ -43,3 +43,4 @@ One line per choice: `choice | alternatives | why`
 - The word list is copied from magic-wormhole 0.24.0 in another venv | pip install magic-wormhole into this venv | this tree's .venv has no wormhole, and the drop-in forbids new packages
 - The 11e bullet stays in the v0.1.7 list and now says Tester shows it RED | delete the bullet | the drop-in says to keep the list and to fix the stale line
 - The round-2 B3 sentence is rewritten to the whole saved record | leave that sentence and correct it only in the new section | Tester named that sentence, and it still described only the frame rect
+- The handoff names its head as the commit that last edits the file | add the SHA in a later commit | the SHA does not exist until this commit, and round 2 used the same sentence

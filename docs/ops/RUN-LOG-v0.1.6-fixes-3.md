@@ -64,3 +64,9 @@ RED: drop the dot from the lookbehind → `v0.1.6-guitarist-revenge` becomes `v0
 state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 516 passed, 5 xfailed, 4 warnings in 43.53s, ci-local PASS | files: docs/HANDOFF-v0.1.6.md, decisions, this log | err: none
 
 The v0.1.7 line that said 11e still survives now says Tester at `8a70dd3` shows it RED (`35c3b90`). The round-2 B3 claim now covers the whole saved file: a version-2 record of x, y, width, height, and maximized, and an old geometry blob is ignored. Added one v0.1.7 line from REVIEW.md: a live lock held by another host is taken over after about 30 seconds. The four numbered REVIEW follow-ups are this round's work, so they are not listed again. Docs only; no behavior mutation.
+
+## Finish
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 516 passed, 5 xfailed, 4 warnings in 43.12s, ci-local PASS | files: docs/HANDOFF-v0.1.6.md, this log | err: none
+
+Handoff section "Fix round 3 after Tester FAIL @ 8a70dd3 (B5)" records items 1–3, the fuzz counts, and this ci-local. Head is the handoff commit. None skipped.

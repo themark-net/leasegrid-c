@@ -1,0 +1,110 @@
+# Project Semgrep rules: systems and security footguns that cost gate rounds.
+# Standing rule: every Tester or Reviewer blocker that a pattern could catch becomes a rule here,
+# with a ruleid/ok fixture in leasegrid-systems.py, in the same PR as the fix.
+# Run: semgrep scan --config .semgrep --metrics=off --error src scripts packaging
+# Test: semgrep --test .semgrep
+rules:
+  - id: ipc-endpoint-in-shared-tmp
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Path built in the shared temp dir with a predictable name. Any local user can pre-bind,
+      pre-create or connect to it (PR #74 --join socket leaked invite codes). Use a per-user
+      0700 dir ($XDG_RUNTIME_DIR, or one you create with mode 0700 and whose owner you verify)
+      and check the peer uid. CWE-377, CWE-668. Rule SS3.
+    pattern-either:
+      - pattern: os.path.join(tempfile.gettempdir(), ...)
+      - pattern: Path(tempfile.gettempdir()) / $X
+      - pattern: pathlib.Path(tempfile.gettempdir()) / $X
+      - pattern: os.path.join("/tmp", ...)
+      - pattern: Path("/tmp") / $X
+  - id: qlocalserver-listen-without-user-access-option
+    languages: [python]
+    severity: ERROR
+    message: >-
+      QLocalServer.listen() without setSocketOptions(QLocalServer.UserAccessOption) first.
+      On Unix the socket lands in QDir::tempPath() with default permissions. CWE-732. Rule SS3.
+    patterns:
+      - pattern: $S.listen(...)
+      - pattern-inside: |
+          $S = QLocalServer(...)
+          ...
+      - pattern-not-inside: |
+          $S = QLocalServer(...)
+          ...
+          $S.setSocketOptions(...)
+          ...
+  - id: qlockfile-manual-stale-removal
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Manual stale-lock handling. removeStaleLockFile() or setStaleLockTime(0) can delete a
+      rival's fresh lock or make a lock never go stale (PR #73 B1, PR #74 T3). TOCTOU, CWE-367.
+      Needs an N-process x M-round test asserting exactly one holder. Rule SS1.
+    pattern-either:
+      - pattern: $L.removeStaleLockFile()
+      - pattern: $L.setStaleLockTime(0)
+  - id: signal-to-stored-pid
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Signalling a PID or PGID held in a variable. If the child was already reaped, the number
+      can belong to an unrelated process (PR #74 T4). Signal only a Popen you still own, with
+      proc.poll() is None checked right before, or use a pidfd. CWE-367. Rule SS2.
+    pattern-either:
+      - pattern: os.killpg($PGID, $SIG)
+      - pattern: os.kill($PID, $SIG)
+  - id: restore-untrusted-serialized-state
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Restoring opaque serialized state. One flipped bit can segfault Qt (PR #73 B5) or give
+      absurd values. Parse into plain fields, range-check and clamp, default on error, and
+      fuzz it. CWE-502, CWE-20. Rule SS4.
+    pattern-either:
+      - pattern: $W.restoreGeometry(...)
+      - pattern: $W.restoreState(...)
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: marshal.loads(...)
+      - pattern: QDataStream(...)
+  - id: posix-only-process-api
+    languages: [python]
+    severity: WARNING
+    message: >-
+      POSIX-only signal or process call outside a platform guard. Windows has no SIGHUP, SIGKILL,
+      killpg, getpgid or setsid, and SIGBREAK/CTRL_* behave differently (PR #74 T1). Guard with
+      sys.platform and cover it on windows-2022 CI. Rule SS7.
+    patterns:
+      - pattern-either:
+          - pattern: signal.SIGHUP
+          - pattern: signal.SIGKILL
+          - pattern: signal.SIGQUIT
+          - pattern: os.killpg(...)
+          - pattern: os.getpgid(...)
+          - pattern: os.getpgrp()
+          - pattern: os.setsid()
+      - pattern-not-inside: |
+          if sys.platform != "win32":
+              ...
+      - pattern-not-inside: |
+          if os.name == "posix":
+              ...
+      - pattern-not-inside: |
+          if sys.platform == "win32":
+              ...
+          else:
+              ...
+      - pattern-not-inside: |
+          def $F(...):
+              ...
+              if sys.platform == "win32":
+                  return ...
+              ...
+  - id: af-unix-path-length
+    languages: [python]
+    severity: WARNING
+    message: >-
+      AF_UNIX path limit is 108 bytes on Linux and 104 on macOS, where $TMPDIR alone is about
+      50 chars. Assert len(path.encode()) < 104, or fall back to a shorter dir. Rule SS3.
+    pattern: socket.socket(socket.AF_UNIX, ...)

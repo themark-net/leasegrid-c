@@ -72,8 +72,13 @@ def test_popen_hidden_uses_create_no_window_on_windows(monkeypatch):
     monkeypatch.setattr("leasegrid_sync.backend.subprocess.Popen", FakePopen)
     monkeypatch.setattr("leasegrid_sync.backend.sys.platform", "win32")
     monkeypatch.setattr("leasegrid_sync.backend.subprocess.CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(
+        "leasegrid_sync.backend.subprocess.CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False
+    )
     popen_hidden(["tahoe", "run", "x"], log_f=None)
-    assert seen["kwargs"]["creationflags"] == 0x08000000
+    flags = seen["kwargs"]["creationflags"]
+    assert flags & 0x08000000
+    assert flags & 0x00000200
     assert seen["kwargs"]["stdin"] is not None
 
 

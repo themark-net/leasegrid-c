@@ -1,0 +1,175 @@
+"""stop() kills the daemon and a grandchild that ignores SIGTERM.
+
+Killing only the leader leaves the grandchild. The daemon is started through
+TahoeClient.start, which is the real popen_hidden path.
+"""
+
+from __future__ import annotations
+
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+from leasegrid_sync.backend import TahoeClient
+
+_STUB = r"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps(
+            {
+                "introducers": {"statuses": ["connected"]},
+                "servers": [{"nickname": "stub", "connection_status": "connected"}],
+            }
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        return
+
+
+def grandchild() -> None:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    Path(sys.argv[2]).write_text(str(os.getpid()), encoding="utf-8")
+    time.sleep(120)
+
+
+def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "grandchild":
+        grandchild()
+        return
+    args = sys.argv[1:]
+    if "run" not in args:
+        sys.exit(0)
+    nodedir = Path(args[args.index("run") + 1])
+    child_file = os.environ.get("LEASEGRID_TEST_CHILD_PID", "")
+    if child_file:
+        subprocess.Popen([sys.executable, sys.argv[0], "grandchild", child_file])
+        deadline = time.time() + 5
+        while time.time() < deadline and not Path(child_file).is_file():
+            time.sleep(0.02)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    (nodedir / "node.url").write_text("http://127.0.0.1:%d/\n" % port, encoding="utf-8")
+    leader_file = os.environ.get("LEASEGRID_TEST_LEADER_PID", "")
+    if leader_file:
+        Path(leader_file).write_text(str(os.getpid()), encoding="utf-8")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
+"""
+
+
+def _executable(directory: Path, body: str) -> str:
+    script = directory / "tahoe.py"
+    script.write_text(body, encoding="utf-8")
+    if os.name == "nt":
+        bat = directory / "tahoe.bat"
+        bat.write_text('@"%s" "%s" %%*\n' % (sys.executable, script), encoding="utf-8")
+        return str(bat)
+    bin_ = directory / "tahoe"
+    bin_.write_text("#!%s\n%s" % (sys.executable, body), encoding="utf-8")
+    bin_.chmod(0o755)
+    return str(bin_)
+
+
+def _is_zombie(pid: int) -> bool:
+    try:
+        text = Path("/proc/%d/stat" % pid).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    tail = text.rsplit(")", 1)[-1].split()
+    return bool(tail) and tail[0] == "Z"
+
+
+def _reaped(pid: int) -> bool:
+    if pid <= 0 or _is_zombie(pid):
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return True
+    return False
+
+
+def _wait_reaped(pid: int, timeout: float = 5.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _reaped(pid):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    nodedir.mkdir(parents=True)
+    (nodedir / "tahoe.cfg").write_text("[node]\nnickname = stub\n", encoding="utf-8")
+    bins = tmp_path / "bin"
+    bins.mkdir()
+    leader_file = tmp_path / "leader.pid"
+    child_file = tmp_path / "child.pid"
+    env_leader = "LEASEGRID_TEST_LEADER_PID"
+    env_child = "LEASEGRID_TEST_CHILD_PID"
+    old_leader = os.environ.get(env_leader)
+    old_child = os.environ.get(env_child)
+    os.environ[env_leader] = str(leader_file)
+    os.environ[env_child] = str(child_file)
+    leader = 0
+    child = 0
+    client = TahoeClient(nodedir=nodedir, home=home, tahoe_bin=_executable(bins, _STUB))
+    try:
+        client.start(timeout=10)
+        assert leader_file.is_file()
+        assert child_file.is_file()
+        leader = int(leader_file.read_text(encoding="utf-8").strip())
+        child = int(child_file.read_text(encoding="utf-8").strip())
+        assert leader > 0 and child > 0 and leader != child
+        if sys.platform != "win32":
+            assert os.getpgid(child) == os.getpgid(leader)
+            assert os.getpgid(leader) != os.getpgrp()
+        client.stop(terminate_timeout=0.3)
+        assert client._proc is None
+        assert _wait_reaped(leader)
+        assert _wait_reaped(child)
+        assert _reaped(leader)
+        assert _reaped(child)
+    finally:
+        os.environ.pop(env_leader, None)
+        if old_leader is not None:
+            os.environ[env_leader] = old_leader
+        os.environ.pop(env_child, None)
+        if old_child is not None:
+            os.environ[env_child] = old_child
+        proc = client._proc
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        for pid in (leader, child):
+            if pid and not _reaped(pid):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass

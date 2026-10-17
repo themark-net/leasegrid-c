@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -186,20 +187,96 @@ def redact_furl(value: str) -> str:
     return text
 
 
-def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
-    """Terminate a child and wait so it cannot stay a zombie.
+def _owns_process_group(proc: subprocess.Popen) -> bool:
+    """True only for a daemon this process put in its own group."""
+    return bool(getattr(proc, "_leasegrid_group", False))
 
-    Safe if the process has already exited. SIGTERM is tried first. After
-    that times out, SIGKILL is followed by another wait. Only
-    ``TimeoutExpired`` and ``OSError`` are caught.
-    """
-    if proc.poll() is not None:
+
+def _foreign_pgid(proc: subprocess.Popen) -> Optional[int]:
+    """Group id to signal, or None when that would hit our own group."""
+    if sys.platform == "win32" or not _owns_process_group(proc):
+        return None
+    try:
+        pgid = os.getpgid(proc.pid)
+    except OSError:
+        return None
+    try:
+        own = os.getpgrp()
+    except OSError:
+        own = None
+    if pgid <= 0 or pgid == own:
+        return None
+    return pgid
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except OSError:
+        pass
+
+
+def _taskkill_tree(pid: int) -> None:
+    """Windows tree kill. ``taskkill /T /F`` is the supported equivalent of killpg."""
+    if pid <= 0:
         return
+    subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def _close_stdin(proc: subprocess.Popen) -> None:
     try:
         if proc.stdin:
             proc.stdin.close()
     except OSError:
         pass
+
+
+def _wait_proc(proc: subprocess.Popen, timeout: float) -> None:
+    try:
+        proc.wait(timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+
+def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
+    """Terminate a child and wait so it cannot stay a zombie.
+
+    A daemon started in its own session gets the whole group: SIGTERM, then
+    SIGKILL, so a grandchild that ignores SIGTERM does not survive. A process
+    we did not put in a new group is signalled alone, and this process's own
+    group is never signalled. On Windows the group path is CTRL_BREAK_EVENT
+    and then ``taskkill /T /F``. Safe if the process has already exited.
+    Only ``TimeoutExpired`` and ``OSError`` are caught.
+    """
+    pgid = _foreign_pgid(proc)
+    windows_tree = sys.platform == "win32" and _owns_process_group(proc)
+    if proc.poll() is not None:
+        if pgid is not None:
+            _signal_group(pgid, signal.SIGKILL)
+        elif windows_tree:
+            _taskkill_tree(proc.pid)
+        return
+    _close_stdin(proc)
+    if pgid is not None:
+        _signal_group(pgid, signal.SIGTERM)
+        _wait_proc(proc, terminate_timeout)
+        _signal_group(pgid, signal.SIGKILL)
+        _wait_proc(proc, terminate_timeout)
+        return
+    if windows_tree:
+        try:
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        except OSError:
+            pass
+        _wait_proc(proc, terminate_timeout)
+        _taskkill_tree(proc.pid)
+        _wait_proc(proc, terminate_timeout)
+        return
     try:
         proc.terminate()
         proc.wait(timeout=terminate_timeout)
@@ -218,15 +295,26 @@ def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
 
 
 def popen_hidden(cmd: list[str], log_f) -> subprocess.Popen:
-    """Spawn a daemon without a console flash (Windows CREATE_NO_WINDOW)."""
+    """Spawn a daemon in its own process group, without a console flash.
+
+    POSIX uses ``start_new_session`` so the child's pid is the process-group
+    id. Windows ORs ``CREATE_NEW_PROCESS_GROUP`` with ``CREATE_NO_WINDOW``.
+    ``stop`` will signal that group only when this flag is set.
+    """
     kwargs: dict[str, Any] = {
         "stdin": subprocess.PIPE,
         "stdout": log_f,
         "stderr": subprocess.STDOUT,
     }
     if sys.platform == "win32":
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    return subprocess.Popen(cmd, **kwargs)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        kwargs["creationflags"] = flags
+    else:
+        kwargs["start_new_session"] = True
+    proc = subprocess.Popen(cmd, **kwargs)
+    proc._leasegrid_group = True  # type: ignore[attr-defined]
+    return proc
 
 
 def storage_offered(nodedir: Path) -> bool:

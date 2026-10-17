@@ -49,13 +49,14 @@ Failing tests: none
 Log: `/tmp/v017-baseline.log`
 
 Item 1 ci-local: PASS, 520 passed, 5 xfailed, 4 warnings in 74.61s.
+Item 2 ci-local: PASS, 521 passed, 5 xfailed, 4 warnings in 75.79s.
 
 ## Items
 
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
-| 1 | DONE | (this commit) | test_signal_quits_and_reaps_the_stub[SIGTERM,SIGINT,SIGHUP] | RED: no handler installed → test_signal_quits_and_reaps_the_stub[SIGTERM] at tests/test_sync_signal_quit.py:195 (returncode -15) |
-| 2 | pending | | | |
+| 1 | DONE | 1ca7a9b | test_signal_quits_and_reaps_the_stub[SIGTERM,SIGINT,SIGHUP] | RED: no handler installed → test_signal_quits_and_reaps_the_stub[SIGTERM] at tests/test_sync_signal_quit.py:195 (returncode -15) |
+| 2 | DONE | (this commit) | test_stop_kills_daemon_and_grandchild | RED: kill only the leader → test_stop_kills_daemon_and_grandchild at tests/test_sync_process_group.py:156 |
 | 3 | pending | | | |
 | 4 | pending | | | |
 | 5 | pending | | | |

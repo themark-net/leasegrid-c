@@ -174,6 +174,13 @@ LEGIT_LINES = (
     "2026-10-15T21:40:07.000Z [-] Main loop terminated. Exit status 1 (pid 4242, port 3456)",
     f"2026-10-15T21:40:08.000Z [-] Error: request {UUIDISH} failed: ConnectionRefusedError",
     "2026-10-15T21:40:09.000Z [-] Unhandled error in Deferred: tahoe version 1.19.0",
+    # v0.1.5 corpus: short dashed tokens (kills a widened dashed rule), snake_case
+    # and CamelCase names under the new floors, hyphenated 8-letter words.
+    "2026-10-15T21:40:10.000Z [-] Error: stop requested by an-ok-ci-run-on-the-box",
+    "2026-10-15T21:40:11.000Z [-] Exception in _start_magic_folder_and_wait_for_api (pid 77)",
+    "2026-10-15T21:40:12.000Z [-] Error: TwistedDeprecationWarning then UnhandledErrorInDeferred",
+    "2026-10-15T21:40:13.000Z [-] Error: tahoe-lafs magic-folder leasegrid-sync shutdown",
+    "2026-10-15T21:40:14.000Z [-] Error: tahoe-lafs-magic-folder plugin stopped (exit 1)",
 )
 
 
@@ -219,3 +226,110 @@ def test_glued_hex_and_base32_secret_never_leaks(length: int) -> None:
         if any(w in body for w in _windows8(secret)) or any(w in body for w in _windows8(hexrun)):
             leaked += 1
     assert leaked == 0, f"{leaked}/{len(cases)} glued lines leaked an 8-char window"
+
+
+# --- v0.1.5: more shapes (seeded) ------------------------------------------
+def _rng(tag: str):
+    import random
+
+    return random.Random(f"{_GLUE_SEED}-{tag}")
+
+
+def _b64url_secrets(n: int) -> list[str]:
+    rng = _rng("b64url")
+    out: list[str] = []
+    while len(out) < n:
+        raw = bytes(rng.randrange(256) for _ in range(32))
+        tok = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        if "-" in tok or "_" in tok:
+            out.append(tok)
+    return out
+
+
+def _mixed_b32_secrets(n: int) -> list[str]:
+    rng = _rng("mixed")
+    out: list[str] = []
+    while len(out) < n:
+        tok = "".join(
+            c.upper() if rng.random() < 0.5 else c for c in (rng.choice(_B32) for _ in range(32))
+        )
+        if any(c.isupper() for c in tok) and any(c.islower() for c in tok):
+            out.append(tok)
+    return out
+
+
+def _dashed8_secrets(n: int) -> list[str]:
+    rng = _rng("dashed8")
+    out = []
+    for _ in range(n):
+        tok = "".join(rng.choice(_B32) for _ in range(32))
+        out.append("-".join(tok[i : i + 8] for i in range(0, 32, 8)))
+    return out
+
+
+@pytest.mark.parametrize(
+    "shape", ["base64url-unpadded", "mixed-case-base32", "dashed-8"],
+)
+def test_v015_shapes_never_leak(shape: str) -> None:
+    gen = {
+        "base64url-unpadded": _b64url_secrets,
+        "mixed-case-base32": _mixed_b32_secrets,
+        "dashed-8": _dashed8_secrets,
+    }[shape]
+    toks = gen(200)
+    lines = [f"{_GLUE_TS}{tok} ok" for tok in toks]
+    outs = _filter_stdout("\n".join(lines) + "\n").splitlines()
+    assert len(outs) == len(toks)
+    leaked = sum(
+        any(w in out[len(_GLUE_TS) :] for w in _windows8(tok.replace("-", "")) + _windows8(tok))
+        for tok, out in zip(toks, outs)
+    )
+    assert leaked == 0, f"{shape}: {leaked}/{len(toks)} leaked an 8-char window"
+
+
+# Over-redaction we accept (PR #71 review follow-up 1). Each would need a rule
+# that lets some real secret shape through, so redact-more wins. strict=True:
+# if a future tuning un-blanks one, it XPASSes and turns red, forcing a fresh
+# look at the leak tests above.
+_ACCEPTED = [
+    pytest.param(
+        "2026-10-15T21:40:20.000Z [-] Error: when node exit code from tahoe stop",
+        id="five-four-letter-words",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: a 4-char-chunked base32 secret has no digit in ~0.13% "
+            "of draws, so a digit/vowel test to spare English would reopen a leak",
+        ),
+    ),
+    pytest.param(
+        '  File "/usr/lib/python3/dist/packages/twisted/internet/defer/tcp", line 9, in run',
+        id="separator-free-path-40",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: random base64 contains '/' about half the time, so "
+            "sparing slash paths would leave base64 pieces under the 40 floor",
+        ),
+    ),
+    pytest.param(
+        "2026-10-15T21:40:21.000Z [-] Error: build rev 3e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f",
+        id="git-sha-40",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: a 40-hex token is also a hex-encoded 20-byte secret",
+        ),
+    ),
+    pytest.param(
+        "2026-10-15T21:40:22.000Z [-] Error: SSLVTHREEALERTHANDSHAKEFAIL",
+        id="uppercase-constant-20",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: indistinguishable from an uppercase base32 tub-id or swissnum",
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("line", _ACCEPTED)
+def test_accepted_over_redaction_is_documented(line: str) -> None:
+    out = _filter_stdout(line + "\n")
+    assert out.strip() == line.strip()

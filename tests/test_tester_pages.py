@@ -16,11 +16,49 @@ _DOWNLOAD = re.compile(r"/releases/download/v(\d+\.\d+\.\d+)/")
 _TAG = re.compile(r"/releases/tag/v(\d+\.\d+\.\d+)")
 
 
+# Any "these links work only after the tag" caveat, however worded (PR #71
+# review T4: "These links work once v0.1.4 is tagged." passed the old guard).
+_LINK_TARGETS = re.compile(r"\]\([^)]*\)|<https?://[^>]*>|https?://\S+")
+_TAGWORD = r"(?:tag\w*|publish\w*|releas\w*|push\w*|cut)"
+# Up to 60 chars inside one sentence; a dot inside "v0.1.4" does not end it.
+_SPAN = r"(?:[^.\n]|\.(?=\w)){0,60}"
+_CAVEAT = (
+    re.compile(r"\bresolv\w*", re.IGNORECASE),
+    re.compile(r"\bonce\b" + _SPAN + r"\b" + _TAGWORD + r"\b", re.IGNORECASE),
+    re.compile(r"\b(?:until|after|when)\b" + _SPAN + r"\btag\w*\b", re.IGNORECASE),
+    re.compile(r"\b404\b"),
+    re.compile(r"\bnot\s+(?:yet\s+)?(?:live|available|published|released|tagged|up)\b", re.IGNORECASE),
+)
+
+
+def caveat_hits(text: str) -> list[str]:
+    """Caveat phrases in prose; link targets are ignored (they hold /tag/ URLs)."""
+    prose = _LINK_TARGETS.sub(" ", text)
+    return [m.group(0) for rx in _CAVEAT for m in rx.finditer(prose)]
+
+
 @pytest.mark.parametrize("page", PAGES)
 def test_tester_page_has_no_resolve_once_tagged_caveat(page: str) -> None:
-    text = (ROOT / page).read_text(encoding="utf-8").lower()
-    assert "resolve once" not in text
-    assert "once the `v" not in text
+    text = (ROOT / page).read_text(encoding="utf-8")
+    assert caveat_hits(text) == []
+
+
+@pytest.mark.parametrize(
+    "caveat",
+    [
+        "Download links point at the v0.1.4 release; they resolve once the `v0.1.4` tag is pushed.",
+        "These links work once v0.1.4 is tagged.",
+        "Links go live once the release is published.",
+        "The assets appear when v0.1.5 is tagged.",
+        "Downloads return 404 until the tag exists.",
+        "Links are not yet live.",
+        "They will start working after tagging.",
+    ],
+)
+def test_caveat_guard_catches_rewordings(caveat: str) -> None:
+    for page in PAGES:
+        text = (ROOT / page).read_text(encoding="utf-8")
+        assert caveat_hits(text + "\n" + caveat + "\n"), (page, caveat)
 
 
 @pytest.mark.parametrize("page", PAGES)
@@ -35,3 +73,18 @@ def test_release_notes_exist_for_current_version() -> None:
     text = notes.read_text(encoding="utf-8")
     assert text.startswith("# Leasegrid Sync v%s\n" % __version__)
     assert "X.Y.Z" not in text and "<sha>" not in text and "#NN" not in text
+
+
+@pytest.mark.parametrize("page", ("README.md", "docs/TESTERS.md"))
+def test_tester_page_says_other_http_errors(page: str) -> None:
+    """PR #71 review: with no HTTP status the message is "daemon is not reachable"."""
+    text = (ROOT / page).read_text(encoding="utf-8")
+    assert "Other errors say" not in text
+    assert "Other HTTP errors say *Magic Folder API error (NNN)*" in text
+    assert "Magic Folder daemon is not reachable." in text
+
+
+def test_release_notes_correct_the_v014_30_claim() -> None:
+    text = (ROOT / "docs" / "release-notes" / "v0.1.5.md").read_text(encoding="utf-8")
+    assert "v0.1.4 notes overstated #30" in text
+    assert "Users see no change" in text

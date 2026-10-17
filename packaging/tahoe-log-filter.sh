@@ -8,6 +8,9 @@
 # redact the whole [A-Za-z0-9] token that holds their run. In v0.1.4 the hex
 # rule ran first and could eat the hex-alphabet prefix of a base32 secret glued
 # to a 32+ hex run, leaving a sub-20 base32 remnant that leaked.
+# v0.1.5 also adds: unpadded base64url runs of 40+ [A-Za-z0-9_-]; mixed-case
+# base32 runs of 32+ [A-Za-z2-7]; 3+ dashed groups of exactly 8 [a-z2-7].
+# Mixed-case runs of 20-31 stay out: they look like CamelCase class names.
 # v0.1.4 added (each only redacts more):
 #   hex runs of 32+ [0-9a-fA-F]; padded base64 (16+ chars then = or ==);
 #   unpadded base64-alphabet runs of 40+; uppercase base32 runs of 20+
@@ -27,7 +30,10 @@ grep -E "(${TS}.*${KEY})|^Traceback|^[[:space:]]+File \"|^[A-Za-z_.]*(Error|Exce
       -e 's#[A-Za-z0-9]*[0-9a-fA-F]{32,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{16,}={1,2}#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{40,}#REDACTED#g' \
+      -e 's#[A-Za-z0-9_-]{40,}#REDACTED#g' \
       -e 's#[A-Za-z0-9]*[A-Z2-7]{20,}[A-Za-z0-9]*#REDACTED#g' \
+      -e 's#[A-Za-z0-9]*[A-Za-z2-7]{32,}[A-Za-z0-9]*#REDACTED#g' \
+      -e 's#(^|[^A-Za-z0-9])[a-z2-7]{8}(-[a-z2-7]{8}){2,}([^A-Za-z0-9]|$)#\1REDACTED\3#g' \
       -e 's#(^|[^A-Za-z0-9])[a-z2-7]{4}(-[a-z2-7]{4}){4,}([^A-Za-z0-9]|$)#\1REDACTED\3#g' \
       -e 's#(^|[^A-Za-z0-9])[a-z2-7]{4}( [a-z2-7]{4}){4,}([^A-Za-z0-9]|$)#\1REDACTED\3#g' \
   || true

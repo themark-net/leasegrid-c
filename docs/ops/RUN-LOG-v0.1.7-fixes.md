@@ -36,8 +36,8 @@ Risks:
 |---|--------|--------|-------|-----------------|
 | 1 | DONE | 176274f | old-path squatter, free lock, mode 0755, symlink dir, wrong uid, file and fifo, long home, UserAccessOption; existing two-process handoff still passes | see below |
 | 2 | DONE | ceac025 | test_empty_lock_mid_write_is_not_taken; empty, garbage, and six-start tests stay green | RED: no retry → test_empty_lock_mid_write_is_not_taken |
-| 3 | DONE | this commit | test_real_entry_does_not_dump_an_invite_from_the_env, test_handed_invite_is_not_dumped_when_hooks_are_off; join and signal drivers set _TEST_HOOKS | RED: the gate is removed → test_real_entry_does_not_dump_an_invite_from_the_env |
-| handoff | pending | | | |
+| 3 | DONE | 789e53c | test_real_entry_does_not_dump_an_invite_from_the_env, test_handed_invite_is_not_dumped_when_hooks_are_off; join and signal drivers set _TEST_HOOKS | RED: the gate is removed → test_real_entry_does_not_dump_an_invite_from_the_env |
+| handoff | DONE | this commit | final ci-local 555 passed, 5 xfailed, 4 warnings in 81.24s | docs only |
 
 state: DONE | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → 552 passed, 5 xfailed, 4 warnings in 80.83s | files: app.py, test_sync_join_handoff.py, test_sync_join_handoff_private.py | err: none
 
@@ -70,3 +70,7 @@ RED: the gate is removed → test_real_entry_does_not_dump_an_invite_from_the_en
 RED: the gate is removed → test_handed_invite_is_not_dumped_when_hooks_are_off (dump file exists)
 
 `LEASEGRID_TEST_INVITE_DUMP`, `LEASEGRID_TEST_JOIN_READY`, and `LEASEGRID_TEST_SIGNAL_READY` are inert unless `app._TEST_HOOKS` is true. Only the test drivers set that flag before `main()`. The real `python -m leasegrid_sync` entry does not. An env var alone writes no dump file.
+
+state: DONE | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → 555 passed, 5 xfailed, 4 warnings in 81.24s | files: docs/HANDOFF-v0.1.7.md, docs/design/60-DESKTOP-UI-V016.md, this log | err: none
+
+Handoff section "Fix round 1 after Reviewer FAIL @ fbeb6f1" records B1, the empty-lock wait, the test-hook gate, the mutation table, and this ci-local. None skipped. No PR.

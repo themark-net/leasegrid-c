@@ -1,9 +1,36 @@
 # Handoff — Leasegrid Sync v0.1.7
 
 Branch: `build/v0.1.7-batch` (no upstream). Base: `b4e9b70` (`origin/main`, tag v0.1.6).
-Head: the commit that writes this file (`v0.1.7: handoff`). Parent: `f8a3271` (version bump).
-Baseline: 517 passed, 5 xfailed, 4 warnings in 44.34s. Final: 542 passed, 5 xfailed, 4 warnings in 77.59s.
-None skipped. Decisions: [`docs/ops/AUTONOMOUS-DECISIONS-v0.1.7.md`](ops/AUTONOMOUS-DECISIONS-v0.1.7.md). Run log: [`docs/ops/RUN-LOG-v0.1.7-batch.md`](ops/RUN-LOG-v0.1.7-batch.md).
+Head: the commit that writes this file (`v0.1.7: handoff after fix round 1`).
+Batch head was `fbeb6f1` (`v0.1.7: handoff`), parent `f8a3271` (version bump). The drop-in on top of that was `3d64b06`.
+Batch baseline: 517 passed, 5 xfailed, 4 warnings in 44.34s. Batch final: 542 passed, 5 xfailed, 4 warnings in 77.59s.
+Fix round 1 final is in the section below.
+None skipped. Decisions: [`docs/ops/AUTONOMOUS-DECISIONS-v0.1.7.md`](ops/AUTONOMOUS-DECISIONS-v0.1.7.md). Run logs: [`docs/ops/RUN-LOG-v0.1.7-batch.md`](ops/RUN-LOG-v0.1.7-batch.md), [`docs/ops/RUN-LOG-v0.1.7-fixes.md`](ops/RUN-LOG-v0.1.7-fixes.md).
+
+## Fix round 1 after Reviewer FAIL @ fbeb6f1
+
+Reviewer FAIL on PR #74 at `fbeb6f1`. None skipped.
+
+- **B1.** `--join` checks the home lock before any connect. The listener uses a 0700 directory (`<Sync home>/run` when the path is under 100 bytes, else `$XDG_RUNTIME_DIR/leasegrid-sync`, else `$TMPDIR/leasegrid-sync-<uid>`). The client refuses a symlink, the wrong uid, a mode with group or other bits, or a path that is not our socket. `176274f`.
+- **(a)** An empty lock with no readable PID waits 100 ms. The file is removed only if the PID is still unreadable, so a starter mid-write keeps the lock. `ceac025`.
+- **(b)** `LEASEGRID_TEST_INVITE_DUMP`, `LEASEGRID_TEST_JOIN_READY`, and `LEASEGRID_TEST_SIGNAL_READY` do nothing unless a test driver sets `app._TEST_HOOKS`. An env var alone writes no invite dump. `789e53c`.
+
+Windows has no portable way to read the pipe owner from the client. The defense there is the lock gate plus `QLocalServer.UserAccessOption` before `listen`. This handoff did not describe a `/tmp` socket or a send-then-lock order. The endpoint above replaces that.
+
+| Mutant | Test | Result |
+|--------|------|--------|
+| send before the lock check (the old order) | test_old_path_squatter_receives_nothing_when_the_lock_is_free | RED |
+| drop the lock gate | test_free_lock_does_not_connect | RED |
+| skip the mode check | test_shared_directory_receives_nothing | RED |
+| stat instead of lstat | test_symlinked_directory_receives_nothing | RED |
+| skip the uid check | test_wrong_owner_receives_nothing | RED |
+| skip S_ISSOCK | test_non_socket_receives_nothing | RED |
+| no fallback | test_long_home_still_hands_off | RED |
+| the option is removed | test_join_server_is_user_only | RED |
+| no retry | test_empty_lock_mid_write_is_not_taken | RED |
+| the gate is removed | test_real_entry_does_not_dump_an_invite_from_the_env | RED |
+
+Fix round 1 counts: 555 passed, 5 xfailed, 4 warnings. Item 1 ci-local 552 passed in 80.83s. Item 2: 553 passed in 80.48s. Item 3: 555 passed in 81.53s. Final ci-local: PASS, 555 passed, 5 xfailed, 4 warnings in 81.24s.
 
 | # | Status | Commit | Tests | RED |
 |---|--------|--------|-------|-----|

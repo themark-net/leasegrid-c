@@ -38,12 +38,21 @@ TAHOE_CONNECT_TIMEOUT = 30.0
 
 
 class SyncError(Exception):
-    """Buyer-visible failure. ``next_hint`` is the in-window Next line."""
+    """Buyer-visible failure. ``next_hint`` is the in-window Next line.
 
-    def __init__(self, message: str, next_hint: str = "") -> None:
+    ``http_status`` is set only for a Magic Folder HTTP response.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        next_hint: str = "",
+        http_status: Optional[int] = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.next_hint = next_hint
+        self.http_status = http_status
 
     def banner(self) -> str:
         text = self.message if self.message.startswith("FAIL") else "FAIL — " + self.message
@@ -1479,10 +1488,12 @@ class MagicFolderCtl:
             return SyncError(
                 "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
                 "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+                http_status=exc.code,
             )
         return SyncError(
             "Magic Folder API error (%s)." % exc.code,
             "Restart Sync. If it keeps failing, file a bug per docs/TESTERS.md.",
+            http_status=exc.code,
         )
 
     def _http_post(self, path: str, timeout: float = 30.0, body: Optional[dict] = None) -> Any:
@@ -1510,18 +1521,35 @@ class MagicFolderCtl:
         except json.JSONDecodeError:
             return {"raw": body}
 
-    def _refresh_http_message(self, exc: SyncError) -> SyncError:
-        """Listing folders is a refresh. HTTP 500 there is not an add."""
+    def _refresh_add_copy(self, exc: SyncError) -> SyncError:
+        """A folder list did not try to add a folder. Keep the Next line."""
         prefix = "folder not added. "
-        if exc.message.startswith(prefix) and "HTTP 500" in exc.message:
-            return SyncError(
-                "could not refresh folders. " + exc.message[len(prefix):],
-                exc.next_hint,
-            )
-        return exc
+        if not exc.message.startswith(prefix):
+            return exc
+        return SyncError(
+            "could not refresh folders. " + exc.message[len(prefix):],
+            exc.next_hint,
+            http_status=exc.http_status,
+        )
+
+    def _refresh_http_message(self, exc: SyncError) -> SyncError:
+        """Listing folders is a refresh. HTTP 500 there is not an add.
+
+        The status is ``exc.http_status``. The words "HTTP 500" in some other
+        sentence are not issue #30.
+        """
+        if exc.http_status != 500:
+            return exc
+        return self._refresh_add_copy(exc)
 
     def list_folders(self) -> list[FolderRow]:
-        self.ensure_running()
+        try:
+            self.ensure_running()
+        except SyncError as exc:
+            mapped = self._refresh_add_copy(exc)
+            if mapped is not exc:
+                raise mapped from exc
+            raise
         try:
             data = self._http_get("/v1/magic-folder")
         except SyncError as exc:

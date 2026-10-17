@@ -2644,9 +2644,11 @@ class MainWindow:
         self.win.resize(*DEFAULT_WINDOW_SIZE)
         self.win.move(0, 0)
 
-    def _guard_applied_size(self) -> None:
-        """Last check: a size Qt still left past the cap goes back to the default."""
-        if self._oversized(self.win.width(), self.win.height()):
+    def _guard_applied_size(self, width: Optional[int] = None, height: Optional[int] = None) -> None:
+        """Last check: a size past the cap goes back to the default, before Qt resizes."""
+        if width is None or height is None:
+            width, height = self.win.width(), self.win.height()
+        if self._oversized(width, height):
             self._reset_default_geometry()
 
     def _apply_window_record(self, x: int, y: int, width: int, height: int, maximized: bool) -> None:
@@ -2654,6 +2656,11 @@ class MainWindow:
         if not self._rect_on_a_screen(rect):
             return
         width, height = self._fitted_size(width, height)
+        if self._oversized(width, height):
+            # The fitter left the saved span. Refuse it before win.resize so a
+            # 16-million-pixel size never reaches Qt. The guard puts the default back.
+            self._guard_applied_size(width, height)
+            return
         self.win.resize(width, height)
         self.win.move(x, y)
         frame = self.win.frameGeometry()
@@ -2692,8 +2699,14 @@ class MainWindow:
     def _save_window_geometry(self) -> None:
         try:
             if self.win.isMaximized():
+                # normalGeometry is the client origin. win.x()/move() are the
+                # frame origin. Save the frame origin so a later restore does
+                # not walk by the frame margin on every maximize cycle.
                 normal = self.win.normalGeometry()
-                x, y = normal.x(), normal.y()
+                client = self.win.geometry()
+                frame = self.win.frameGeometry()
+                x = normal.x() - (client.x() - frame.x())
+                y = normal.y() - (client.y() - frame.y())
                 width, height = normal.width(), normal.height()
                 maximized = True
             else:

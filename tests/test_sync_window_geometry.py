@@ -86,6 +86,92 @@ def test_geometry_round_trips_across_two_windows(tmp_path: Path) -> None:
         _hide(second)
 
 
+@pytest.mark.parametrize("version", [1, 3])
+def test_other_geometry_version_opens_at_the_default(tmp_path: Path, version: int) -> None:
+    """Version 2 is the only record. A 1 or a 3 with valid fields stays at the default."""
+    home = tmp_path / "home"
+    _write_record(home, _valid_record(version=version, x=40, y=30, width=700, height=500))
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
+        assert window.win.x() != 40 or window.win.width() == 920
+    finally:
+        _hide(window)
+
+
+def _unmaximize_size(home: Path) -> tuple | None:
+    """Save a maximized window and return the normal size and position it had.
+
+    None when this platform does not report a maximized window.
+    """
+    first = MainWindow(home=home, autoload=False)
+    try:
+        first.show()
+        first.QtWidgets.QApplication.processEvents()
+        first.win.resize(700, 500)
+        first.win.move(30, 20)
+        first.QtWidgets.QApplication.processEvents()
+        normal = (
+            first.win.width(),
+            first.win.height(),
+            first.win.x(),
+            first.win.y(),
+        )
+        first.win.showMaximized()
+        first.QtWidgets.QApplication.processEvents()
+        if not first.win.isMaximized():
+            return None
+        first.quit()
+    finally:
+        _hide(first)
+    return normal
+
+
+def test_unmaximize_restores_the_normal_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    normal = _unmaximize_size(home)
+    if normal is None:
+        pytest.skip("offscreen does not report isMaximized()")
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert second.win.isMaximized()
+        second.win.showNormal()
+        second.QtWidgets.QApplication.processEvents()
+        assert (second.win.width(), second.win.height(), second.win.x(), second.win.y()) == normal
+    finally:
+        _hide(second)
+
+
+def test_three_maximize_cycles_keep_the_normal_position(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    normal = _unmaximize_size(home)
+    if normal is None:
+        pytest.skip("offscreen does not report isMaximized()")
+    for _ in range(3):
+        window = MainWindow(home=home, autoload=False)
+        try:
+            window.show()
+            window.QtWidgets.QApplication.processEvents()
+            assert window.win.isMaximized()
+            window.win.showNormal()
+            window.QtWidgets.QApplication.processEvents()
+            assert (
+                window.win.width(),
+                window.win.height(),
+                window.win.x(),
+                window.win.y(),
+            ) == normal
+            window.win.showMaximized()
+            window.QtWidgets.QApplication.processEvents()
+            window.quit()
+        finally:
+            _hide(window)
+
+
 def test_maximized_record_round_trips(tmp_path: Path) -> None:
     home = tmp_path / "home"
     first = MainWindow(home=home, autoload=False)
@@ -342,15 +428,66 @@ def test_oversized_height_uses_the_default_size(tmp_path: Path) -> None:
         _hide(window)
 
 
+def _block_huge_resize(monkeypatch):
+    """Record resize calls and refuse a span Qt has segfaulted on.
+
+    The cap is far above a real window and far below QWIDGETSIZE_MAX, so the
+    assertion can fail before the C++ call.
+    """
+    from PyQt5.QtWidgets import QWidget
+
+    orig = QWidget.resize
+    calls: list[tuple[int, int]] = []
+
+    def wrapped(self, w, h=None):
+        if h is None:
+            width, height = int(w.width()), int(w.height())
+            calls.append((width, height))
+            if width > 8192 or height > 8192:
+                return
+            orig(self, w)
+            return
+        width, height = int(w), int(h)
+        calls.append((width, height))
+        if width > 8192 or height > 8192:
+            return
+        orig(self, width, height)
+
+    monkeypatch.setattr(QWidget, "resize", wrapped)
+    return calls
+
+
+def _within_screen(window: MainWindow, calls: list[tuple[int, int]]) -> None:
+    span = window._screen_span()
+    hint = window.win.minimumSizeHint()
+    cap_w = max(span.width(), DEFAULT_WINDOW_SIZE[0], hint.width())
+    cap_h = max(span.height(), DEFAULT_WINDOW_SIZE[1], hint.height())
+    assert calls
+    assert all(w <= cap_w and h <= cap_h for w, h in calls)
+
+
 def test_fitter_alone_rejects_an_oversized_record(tmp_path: Path, monkeypatch) -> None:
     """The fitter pins the oversize check by itself, with the post-apply guard off."""
     home = tmp_path / "home"
     _write_record(home, _valid_record(width=_QWIDGETSIZE_MAX, height=_QWIDGETSIZE_MAX))
-    monkeypatch.setattr(MainWindow, "_guard_applied_size", lambda self: None)
+    seen: list[tuple[int, int]] = []
+    orig = MainWindow._fitted_size
+
+    def wrapped(self, width, height):
+        got = orig(self, width, height)
+        seen.append((int(got[0]), int(got[1])))
+        return got
+
+    monkeypatch.setattr(MainWindow, "_fitted_size", wrapped)
+    monkeypatch.setattr(MainWindow, "_guard_applied_size", lambda self, *args, **kwargs: None)
+    calls = _block_huge_resize(monkeypatch)
     window = MainWindow(home=home, autoload=False)
     try:
         window.show()
         window.QtWidgets.QApplication.processEvents()
+        assert seen
+        assert seen[-1] == DEFAULT_WINDOW_SIZE
+        _within_screen(window, calls)
         assert window.win.width() != _QWIDGETSIZE_MAX
         assert window.win.height() != _QWIDGETSIZE_MAX
         assert window.win.width() == DEFAULT_WINDOW_SIZE[0]
@@ -361,16 +498,23 @@ def test_fitter_alone_rejects_an_oversized_record(tmp_path: Path, monkeypatch) -
 def test_guard_resets_a_size_the_fitter_let_through(tmp_path: Path, monkeypatch) -> None:
     """The post-apply guard is the backstop when the fitter does not shrink."""
     home = tmp_path / "home"
-    _write_record(home, _valid_record(width=_QWIDGETSIZE_MAX, height=_QWIDGETSIZE_MAX))
+    _write_record(home, _valid_record())
 
     def keep(self, width, height):
         return (width, height)
 
     monkeypatch.setattr(MainWindow, "_fitted_size", keep)
+    calls = _block_huge_resize(monkeypatch)
     window = MainWindow(home=home, autoload=False)
     try:
         window.show()
         window.QtWidgets.QApplication.processEvents()
+        window.win.move(40, 36)
+        window.win.resize(700, 480)
+        window.QtWidgets.QApplication.processEvents()
+        window._apply_window_record(10, 12, _QWIDGETSIZE_MAX, _QWIDGETSIZE_MAX, False)
+        window.QtWidgets.QApplication.processEvents()
+        _within_screen(window, calls)
         assert window.win.width() != _QWIDGETSIZE_MAX
         assert window.win.height() != _QWIDGETSIZE_MAX
         assert window.win.x() == 0 and window.win.y() == 0

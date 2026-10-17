@@ -54,6 +54,8 @@ Item 3 ci-local: PASS, 525 passed, 5 xfailed, 4 warnings in 76.82s.
 Item 4 ci-local: PASS, 528 passed, 5 xfailed, 4 warnings in 77.34s.
 Item 5 ci-local: PASS, 531 passed, 5 xfailed, 4 warnings in 77.11s.
 Item 6 ci-local: PASS, 532 passed, 5 xfailed, 4 warnings in 77.57s.
+Item 7 ci-local: PASS, 536 passed, 5 xfailed, 4 warnings in 77.19s.
+Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_restores_the_normal_size and test_three_maximize_cycles_keep_the_normal_position (2 passed in 0.17s). The normal position did not drift.
 
 ## Items
 
@@ -64,8 +66,8 @@ Item 6 ci-local: PASS, 532 passed, 5 xfailed, 4 warnings in 77.57s.
 | 3 | DONE | 9cb063e | test_daemon_log_rotates_when_the_daemon_starts[tahoe,magic-folder], test_daemon_starts_when_log_rotation_fails[tahoe,magic-folder] | RED: skip the rotate call → test_daemon_log_rotates_when_the_daemon_starts at tests/test_sync_daemon_log.py:142 |
 | 4 | DONE | af14629 | test_second_launch_fills_the_open_join_field, test_stale_socket_keeps_the_already_running_message, test_already_joined_window_drops_the_handed_invite | RED: don't send → test_second_launch_fills_the_open_join_field at tests/test_sync_join_handoff.py:185 |
 | 5 | DONE | fa6b8f2 | test_fresh_empty_lock_relaunches_at_once, test_fresh_garbage_lock_relaunches_at_once, test_six_concurrent_starts_open_one_window, test_second_instance_on_the_same_home_starts_no_window | RED: no removal → test_fresh_empty_lock_relaunches_at_once at tests/test_sync_instance_lock.py:209 |
-| 6 | DONE | (this commit) | test_shown_paths_hide_the_account_name | RED: helper returns the path unchanged → test_shown_paths_hide_the_account_name at tests/test_sync_settings_actions.py:64 |
-| 7 | pending | | | |
+| 6 | DONE | 24783e4 | test_shown_paths_hide_the_account_name | RED: helper returns the path unchanged → test_shown_paths_hide_the_account_name at tests/test_sync_settings_actions.py:64 |
+| 7 | DONE | (this commit) | test_other_geometry_version_opens_at_the_default, test_unmaximize_restores_the_normal_size, test_three_maximize_cycles_keep_the_normal_position, test_fitter_alone_rejects_an_oversized_record, test_guard_resets_a_size_the_fitter_let_through | RED: drop version check → test_other_geometry_version_opens_at_the_default at tests/test_sync_window_geometry.py:98; save geometry() → test_unmaximize_restores_the_normal_size at :144; fitter off → test_fitter_alone_rejects_an_oversized_record at :489; guard off → test_guard_resets_a_size_the_fitter_let_through at :520 |
 | 8 | pending | | | |
 | 9 | pending | | | |
 | 10 | pending | | | |

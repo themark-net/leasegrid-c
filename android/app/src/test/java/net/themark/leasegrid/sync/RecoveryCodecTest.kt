@@ -160,7 +160,41 @@ class InviteTest {
             Invite.parse("7-guitarist-revenge")
             error("expected fail")
         } catch (exc: InviteFail) {
-            assertTrue(exc.next.contains("pb://"))
+            assertTrue(exc.next.lowercase().contains("join link"))
+            assertFalse(exc.next.lowercase().contains("pb://"))
+            assertFalse(exc.next.lowercase().contains("furl"))
+        }
+    }
+
+    @Test
+    fun inviteFailPathsDoNotNameAFurl() {
+        // Every InviteFail throw: empty, short code, web URL, garbage,
+        // leasegrid link with no hash, fragment with no i=, i= that is not a
+        // pb address, and a malformed pb:// value.
+        val samples = listOf(
+            "",
+            "7-guitarist-revenge",
+            "https://example.test/tahoe",
+            "not-a-code",
+            "leasegrid:join",
+            "#v=1&n=2",
+            "#v=1&i=not-a-link",
+            "pb://short",
+        )
+        for (sample in samples) {
+            try {
+                Invite.parse(sample)
+                error("expected fail for $sample")
+            } catch (exc: InviteFail) {
+                assertFalse(
+                    "$sample banner: ${exc.banner}",
+                    exc.banner.lowercase().contains("pb://") || exc.banner.lowercase().contains("furl"),
+                )
+                assertFalse(
+                    "$sample next: ${exc.next}",
+                    exc.next.lowercase().contains("pb://") || exc.next.lowercase().contains("furl"),
+                )
+            }
         }
     }
 

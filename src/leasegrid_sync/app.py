@@ -191,6 +191,27 @@ def about_line() -> str:
     return "%s (buyer) · version %s" % (APP_NAME, __version__)
 
 
+# Whole tokens only. redact_furl keeps a head and a tail, and an 8-character
+# fragment is still a leak. A platform string such as Linux-6.8.0-101-generic
+# must not match, so the code has to be a whitespace-delimited token.
+_BUG_JOIN_RE = re.compile(
+    r"leasegrid:\S+|https?://\S+#\S*|(?:(?<=\s)|^)#[^\s]*i(?:=|%3[Dd])[^\s]*",
+    re.IGNORECASE,
+)
+_BUG_PB_RE = re.compile(r"pb://\S+", re.IGNORECASE)
+_BUG_CODE_RE = re.compile(
+    r"(?<!\S)[0-9]{1,3}(?:-[a-z0-9]+){2,}(?!\S)",
+    re.IGNORECASE,
+)
+
+
+def scrub_bug_report(text: str) -> str:
+    """Remove invite material from a report that is about to be copied."""
+    text = _BUG_JOIN_RE.sub("[redacted]", text)
+    text = _BUG_PB_RE.sub("[redacted]", text)
+    return _BUG_CODE_RE.sub("[redacted]", text)
+
+
 def _rotate_ui_log(path: Path) -> None:
     """If ``path`` is over 1 MiB, move it to ``sync-ui.log.1``. Never raises.
 
@@ -2043,15 +2064,17 @@ class MainWindow:
             folders = "%d folders" % len(statuses)
             if statuses:
                 folders += ": " + ", ".join(statuses)
-        return "\n".join(
-            [
-                about_line(),
-                platform.platform(),
-                "Chip: %s" % self.status_chip.text(),
-                "Joined: %s" % ("yes" if self._joined else "no"),
-                folders,
-                "Logs: %s" % (self.home / "logs"),
-            ]
+        return scrub_bug_report(
+            "\n".join(
+                [
+                    about_line(),
+                    platform.platform(),
+                    "Chip: %s" % self.status_chip.text(),
+                    "Joined: %s" % ("yes" if self._joined else "no"),
+                    folders,
+                    "Logs: %s" % (self.home / "logs"),
+                ]
+            )
         )
 
     def on_copy_bug_report(self) -> None:

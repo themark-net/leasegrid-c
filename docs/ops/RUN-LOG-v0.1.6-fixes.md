@@ -68,3 +68,7 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
    Tests: test_deeply_nested_geometry_file_uses_the_default_size, test_failed_geometry_replace_keeps_the_previous_file
    RED without fix: test_deeply_nested_geometry_file_uses_the_default_size at tests/test_sync_window_geometry.py:127 (narrow except lets RecursionError out)
    RED without fix: test_failed_geometry_replace_keeps_the_previous_file at tests/test_sync_window_geometry.py:154 (write the file directly instead of os.replace)
+
+8. bug-report scrub | DONE | ci-local: 484 passed, 5 xfailed, 4 warnings in 43.16s | files: app.py, tests/test_sync_settings_actions.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_scrub_bug_report_removes_each_secret_shape, test_bug_report_omits_secrets_planted_in_logs_and_env
+   RED without fix: test_scrub_bug_report_removes_each_secret_shape at tests/test_sync_settings_actions.py:93 and test_bug_report_omits_secrets_planted_in_logs_and_env at tests/test_sync_settings_actions.py:126 (scrub returns the text unchanged)

@@ -23,3 +23,4 @@ One line per choice: `choice | alternatives | why`
 - A file path says "That path is not a folder" | reuse the missing-folder banner | the file is on the computer, so "not on this computer any more" would be wrong
 - Geometry read catches Exception | only ValueError, RecursionError, OSError, and TypeError | a missing geometry key is a KeyError and must fall back too; RecursionError is a RuntimeError
 - Geometry write-failure test patches os.replace | a read-only directory | a read-only directory does not block rename on Windows
+- Bug-report scrub deletes the whole pb://, wormhole code, and join link | reuse redact_furl | redact_furl keeps an 8-character head and a 6-character tail, which counts as a leak

@@ -12,7 +12,7 @@ import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import MainWindow, about_line  # noqa: E402
+from leasegrid_sync.app import MainWindow, about_line, scrub_bug_report  # noqa: E402
 from leasegrid_sync.backend import FolderRow, SyncError  # noqa: E402
 from leasegrid_sync.invite import InviteCodeSession  # noqa: E402
 from tests.buyer_text import assert_no_raw_user_text  # noqa: E402
@@ -63,6 +63,67 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
         assert str(window.home / "logs") in text
         assert_no_raw_user_text(text)
         assert (window.home / "logs").is_dir()
+    finally:
+        _close(window)
+
+
+def test_scrub_bug_report_removes_each_secret_shape() -> None:
+    planted = "\n".join(
+        [
+            about_line(),
+            platform.platform(),
+            "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS",
+            "7-fake-code",
+            "leasegrid:join#v=1&i=pb://FAKE-TUBID@127.0.0.1:1/FAKE-LINK",
+            "http://example.i2p/join#v=1&i=pb://FAKE-TUBID@127.0.0.1:1/FAKE-PAGE",
+        ]
+    )
+    out = scrub_bug_report(planted)
+    assert about_line() in out
+    assert platform.platform() in out
+    for secret in (
+        "FAKE-TUBID",
+        "FAKE-SWISS",
+        "FAKE-LINK",
+        "FAKE-PAGE",
+        "7-fake-code",
+        "pb://",
+        "leasegrid:",
+    ):
+        assert secret not in out
+
+
+def test_bug_report_omits_secrets_planted_in_logs_and_env(tmp_path: Path, monkeypatch) -> None:
+    window = _window(tmp_path)
+    logs = window.home / "logs"
+    logs.mkdir(parents=True)
+    (logs / "sync-ui.log").write_text(
+        "\n".join(
+            [
+                "pb://FAKE-TUBID@127.0.0.1:1/FAKE-LOGSW",
+                "7-log-secret",
+                "leasegrid:join#v=1&i=pb://FAKE-TUBID@127.0.0.1:1/FAKE-LOGURL",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LEASEGRID_PLANTED_FURL", "pb://FAKE-TUBID@127.0.0.1:1/FAKE-ENVSW")
+    monkeypatch.setenv("LEASEGRID_PLANTED_CODE", "4-env-planted")
+    window.status_chip.setText("Online pb://FAKE-TUBID@127.0.0.1:1/FAKE-CHIP")
+    try:
+        text = window.bug_report_text()
+        assert about_line() in text
+        assert platform.platform() in text
+        for secret in (
+            "FAKE-LOGSW",
+            "FAKE-LOGURL",
+            "FAKE-ENVSW",
+            "FAKE-CHIP",
+            "7-log-secret",
+            "4-env-planted",
+            "pb://",
+        ):
+            assert secret not in text
     finally:
         _close(window)
 

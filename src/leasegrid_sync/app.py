@@ -9,6 +9,8 @@ import json
 import os
 import platform
 import re
+import signal
+import socket
 import sys
 import time
 import traceback
@@ -3097,6 +3099,105 @@ class MainWindow:
         }
 
 
+def _signal_names() -> tuple:
+    """Signals that should take the normal quit path.
+
+    Windows does not deliver SIGHUP, and an outside SIGTERM is
+    TerminateProcess, which no handler can see. A console close or Ctrl+Break
+    arrives as SIGBREAK. Ctrl+C is SIGINT.
+    """
+    if sys.platform == "win32":
+        names = ("SIGINT", "SIGBREAK")
+    else:
+        names = ("SIGTERM", "SIGINT", "SIGHUP")
+    return tuple(getattr(signal, name) for name in names if hasattr(signal, name))
+
+
+def _install_signal_quit(ui) -> None:
+    """Wake the Qt loop when a quit signal arrives, then call ``ui.quit()``.
+
+    The handler only sets a flag. ``set_wakeup_fd`` writes one byte from C so
+    the loop wakes during ``exec_``. The socket notifier and a short timer run
+    on the Qt thread and are the only places that touch Qt.
+    """
+    if getattr(ui, "_signal_quit_state", None) is not None:
+        return
+    read_s, write_s = socket.socketpair()
+    read_s.setblocking(False)
+    write_s.setblocking(False)
+    prev_fd = signal.set_wakeup_fd(write_s.fileno())
+    ui._signal_quit_requested = False
+
+    def _handler(signum, frame) -> None:
+        ui._signal_quit_requested = True
+
+    previous = {}
+    for sig in _signal_names():
+        previous[sig] = signal.signal(sig, _handler)
+
+    notifier = ui.QtCore.QSocketNotifier(
+        read_s.fileno(), ui.QtCore.QSocketNotifier.Read, ui.app
+    )
+
+    def _drain() -> None:
+        try:
+            while read_s.recv(256):
+                pass
+        except (BlockingIOError, InterruptedError, OSError):
+            pass
+
+    def _on_signal(*_args) -> None:
+        _drain()
+        if ui._signal_quit_requested:
+            ui.quit()
+
+    notifier.activated.connect(_on_signal)
+    timer = ui.QtCore.QTimer(ui.app)
+    timer.setInterval(100)
+    timer.timeout.connect(_on_signal)
+    timer.start()
+    ui._signal_quit_state = (read_s, write_s, notifier, timer, prev_fd, previous)
+    ready = os.environ.get("LEASEGRID_TEST_SIGNAL_READY")
+    if ready:
+        try:
+            Path(ready).write_text("ready\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _remove_signal_quit(ui) -> None:
+    state = getattr(ui, "_signal_quit_state", None)
+    if not state:
+        return
+    ui._signal_quit_state = None
+    read_s, write_s, notifier, timer, prev_fd, previous = state
+    try:
+        timer.stop()
+    except Exception:
+        pass
+    try:
+        notifier.setEnabled(False)
+    except Exception:
+        pass
+    for sig, handler in previous.items():
+        try:
+            signal.signal(sig, handler)
+        except OSError:
+            pass
+    try:
+        signal.set_wakeup_fd(prev_fd)
+    except (OSError, ValueError):
+        try:
+            signal.set_wakeup_fd(-1)
+        except (OSError, ValueError):
+            pass
+    for sock in (read_s, write_s):
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
 def run_app(
     nodedir: Optional[Path] = None,
     screenshot: Optional[Path] = None,
@@ -3179,4 +3280,8 @@ def _run_modes(
     if screenshot:
         ui.QtCore.QTimer.singleShot(400, lambda: ui.grab_to(screenshot))
         ui.QtCore.QTimer.singleShot(800, ui.app.quit)
-    return ui.app.exec_()
+    _install_signal_quit(ui)
+    try:
+        return ui.app.exec_()
+    finally:
+        _remove_signal_quit(ui)

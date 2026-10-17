@@ -48,11 +48,13 @@ Counts: 517 passed, 5 xfailed, 4 warnings in 44.34s
 Failing tests: none
 Log: `/tmp/v017-baseline.log`
 
+Item 1 ci-local: PASS, 520 passed, 5 xfailed, 4 warnings in 74.61s.
+
 ## Items
 
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
-| 1 | pending | | | |
+| 1 | DONE | (this commit) | test_signal_quits_and_reaps_the_stub[SIGTERM,SIGINT,SIGHUP] | RED: no handler installed → test_signal_quits_and_reaps_the_stub[SIGTERM] at tests/test_sync_signal_quit.py:195 (returncode -15) |
 | 2 | pending | | | |
 | 3 | pending | | | |
 | 4 | pending | | | |

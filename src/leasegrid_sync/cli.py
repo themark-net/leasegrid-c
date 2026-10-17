@@ -153,6 +153,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.export_recovery or args.restore_recovery:
         return _recovery_headless(args, nodedir)
     if args.join and not (args.dogfood_folder or args.credit_dogfood or args.screenshot):
+        from .app import _show_already_running, hand_join_invite
+
+        outcome = hand_join_invite(args.join.strip())
+        if outcome == "sent":
+            return 0
+        if outcome == "busy":
+            _show_already_running()
+            return 0
         return _join_headless(args, nodedir)
     try:
         from .app import run_app

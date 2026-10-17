@@ -5,13 +5,16 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
 import re
 import signal
 import socket
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -115,6 +118,10 @@ UI_LOG_NAME = "sync-ui.log"
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
 ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
 INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
+HANDED_INVITE_DROPPED = (
+    "Leasegrid Sync is already on a friendnet. This invite was not opened."
+)
+_JOIN_HANDOFF_MAX = 4096
 _INSTANCE_LOCK = None
 
 
@@ -157,6 +164,180 @@ def release_instance_lock() -> None:
         lock.unlock()
     except Exception:
         return
+
+
+def join_server_name(home: Path) -> str:
+    """Per-home local-server name. The invite is never part of the name."""
+    raw = str(Path(home).resolve()).encode("utf-8")
+    return "leasegrid-sync-" + hashlib.sha256(raw).hexdigest()[:32]
+
+
+def _join_socket_path(name: str) -> str:
+    # QLocalServer puts a relative name in QDir::tempPath(), which is this dir.
+    return os.path.join(tempfile.gettempdir(), name)
+
+
+def _lock_is_held(home: Path) -> bool:
+    """True when a live lock is held. A lock this call takes is released."""
+    from PyQt5.QtCore import QLockFile
+
+    path = instance_lock_path(home)
+    if not path.parent.is_dir():
+        return False
+    lock = QLockFile(str(path))
+    if lock.tryLock(0):
+        lock.unlock()
+        return False
+    return True
+
+
+def _send_invite_posix(name: str, invite: str) -> bool:
+    path = _join_socket_path(name)
+    if not os.path.exists(path):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(0.5)
+        sock.connect(path)
+        sock.sendall((invite + "\n").encode("utf-8"))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+# A short-lived helper so a Windows --join does not construct QCoreApplication
+# in the caller, and so the invite is not placed on the helper's command line.
+_WIN_JOIN_SEND = """
+import sys
+from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtNetwork import QLocalSocket
+
+app = QCoreApplication([])
+name = sys.argv[1]
+payload = sys.stdin.buffer.read(4096)
+if not payload:
+    raise SystemExit(2)
+if not payload.endswith(b"\\n"):
+    payload += b"\\n"
+sock = QLocalSocket()
+sock.connectToServer(name)
+if not sock.waitForConnected(500):
+    raise SystemExit(2)
+sock.write(payload)
+if not sock.waitForBytesWritten(500):
+    raise SystemExit(2)
+sock.disconnectFromServer()
+raise SystemExit(0)
+"""
+
+
+def _send_invite_windows(name: str, invite: str) -> bool:
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _WIN_JOIN_SEND, name],
+            input=(invite + "\n").encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def hand_join_invite(invite: str) -> str:
+    """Offer a second launch's invite to the running window.
+
+    "sent" means the open window took it. "busy" means the home is locked and
+    nothing is listening (an old build, or a stale socket). "free" means no
+    instance is holding the home, so the caller should join as it does today.
+    """
+    text = (invite or "").strip()
+    if not text or len(text) > _JOIN_HANDOFF_MAX:
+        return "free"
+    home = default_home()
+    name = join_server_name(home)
+    if sys.platform == "win32":
+        sent = _send_invite_windows(name, text)
+    else:
+        sent = _send_invite_posix(name, text)
+    if sent:
+        return "sent"
+    if _lock_is_held(home):
+        return "busy"
+    return "free"
+
+
+def _start_join_server(ui) -> None:
+    """Listen for a second launch's invite. Failures are logged without the text."""
+    try:
+        from PyQt5.QtNetwork import QLocalServer
+    except ImportError:
+        return
+    name = join_server_name(ui.home)
+    QLocalServer.removeServer(name)
+    server = QLocalServer(ui.app)
+    if not server.listen(name):
+        log_exception(
+            ui.home,
+            "join handoff",
+            RuntimeError("could not listen for a second launch"),
+        )
+        return
+
+    def on_new() -> None:
+        sock = server.nextPendingConnection()
+        if sock is None:
+            return
+        buf = bytearray()
+
+        def take(*_args) -> None:
+            if sock.bytesAvailable():
+                chunk = bytes(sock.readAll())
+                if chunk:
+                    buf.extend(chunk)
+            if len(buf) > _JOIN_HANDOFF_MAX:
+                del buf[:]
+                sock.abort()
+                return
+            if b"\n" not in buf and sock.state() != sock.UnconnectedState:
+                return
+            raw = bytes(buf).split(b"\n", 1)[0]
+            del buf[:]
+            text = raw.decode("utf-8", "replace").strip()
+            if text:
+                ui.receive_handed_invite(text)
+
+        sock.readyRead.connect(take)
+        sock.disconnected.connect(take)
+        if sock.bytesAvailable():
+            take()
+
+    server.newConnection.connect(on_new)
+    ui._join_server = server
+    ready = os.environ.get("LEASEGRID_TEST_JOIN_READY")
+    if ready:
+        try:
+            Path(ready).write_text("ready\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _close_join_server(ui) -> None:
+    server = getattr(ui, "_join_server", None)
+    ui._join_server = None
+    if server is None:
+        return
+    try:
+        server.close()
+    except Exception:
+        pass
 
 
 def _show_already_running() -> None:
@@ -2282,6 +2463,7 @@ class MainWindow:
 
     def shutdown(self) -> None:
         """Stop the daemons this Sync process started (Magic Folder, then Tahoe)."""
+        _close_join_server(self)
         session = getattr(self, "_invite_session", None)
         if session is not None:
             session.close()
@@ -2292,6 +2474,41 @@ class MainWindow:
             except Exception:
                 pass
         release_instance_lock()
+
+    def receive_handed_invite(self, invite: str) -> None:
+        """Show a second launch's invite. The user still has to join it."""
+        text = (invite or "").strip()
+        if not text or len(text) > _JOIN_HANDOFF_MAX:
+            return
+        self.show()
+        if self._joined:
+            # No second-grid path exists. Say so, and do not keep the invite.
+            self.show_place(self.folders_tab)
+            self.folder_error.setStyleSheet("")
+            self.folder_error.setText(HANDED_INVITE_DROPPED)
+        else:
+            self.stack.setCurrentWidget(self.join_page)
+            self.invite_edit.setText(text)
+            self.invite_edit.setFocus()
+        self._dump_handed_invite()
+
+    def _dump_handed_invite(self) -> None:
+        """Test hook. Production launches do not set the path, and nothing is logged."""
+        path = os.environ.get("LEASEGRID_TEST_INVITE_DUMP")
+        if not path:
+            return
+        try:
+            Path(path).write_text(
+                "joined=%s\nack=%s\nfield=%s\n"
+                % (
+                    "yes" if self._joined else "no",
+                    "1" if self.threat_ack.isChecked() else "0",
+                    self.invite_edit.text(),
+                ),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
 
     def _rect_on_a_screen(self, rect) -> bool:
         screens = self.QtGui.QGuiApplication.screens()
@@ -3197,6 +3414,7 @@ def run_app(
     install_excepthook(ui)
     ui.show()
     ui.QtWidgets.QApplication.processEvents()
+    _start_join_server(ui)
     try:
         if invite:
             # Headless join first (creates + starts the node); the modes below then

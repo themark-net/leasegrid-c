@@ -642,6 +642,75 @@ def test_import_dialog_unshown_failure_sets_minimum_heights(ui: MainWindow, tmp_
     assert dialog.minimumHeight() >= layout.totalHeightForWidth(branch_width)
 
 
+def _expected_unshown_min_height(dialog, width: int) -> int:
+    layout = dialog.layout()
+    layout.activate()
+    return max(
+        layout.totalHeightForWidth(width),
+        layout.minimumSize().height(),
+        layout.sizeHint().height(),
+    )
+
+
+def test_import_dialog_unshown_height_is_computed_at_branch_width(ui: MainWindow, tmp_path):
+    """Kill U7 (PR #71 review): the unshown branch must size at max(open, minimumWidth).
+
+    A narrower width wraps the banner more, so the dialog minimum height
+    computed there is larger than the height at the real branch width.
+    """
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=key)
+    dialog = dlg.dlg
+    assert not dialog.isVisible()
+    branch_width = max(dlg._open_width, dialog.minimumWidth())
+    long_message = (
+        "could not import this recovery key. Wrong passphrase, corrupt file, "
+        "or incompatible grid. The backup did not match this friendnet and the "
+        "passphrase check failed after several tries."
+    )
+    with patch.object(
+        ui.recovery, "restore", side_effect=SyncError(long_message, "check passphrase; Retry.")
+    ):
+        dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert dialog.width() == branch_width
+    expected = _expected_unshown_min_height(dialog, branch_width)
+    assert dialog.minimumHeight() == expected
+    narrow = _expected_unshown_min_height(dialog, max(80, branch_width // 2))
+    assert narrow > expected  # the banner really wraps more when narrower
+
+
+def test_import_dialog_unshown_respects_larger_minimum_width(ui: MainWindow, tmp_path):
+    """Kill U7 variant: with minimumWidth above the open width, that width wins."""
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=key)
+    dialog = dlg.dlg
+    wide = dlg._open_width + 240
+    dialog.setMinimumWidth(wide)
+    assert not dialog.isVisible()
+    long_message = (
+        "could not import this recovery key. Wrong passphrase, corrupt file, "
+        "or incompatible grid. The backup did not match this friendnet and the "
+        "passphrase check failed after several tries, twice, on this device. "
+    ) * 3  # long enough to wrap differently at both widths on every OS font
+    with patch.object(
+        ui.recovery, "restore", side_effect=SyncError(long_message, "check passphrase; Retry.")
+    ):
+        dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert dialog.width() == wide
+    expected = _expected_unshown_min_height(dialog, wide)
+    assert dialog.minimumHeight() == expected
+    # Sizing at the smaller open width would give a taller minimum.
+    assert _expected_unshown_min_height(dialog, dlg._open_width) > expected
+
+
 def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
     from leasegrid_sync.recovery import RestoreResult
 

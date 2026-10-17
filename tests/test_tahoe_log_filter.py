@@ -174,6 +174,13 @@ LEGIT_LINES = (
     "2026-10-15T21:40:07.000Z [-] Main loop terminated. Exit status 1 (pid 4242, port 3456)",
     f"2026-10-15T21:40:08.000Z [-] Error: request {UUIDISH} failed: ConnectionRefusedError",
     "2026-10-15T21:40:09.000Z [-] Unhandled error in Deferred: tahoe version 1.19.0",
+    # v0.1.5 corpus: short dashed tokens (kills a widened dashed rule), snake_case
+    # and CamelCase names under the new floors, hyphenated 8-letter words.
+    "2026-10-15T21:40:10.000Z [-] Error: stop requested by an-ok-ci-run-on-the-box",
+    "2026-10-15T21:40:11.000Z [-] Exception in _start_magic_folder_and_wait_for_api (pid 77)",
+    "2026-10-15T21:40:12.000Z [-] Error: TwistedDeprecationWarning then UnhandledErrorInDeferred",
+    "2026-10-15T21:40:13.000Z [-] Error: tahoe-lafs magic-folder leasegrid-sync shutdown",
+    "2026-10-15T21:40:14.000Z [-] Error: tahoe-lafs-magic-folder plugin stopped (exit 1)",
 )
 
 
@@ -183,3 +190,215 @@ def test_legit_lines_survive_the_new_rules():
     assert "REDACTED" not in out, out
     for line in LEGIT_LINES:
         assert line in out, line
+
+
+# --- v0.1.5: glued hex + base32 (Tester, PR #71 review) ---------------------
+# In v0.1.4 the hex rule ran first and could eat the hex-alphabet prefix of a
+# base32 secret glued to a 32+ hex run, leaving a sub-20 base32 remnant that
+# the base32 rule no longer matched (2/2000 leaked at 26 chars, 107/2000 at 22;
+# 0 on v0.1.3). Seeded, so a failure is reproducible.
+_B32 = "abcdefghijklmnopqrstuvwxyz234567"
+_GLUE_SEED = 20261017
+_GLUE_N = 2000
+_GLUE_TS = "2026-10-15T21:40:01.000Z [-] Error: node lock held for "
+
+
+def _glued_cases(length: int, seed: int) -> list[tuple[str, str, str]]:
+    import random
+
+    rng = random.Random(seed + length)
+    cases = []
+    for _ in range(_GLUE_N):
+        hexrun = "".join(rng.choice("0123456789abcdef") for _ in range(32))
+        secret = "".join(rng.choice(_B32) for _ in range(length))
+        cases.append((hexrun, secret, f"{_GLUE_TS}{hexrun}{secret} ok"))
+    return cases
+
+
+@pytest.mark.parametrize("length", [20, 22, 26, 32])
+def test_glued_hex_and_base32_secret_never_leaks(length: int) -> None:
+    cases = _glued_cases(length, _GLUE_SEED)
+    out_lines = _filter_stdout("\n".join(line for _, _, line in cases) + "\n").splitlines()
+    assert len(out_lines) == len(cases)
+    leaked = 0
+    for (hexrun, secret, _), out in zip(cases, out_lines):
+        body = out[len(_GLUE_TS) :]
+        if any(w in body for w in _windows8(secret)) or any(w in body for w in _windows8(hexrun)):
+            leaked += 1
+    assert leaked == 0, f"{leaked}/{len(cases)} glued lines leaked an 8-char window"
+
+
+# --- v0.1.5: more shapes (seeded) ------------------------------------------
+def _rng(tag: str):
+    import random
+
+    return random.Random(f"{_GLUE_SEED}-{tag}")
+
+
+def _b64url_secrets(n: int) -> list[str]:
+    rng = _rng("b64url")
+    out: list[str] = []
+    while len(out) < n:
+        raw = bytes(rng.randrange(256) for _ in range(32))
+        tok = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        if "-" in tok or "_" in tok:
+            out.append(tok)
+    return out
+
+
+def _mixed_b32_secrets(n: int) -> list[str]:
+    rng = _rng("mixed")
+    out: list[str] = []
+    while len(out) < n:
+        tok = "".join(
+            c.upper() if rng.random() < 0.5 else c for c in (rng.choice(_B32) for _ in range(32))
+        )
+        if any(c.isupper() for c in tok) and any(c.islower() for c in tok):
+            out.append(tok)
+    return out
+
+
+def _dashed8_secrets(n: int) -> list[str]:
+    rng = _rng("dashed8")
+    out = []
+    for _ in range(n):
+        tok = "".join(rng.choice(_B32) for _ in range(32))
+        out.append("-".join(tok[i : i + 8] for i in range(0, 32, 8)))
+    return out
+
+
+@pytest.mark.parametrize(
+    "shape", ["base64url-unpadded", "mixed-case-base32", "dashed-8"],
+)
+def test_v015_shapes_never_leak(shape: str) -> None:
+    gen = {
+        "base64url-unpadded": _b64url_secrets,
+        "mixed-case-base32": _mixed_b32_secrets,
+        "dashed-8": _dashed8_secrets,
+    }[shape]
+    toks = gen(200)
+    lines = [f"{_GLUE_TS}{tok} ok" for tok in toks]
+    outs = _filter_stdout("\n".join(lines) + "\n").splitlines()
+    assert len(outs) == len(toks)
+    leaked = sum(
+        any(w in out[len(_GLUE_TS) :] for w in _windows8(tok.replace("-", "")) + _windows8(tok))
+        for tok, out in zip(toks, outs)
+    )
+    assert leaked == 0, f"{shape}: {leaked}/{len(toks)} leaked an 8-char window"
+
+
+# --- PR #72 review follow-ups 1 and 2 (seeded) -----------------------------
+# Follow-up 1: deleting the main [a-z2-7]{20,} rule left the suite green
+# (mixed-case 32 covered every 32-char plant), yet 20-31 char base32 and the
+# 26-char key in Tahoe caps leaked 300/300. Shapes follow Tester's
+# probe_adversarial.py ("len b32 N", "tahoe cap URI:DIR2", "tahoe cap URI:CHK").
+def _b32(rng, n: int) -> str:
+    return "".join(rng.choice(_B32) for _ in range(n))
+
+
+@pytest.mark.parametrize("length", range(20, 32))
+def test_short_lowercase_base32_never_leaks(length: int) -> None:
+    rng = _rng(f"b32-{length}")
+    toks = [_b32(rng, length) for _ in range(100)]
+    lines = [f"{_GLUE_TS}{tok} ok" for tok in toks]
+    outs = _filter_stdout("\n".join(lines) + "\n").splitlines()
+    assert len(outs) == len(toks)
+    leaked = sum(any(w in out for w in _windows8(t)) for t, out in zip(toks, outs))
+    assert leaked == 0, f"b32-{length}: {leaked}/{len(toks)} leaked an 8-char window"
+
+
+@pytest.mark.parametrize("kind", ["DIR2", "CHK"])
+def test_tahoe_cap_keys_never_leak(kind: str) -> None:
+    rng = _rng(f"cap-{kind}")
+    cases = []
+    for _ in range(100):
+        a, b = _b32(rng, 26), _b32(rng, 52)
+        tail = ":3:10:1234" if kind == "CHK" else ""
+        cases.append((a, b, f"{_GLUE_TS}URI:{kind}:{a}:{b}{tail} ok"))
+    outs = _filter_stdout("\n".join(c[2] for c in cases) + "\n").splitlines()
+    assert len(outs) == len(cases)
+    leaked = sum(
+        any(w in out for w in _windows8(a) + _windows8(b)) for (a, b, _), out in zip(cases, outs)
+    )
+    assert leaked == 0, f"URI:{kind}: {leaked}/{len(cases)} leaked an 8-char window"
+
+
+# Follow-up 2: the hex and uppercase rules redact the WHOLE alphanumeric token,
+# not just the run. Short glued affixes outside each rule's alphabet keep the
+# token under 32/40 chars, so no other rule reaches it; with the expansion
+# reverted the affixes survive next to REDACTED.
+def _whole_token_cases(kind: str) -> list[tuple[str, str]]:
+    import re
+
+    rng = _rng(f"whole-{kind}")
+    out = []
+    while len(out) < 50:
+        if kind == "hex":
+            run = "".join(rng.choice("0123456789abcdef") for _ in range(32))
+            pre = "".join(rng.choice("ghijkmnpqrstuvwxyz") for _ in range(2))
+            suf = "".join(rng.choice("GHJKMNPQRSTUVWXYZ") for _ in range(2))
+            if re.search(r"[a-z2-7]{20}", pre + run):  # base32 rule would eat it
+                continue
+        else:
+            run = "".join(rng.choice(_B32.upper()) for _ in range(20))
+            pre = "".join(rng.choice("abcdefghijklmnopqrstuvwxyz0189") for _ in range(2))
+            suf = "".join(rng.choice("0189") for _ in range(2))
+        out.append((pre + run + suf, f"{_GLUE_TS}id={pre}{run}{suf} end"))
+    return out
+
+
+@pytest.mark.parametrize("kind", ["hex", "uppercase"])
+def test_rule_redacts_the_whole_token(kind: str) -> None:
+    cases = _whole_token_cases(kind)
+    outs = _filter_stdout("\n".join(line for _, line in cases) + "\n").splitlines()
+    assert len(outs) == len(cases)
+    bad = [out for out in outs if not out.endswith("id=REDACTED end")]
+    assert not bad, f"{kind}: {len(bad)}/{len(cases)} kept part of the token: {bad[0]!r}"
+
+
+# Over-redaction we accept (PR #71 review follow-up 1). Each would need a rule
+# that lets some real secret shape through, so redact-more wins. strict=True:
+# if a future tuning un-blanks one, it XPASSes and turns red, forcing a fresh
+# look at the leak tests above.
+_ACCEPTED = [
+    pytest.param(
+        "2026-10-15T21:40:20.000Z [-] Error: when node exit code from tahoe stop",
+        id="five-four-letter-words",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: a 4-char-chunked base32 secret has no digit in ~0.13% "
+            "of draws, so a digit/vowel test to spare English would reopen a leak",
+        ),
+    ),
+    pytest.param(
+        '  File "/usr/lib/python3/dist/packages/twisted/internet/defer/tcp", line 9, in run',
+        id="separator-free-path-40",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: random base64 contains '/' about half the time, so "
+            "sparing slash paths would leave base64 pieces under the 40 floor",
+        ),
+    ),
+    pytest.param(
+        "2026-10-15T21:40:21.000Z [-] Error: build rev 3e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f",
+        id="git-sha-40",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: a 40-hex token is also a hex-encoded 20-byte secret",
+        ),
+    ),
+    pytest.param(
+        "2026-10-15T21:40:22.000Z [-] Error: SSLVTHREEALERTHANDSHAKEFAIL",
+        id="uppercase-constant-20",
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="accepted: indistinguishable from an uppercase base32 tub-id or swissnum",
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("line", _ACCEPTED)
+def test_accepted_over_redaction_is_documented(line: str) -> None:
+    out = _filter_stdout(line + "\n")
+    assert out.strip() == line.strip()

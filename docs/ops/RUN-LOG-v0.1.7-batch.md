@@ -53,6 +53,7 @@ Item 2 ci-local: PASS, 521 passed, 5 xfailed, 4 warnings in 75.79s.
 Item 3 ci-local: PASS, 525 passed, 5 xfailed, 4 warnings in 76.82s.
 Item 4 ci-local: PASS, 528 passed, 5 xfailed, 4 warnings in 77.34s.
 Item 5 ci-local: PASS, 531 passed, 5 xfailed, 4 warnings in 77.11s.
+Item 6 ci-local: PASS, 532 passed, 5 xfailed, 4 warnings in 77.57s.
 
 ## Items
 
@@ -62,8 +63,8 @@ Item 5 ci-local: PASS, 531 passed, 5 xfailed, 4 warnings in 77.11s.
 | 2 | DONE | 2e03456 | test_stop_kills_daemon_and_grandchild | RED: kill only the leader → test_stop_kills_daemon_and_grandchild at tests/test_sync_process_group.py:156 |
 | 3 | DONE | 9cb063e | test_daemon_log_rotates_when_the_daemon_starts[tahoe,magic-folder], test_daemon_starts_when_log_rotation_fails[tahoe,magic-folder] | RED: skip the rotate call → test_daemon_log_rotates_when_the_daemon_starts at tests/test_sync_daemon_log.py:142 |
 | 4 | DONE | af14629 | test_second_launch_fills_the_open_join_field, test_stale_socket_keeps_the_already_running_message, test_already_joined_window_drops_the_handed_invite | RED: don't send → test_second_launch_fills_the_open_join_field at tests/test_sync_join_handoff.py:185 |
-| 5 | DONE | (this commit) | test_fresh_empty_lock_relaunches_at_once, test_fresh_garbage_lock_relaunches_at_once, test_six_concurrent_starts_open_one_window, test_second_instance_on_the_same_home_starts_no_window | RED: no removal → test_fresh_empty_lock_relaunches_at_once at tests/test_sync_instance_lock.py:209 |
-| 6 | pending | | | |
+| 5 | DONE | fa6b8f2 | test_fresh_empty_lock_relaunches_at_once, test_fresh_garbage_lock_relaunches_at_once, test_six_concurrent_starts_open_one_window, test_second_instance_on_the_same_home_starts_no_window | RED: no removal → test_fresh_empty_lock_relaunches_at_once at tests/test_sync_instance_lock.py:209 |
+| 6 | DONE | (this commit) | test_shown_paths_hide_the_account_name | RED: helper returns the path unchanged → test_shown_paths_hide_the_account_name at tests/test_sync_settings_actions.py:64 |
 | 7 | pending | | | |
 | 8 | pending | | | |
 | 9 | pending | | | |

@@ -12,7 +12,13 @@ import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import MainWindow, UI_LOG_NAME, about_line, scrub_bug_report  # noqa: E402
+from leasegrid_sync.app import (  # noqa: E402
+    MainWindow,
+    UI_LOG_NAME,
+    about_line,
+    display_path,
+    scrub_bug_report,
+)
 from leasegrid_sync.backend import FolderRow, SyncError  # noqa: E402
 from leasegrid_sync.invite import InviteCodeSession  # noqa: E402
 from tests.buyer_text import assert_no_raw_user_text  # noqa: E402
@@ -35,6 +41,44 @@ def _close(window: MainWindow) -> None:
     window.win.hide()
     if window.tray is not None:
         window.tray.hide()
+
+
+def test_shown_paths_hide_the_account_name(tmp_path: Path, monkeypatch) -> None:
+    """A planted account name stays off the Settings line, the report, and the banner."""
+    fake = tmp_path / "Users" / "fakeuser"
+    fake.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda *_args, **_kwargs: fake)
+    home = fake / "LeasegridSync"
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    with patch(
+        "leasegrid_sync.app.TahoeClient.join_existing",
+        side_effect=SyncError("could not join this friendnet. No Tahoe.", "Retry."),
+    ):
+        window = MainWindow(nodedir=nodedir, home=home)
+    try:
+        with patch("PyQt5.QtGui.QDesktopServices.openUrl", return_value=False):
+            window.on_open_logs()
+        status = window.settings_status.text()
+        assert "fakeuser" not in status
+        assert "~" in status
+        report = window.bug_report_text()
+        assert "fakeuser" not in report
+        assert "~" in report
+        missing = fake / "Documents" / "gone"
+        window.open_folder_path(str(missing))
+        banner = window.folder_error.text()
+        assert "fakeuser" not in banner
+        assert "~" in banner
+        assert "That folder is not on this computer any more:" in banner
+        real_logs = window.home / "logs"
+        assert real_logs.is_dir()
+        assert "fakeuser" in str(real_logs)
+        (real_logs / UI_LOG_NAME).write_text(str(real_logs) + "\n", encoding="utf-8")
+        assert "fakeuser" in (real_logs / UI_LOG_NAME).read_text(encoding="utf-8")
+    finally:
+        _close(window)
 
 
 def test_open_logs_button_opens_the_real_logs_directory(tmp_path: Path) -> None:
@@ -60,7 +104,7 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
         with patch("PyQt5.QtGui.QDesktopServices.openUrl", return_value=False):
             button.click()
         text = window.settings_status.text()
-        assert str(window.home / "logs") in text
+        assert display_path(window.home / "logs") in text
         assert_no_raw_user_text(text)
         assert (window.home / "logs").is_dir()
     finally:
@@ -179,7 +223,7 @@ def test_bug_report_omits_secrets_planted_in_logs_and_env(tmp_path: Path, monkey
             "Chip: Online pb://FAKE-TUBID@127.0.0.1:1/FAKE-CHIP",
             "Joined: yes",
             "0 folders",
-            "Logs: %s" % (window.home / "logs"),
+            "Logs: %s" % display_path(window.home / "logs"),
         ]
         raw = "\n".join(lines)
         text = window.bug_report_text()

@@ -125,6 +125,26 @@ _JOIN_HANDOFF_MAX = 4096
 _INSTANCE_LOCK = None
 
 
+def display_path(path: object) -> str:
+    """Home-relative form for a path a person sees or copies.
+
+    ``~/…`` on POSIX and ``~\\…`` on Windows. Files on disk keep the real path.
+    A path outside the account home is unchanged.
+    """
+    text = str(path)
+    try:
+        home = Path.home()
+        rel = Path(text).expanduser().absolute().relative_to(home)
+    except (OSError, ValueError, TypeError):
+        return text
+    tail = str(rel)
+    if tail in ("", "."):
+        return "~"
+    if sys.platform == "win32":
+        return "~\\" + tail.replace("/", "\\")
+    return "~/" + tail.replace("\\", "/")
+
+
 def instance_lock_path(home: Path) -> Path:
     return Path(home) / ".leasegrid-sync.lock"
 
@@ -2128,7 +2148,9 @@ class MainWindow:
             self.last_export_label.setText("Last export: never")
             return
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(info["last_export"])))
-        self.last_export_label.setText("Last export: %s  →  %s" % (when, info.get("path", "")))
+        self.last_export_label.setText(
+            "Last export: %s  →  %s" % (when, display_path(info.get("path", "")))
+        )
 
     def _refresh_recovery_nudge(self, box=None) -> None:
         widget = box if box is not None else self.win.findChild(self.QtWidgets.QWidget, "recoveryNudge")
@@ -2266,12 +2288,12 @@ class MainWindow:
         try:
             logs.mkdir(parents=True, exist_ok=True)
         except OSError:
-            self.settings_status.setText(str(logs))
+            self.settings_status.setText(display_path(logs))
             return
         QtCore, QtGui, _QtWidgets = _qt_api()
         opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(logs)))
         if not opened:
-            self.settings_status.setText(str(logs))
+            self.settings_status.setText(display_path(logs))
 
     def bug_report_lines(self) -> list[str]:
         """The report lines before scrubbing. An allowlist: nothing else is copied.
@@ -2295,7 +2317,7 @@ class MainWindow:
             "Chip: %s" % self.status_chip.text(),
             "Joined: %s" % ("yes" if self._joined else "no"),
             folders,
-            "Logs: %s" % (self.home / "logs"),
+            "Logs: %s" % display_path(self.home / "logs"),
         ]
 
     def bug_report_text(self) -> str:
@@ -2720,7 +2742,7 @@ class MainWindow:
         self.status_chip.setText("REVIEW  " + err.message.split(" Unexpected error: ")[-1])
         text = err.banner()
         if log_path is not None:
-            text += "\nLog: %s" % log_path
+            text += "\nLog: %s" % display_path(log_path)
         self.unexpected_review.setText(text)
         self.unexpected_review.show()
 
@@ -2744,7 +2766,7 @@ class MainWindow:
             self.stack.setCurrentWidget(self.join_page)
             return
         self.stack.setCurrentWidget(self.join_page)
-        self._join_busy(True, "Tahoe node found at %s — connecting…" % self.tahoe.nodedir)
+        self._join_busy(True, "Tahoe node found at %s — connecting…" % display_path(self.tahoe.nodedir))
         try:
             status = self.tahoe.join_existing()
         except SyncError as exc:
@@ -3066,10 +3088,11 @@ class MainWindow:
             return
         target = Path(path)
         if not target.is_dir():
+            shown = display_path(path)
             if target.is_file():
-                message = "That path is not a folder: %s" % path
+                message = "That path is not a folder: %s" % shown
             else:
-                message = "That folder is not on this computer any more: %s" % path
+                message = "That folder is not on this computer any more: %s" % shown
             self.show_folder_error(
                 SyncError(message, "Add the folder again if you still want it.")
             )

@@ -697,8 +697,8 @@ def test_import_dialog_unshown_respects_larger_minimum_width(ui: MainWindow, tmp
     long_message = (
         "could not import this recovery key. Wrong passphrase, corrupt file, "
         "or incompatible grid. The backup did not match this friendnet and the "
-        "passphrase check failed after several tries, twice, on this device."
-    )
+        "passphrase check failed after several tries, twice, on this device. "
+    ) * 3  # long enough to wrap differently at both widths on every OS font
     with patch.object(
         ui.recovery, "restore", side_effect=SyncError(long_message, "check passphrase; Retry.")
     ):

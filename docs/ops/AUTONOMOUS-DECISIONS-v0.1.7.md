@@ -21,3 +21,4 @@ Format: choice | alternatives | why
 - A PID-less lock uses QLockFile staleLockTime 2000 ms and is never unlinked here; younger than 2s is refused | removeStaleLockFile, or an atomic rename | a 5s-old lock still had 34/1000 double holders when this process renamed the file, and a dead PID still recovers at once with staleLockTime 2000
 - Join handoff keeps at most 8 pending sockets, aborts the rest, and drops an idle socket after 2s | unbounded accept, or a larger cap | about 354 rapid connections segfaulted the window
 - An oversized or empty --join checks the lock and does not send: held shows already-running and exits 1; free prints a short error and exits 1 | return "free" and join | the old free return could join while another instance held the home
+- A different handed invite asks with QMessageBox Yes/No, default No | an inline notice, or overwrite | No keeps the text the user already typed, and the question does not contain either invite

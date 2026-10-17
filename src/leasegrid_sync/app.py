@@ -129,6 +129,7 @@ FOLDER_FILE_BANNER = "That path is not a folder: %s"
 HANDED_INVITE_DROPPED = (
     "Leasegrid Sync is already on a friendnet. This invite was not opened."
 )
+HANDED_INVITE_REPLACE = "Another invite arrived. Use it?"
 _JOIN_HANDOFF_MAX = 4096
 # A burst of a few hundred handoff sockets segfaulted the process. Extra
 # connections are aborted, and an idle socket is dropped after this long.
@@ -2786,6 +2787,24 @@ class MainWindow:
                 pass
         release_instance_lock()
 
+    def _accept_handed_invite(self, text: str) -> bool:
+        """True when the Join field should become this invite.
+
+        A different non-empty field asks first. No is the default, including
+        Esc. The question names neither invite, and nothing here is logged.
+        """
+        current = self.invite_edit.text()
+        if not current.strip() or current == text:
+            return True
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QMessageBox(self.win)
+        box.setObjectName("handedInviteReplace")
+        box.setWindowTitle(APP_NAME)
+        box.setText(HANDED_INVITE_REPLACE)
+        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        box.setDefaultButton(QtWidgets.QMessageBox.No)
+        return box.exec_() == QtWidgets.QMessageBox.Yes
+
     def receive_handed_invite(self, invite: str) -> None:
         """Show a second launch's invite. The user still has to join it."""
         text = (invite or "").strip()
@@ -2799,8 +2818,9 @@ class MainWindow:
             self.folder_error.setText(HANDED_INVITE_DROPPED)
         else:
             self.stack.setCurrentWidget(self.join_page)
-            self.invite_edit.setText(text)
-            self.invite_edit.setFocus()
+            if self._accept_handed_invite(text):
+                self.invite_edit.setText(text)
+                self.invite_edit.setFocus()
         self._dump_handed_invite()
 
     def _dump_handed_invite(self) -> None:

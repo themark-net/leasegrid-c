@@ -53,3 +53,8 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 565 passed, 5 xfailed, 4 warnings in 119.11s | files: src/leasegrid_sync/app.py, src/leasegrid_sync/cli.py, tests/test_sync_join_oversize.py | err: none
   RED: return "free" for an empty or oversized invite → test_oversized_join_with_a_held_lock_says_already_running and test_oversized_join_with_a_free_lock_is_rejected (AssertionError: join was attempted).
+
+## 7 handed invite
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 566 passed, 5 xfailed, 4 warnings in 121.29s | files: src/leasegrid_sync/app.py, tests/test_sync_handed_invite.py | err: none
+  RED: overwrite the Join field unconditionally → test_handed_invite_keeps_typed_text_unless_the_user_says_yes (assert 'B' == 'A').

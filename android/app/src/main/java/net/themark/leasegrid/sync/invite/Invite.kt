@@ -14,16 +14,16 @@ object Invite {
     const val ACK_MSG = "could not join this friendnet. The four points above are not acknowledged."
     const val ACK_NEXT = "check “I understand the four points above.”, then Join."
     const val WORMHOLE_MSG =
-        "could not join this friendnet. A short code is not redeemed on this phone."
+        "could not join this friendnet. This phone does not take a short code."
     const val WORMHOLE_NEXT =
-        "paste the full join link or the pb:// furl from desktop Sync; Retry."
+        "on desktop Sync, open the invite card, click Show full join link (advanced), and paste that link here; Retry."
 
     fun parse(raw: String): ParsedInvite {
         val text = raw.trim()
         if (text.isEmpty()) {
             throw InviteFail(
                 "could not join this friendnet. Invite is empty.",
-                "paste a join link or a pb:// furl.",
+                "paste the full join link from desktop Sync.",
             )
         }
         if (wormhole.matches(text.lowercase())) {
@@ -54,12 +54,12 @@ object Invite {
             }
             throw InviteFail(
                 "could not join this friendnet. That looks like a web URL.",
-                "Leasegrid Sync does not use the Tahoe web UI. Paste a join link or pb:// furl.",
+                "Leasegrid Sync does not use the Tahoe web UI. Paste the full join link from desktop Sync.",
             )
         }
         throw InviteFail(
             "could not join this friendnet. Invite code invalid.",
-            "ask your inviter for a fresh invite (pb://… or a full join link); Retry.",
+            "ask your inviter for a fresh full join link; Retry.",
         )
     }
 
@@ -99,14 +99,14 @@ object Invite {
         if (!text.startsWith("pb://")) {
             throw InviteFail(
                 "could not join this friendnet. Invite code invalid.",
-                "ask your inviter for a fresh invite (pb://…); Retry.",
+                "ask your inviter for a fresh full join link; Retry.",
             )
         }
         val rest = text.removePrefix("pb://")
         if (!rest.contains("/") || rest.length < 12) {
             throw InviteFail(
-                "could not join this friendnet. Invite furl is malformed.",
-                "get a fresh code from your inviter; check network; Retry.",
+                "could not join this friendnet. That join link is malformed.",
+                "get a fresh full join link from your inviter; check network; Retry.",
             )
         }
         return text

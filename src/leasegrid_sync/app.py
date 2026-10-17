@@ -2069,8 +2069,12 @@ class MainWindow:
         if not opened:
             self.settings_status.setText(str(logs))
 
-    def bug_report_text(self) -> str:
-        """Short clipboard report. No invite, furl, recovery key, or wallet."""
+    def bug_report_lines(self) -> list[str]:
+        """The report lines before scrubbing. An allowlist: nothing else is copied.
+
+        A raw dump (invite code, tahoe.cfg, the share link, a log tail) is an
+        extra line here. Scrubbing the joined text is not what keeps it out.
+        """
         statuses: list[str] = []
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 1)
@@ -2081,18 +2085,18 @@ class MainWindow:
             folders = "%d folders" % len(statuses)
             if statuses:
                 folders += ": " + ", ".join(statuses)
-        return scrub_bug_report(
-            "\n".join(
-                [
-                    about_line(),
-                    platform.platform(),
-                    "Chip: %s" % self.status_chip.text(),
-                    "Joined: %s" % ("yes" if self._joined else "no"),
-                    folders,
-                    "Logs: %s" % (self.home / "logs"),
-                ]
-            )
-        )
+        return [
+            about_line(),
+            platform.platform(),
+            "Chip: %s" % self.status_chip.text(),
+            "Joined: %s" % ("yes" if self._joined else "no"),
+            folders,
+            "Logs: %s" % (self.home / "logs"),
+        ]
+
+    def bug_report_text(self) -> str:
+        """Short clipboard report. No invite, furl, recovery key, or wallet."""
+        return scrub_bug_report("\n".join(self.bug_report_lines()))
 
     def on_copy_bug_report(self) -> None:
         self.QtWidgets.QApplication.clipboard().setText(self.bug_report_text())

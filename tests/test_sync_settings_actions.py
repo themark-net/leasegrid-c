@@ -12,7 +12,7 @@ import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import MainWindow, about_line, scrub_bug_report  # noqa: E402
+from leasegrid_sync.app import MainWindow, UI_LOG_NAME, about_line, scrub_bug_report  # noqa: E402
 from leasegrid_sync.backend import FolderRow, SyncError  # noqa: E402
 from leasegrid_sync.invite import InviteCodeSession  # noqa: E402
 from tests.buyer_text import assert_no_raw_user_text  # noqa: E402
@@ -93,27 +93,70 @@ def test_scrub_bug_report_removes_each_secret_shape() -> None:
         assert secret not in out
 
 
+# Real-shaped fakes the scrubber does not know: base32 swissnum, tub id,
+# DIR2 and CHK caps, and 32 hex digits. An 8-character piece is still a leak.
+_SWISS = "qpwoeirutyalskdjfhgmznxbcv234567"
+_TUB = "mnbvcxzlkjhgfdsapoiuytrewq765432"
+_DIR2 = "URI:DIR2:" + ("a" * 26) + ":" + ("b" * 52)
+_CHK = "URI:CHK:" + ("c" * 26) + ":" + ("d" * 52) + ":1:1:9"
+_HEX = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
+
+def _eight_char_pieces(secret: str) -> list[str]:
+    return [secret[i : i + 8] for i in range(len(secret) - 7)]
+
+
 def test_bug_report_omits_secrets_planted_in_logs_and_env(tmp_path: Path, monkeypatch) -> None:
     window = _window(tmp_path)
     logs = window.home / "logs"
     logs.mkdir(parents=True)
-    (logs / "sync-ui.log").write_text(
+    (logs / UI_LOG_NAME).write_text(
         "\n".join(
             [
                 "pb://FAKE-TUBID@127.0.0.1:1/FAKE-LOGSW",
                 "7-log-secret",
                 "leasegrid:join#v=1&i=pb://FAKE-TUBID@127.0.0.1:1/FAKE-LOGURL",
+                _SWISS,
+                _CHK,
+                _HEX,
             ]
         ),
         encoding="utf-8",
     )
+    (window.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[node]\ntubid = %s\n%s\n" % (_TUB, _DIR2),
+        encoding="utf-8",
+    )
+    (window.home / "credit-wallet.json").write_text('{"seed":"%s"}\n' % _HEX, encoding="utf-8")
     monkeypatch.setenv("LEASEGRID_PLANTED_FURL", "pb://FAKE-TUBID@127.0.0.1:1/FAKE-ENVSW")
     monkeypatch.setenv("LEASEGRID_PLANTED_CODE", "4-env-planted")
+    monkeypatch.setenv("LEASEGRID_PLANTED_HEX", _HEX)
     window.status_chip.setText("Online pb://FAKE-TUBID@127.0.0.1:1/FAKE-CHIP")
+    window.share_url_edit.setText(_DIR2)
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    window._invite_session = InviteCodeSession(code=_SWISS, proc=proc)
+    window._joined = True
     try:
+        lines = window.bug_report_lines()
+        assert lines == [
+            about_line(),
+            platform.platform(),
+            "Chip: Online pb://FAKE-TUBID@127.0.0.1:1/FAKE-CHIP",
+            "Joined: yes",
+            "0 folders",
+            "Logs: %s" % (window.home / "logs"),
+        ]
+        raw = "\n".join(lines)
         text = window.bug_report_text()
-        assert about_line() in text
-        assert platform.platform() in text
+        assert text == scrub_bug_report(raw)
+        window.QtWidgets.QApplication.clipboard().setText("STALE")
+        window.copy_bug_btn.click()
+        clip = window.QtWidgets.QApplication.clipboard().text()
+        assert clip == scrub_bug_report(raw)
         for secret in (
             "FAKE-LOGSW",
             "FAKE-LOGURL",
@@ -123,8 +166,13 @@ def test_bug_report_omits_secrets_planted_in_logs_and_env(tmp_path: Path, monkey
             "4-env-planted",
             "pb://",
         ):
-            assert secret not in text
+            assert secret not in clip
+        for secret in (_SWISS, _TUB, _DIR2, _CHK, _HEX):
+            for piece in _eight_char_pieces(secret):
+                assert piece not in clip
     finally:
+        if window._invite_session is not None:
+            window._invite_session.close()
         _close(window)
 
 

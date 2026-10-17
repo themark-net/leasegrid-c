@@ -47,7 +47,16 @@ RED: drop outer try → `test_partial_geometry_restore_keeps_the_default_size` a
 
 ### 2. B4 bug report
 
-Pending.
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 489 passed, 5 xfailed, 4 warnings in 42.98s, ci-local PASS | files: app.py, test_sync_settings_actions.py, decisions | err: none
+
+`bug_report_lines()` is the six-line allowlist. `bug_report_text()` is `scrub` of that join. The planted test also puts a base32 swissnum, a tub id, `URI:DIR2`, `URI:CHK`, and 32 hex into the log, `tahoe.cfg`, env, the invite session, and the share field. No 8-character piece of those is in the copied text. No product leak: the builder still emits only those six lines.
+
+RED: 7c' invite code appended → `test_bug_report_omits_secrets_planted_in_logs_and_env` at tests/test_sync_settings_actions.py:145
+RED: 7d' tahoe.cfg dumped → same test at :145 (the copy test stays green; scrub still masks `pb://`)
+RED: 7f' share URL appended → same test at :145 (the copy test stays green; scrub still masks the join link)
+RED: 7g' tail of sync-ui.log appended → same test at :145
+RED: 7e' wallet dumped → same test at :145, and `test_copy_bug_report_has_about_line_and_no_secrets` at :216
+RED: 7h' env dumped → same test at :145
 
 ### 3. Partial title bar
 

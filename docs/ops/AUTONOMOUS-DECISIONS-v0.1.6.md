@@ -11,3 +11,4 @@ One line per choice: `choice | alternatives | why`
 - Allow `openUrl` only when the argument is `fromLocalFile` | keep the blanket ban and skip Open logs | the WUI ban stays, and a local folder is not the Tahoe web UI
 - Trouble-section checks live in `tests/test_tester_trouble.py` | add them to `tests/test_tester_pages.py` | v0.1.5 already edits that file; a new file keeps the rebase hunk local
 - Saved frame is checked before restoreGeometry; file is `window-geometry.json` | restore first, or an ini file | Qt's restoreGeometry moved an off-screen window back on screen and kept the old size
+- README and TESTERS "What's new" describe 0.1.6 only | leave the v0.1.4 #30 bullets under the new heading | those sentences stay word for word in Known issues and in `v0.1.4.md`

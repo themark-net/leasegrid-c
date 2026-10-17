@@ -1,18 +1,18 @@
 # Leasegrid Sync — friends and family
 
 Leasegrid Sync is the desktop window. One friend invites you; you join, add a folder, and put a file in it. You do not need Python.
-Current build: [v0.1.5](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.5). Newest build: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.5`. The installers are unsigned.
+Current build: [v0.1.6](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.6). Newest build: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.6`. The installers are unsigned.
 
 ## Install
 
 | OS | Download | One-liner |
 |----|----------|-----------|
-| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.5-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.5/Leasegrid_Sync-0.1.5-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
-| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.5-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.5/Leasegrid_Sync-0.1.5-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.5-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.5/Leasegrid_Sync-0.1.5-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
-| Windows x64, no setup | [`Leasegrid_Sync-0.1.5-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.5/Leasegrid_Sync-0.1.5-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
+| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.6-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.6/Leasegrid_Sync-0.1.6-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
+| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.6-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.6/Leasegrid_Sync-0.1.6-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.6-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.6/Leasegrid_Sync-0.1.6-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
+| Windows x64, no setup | [`Leasegrid_Sync-0.1.6-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.6/Leasegrid_Sync-0.1.6-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
 
-**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.5) before you run it.
+**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.6) before you run it.
 
 <details>
 <summary>macOS: “unidentified developer” — Open Anyway steps</summary>
@@ -26,11 +26,11 @@ On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead
 
 Then: open **Join a friendnet**, paste the short code your friend copied with **Copy code**, tick **I understand the four points above.**, click **Join friendnet**, and **Add folder** on **Folders**.
 
-## What's new in v0.1.5
+## What's new in v0.1.6
 
-- Nothing changes in the app window; this build hardens the CI log redaction.
-- Correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
-- Details: [v0.1.5 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.5.md) (and [v0.1.4](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.4.md) before it).
+- A second launch says **Leasegrid Sync is already running. Use the open window.**
+- Closing the window while an invite is open asks first. **Keep open** is the default.
+- Details: [v0.1.6 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.6.md) (and [v0.1.5](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.5.md) before it).
 
 ## Known issues
 

@@ -1458,3 +1458,133 @@ def test_refresh_row_http_500_does_not_say_folder_not_added(tmp_path: Path, monk
     assert "could not refresh folders" in rows[0].detail
     assert "HTTP 500" in rows[0].detail
     assert_no_raw_user_text(rows[0].detail)
+
+
+def _exiting_magic_folder(tmp_path: Path, monkeypatch) -> tuple[MagicFolderCtl, Path, str]:
+    """A Magic Folder daemon that exits on startup. Log text is planted and fake."""
+    monkeypatch.setattr(backend_mod, "_port_free", lambda _port, host="127.0.0.1": True)
+    home = tmp_path / "home"
+    config = home / "magic-folder"
+    config.mkdir(parents=True)
+    (config / "api_token").write_text("not-a-secret\n", encoding="utf-8")
+    log = home / "logs" / "magic-folder.log"
+    log.parent.mkdir(parents=True)
+    seeded = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    log.write_text(
+        "Traceback (most recent call last):\n"
+        '  File "mf.py", line 1, in run\n'
+        "RuntimeError: daemon failed\n" + seeded + "\n",
+        encoding="utf-8",
+    )
+    ctl = MagicFolderCtl(
+        config_dir=config,
+        nodedir=home / "tahoe",
+        mf_bin=_exit_immediately_tahoe(tmp_path),
+    )
+    ctl.log_path = log
+    return ctl, log, seeded
+
+
+def _assert_log_not_pasted(blob: str, log: Path, seeded: str) -> None:
+    assert str(log) in blob
+    assert seeded not in blob
+    assert "Traceback" not in blob
+    assert "daemon failed" not in blob
+    assert_no_raw_user_text(blob)
+
+
+def test_refresh_daemon_exit_does_not_say_folder_not_added(tmp_path: Path, monkeypatch):
+    """Refresh starts the daemon. That exit is not an add, and the log stays out."""
+    ctl, log, seeded = _exiting_magic_folder(tmp_path, monkeypatch)
+    with pytest.raises(SyncError) as exc:
+        ctl.list_folders()
+    blob = exc.value.banner()
+    assert "could not refresh folders" in blob
+    assert "folder not added" not in blob.lower()
+    assert "Magic Folder stopped while starting" in blob
+    assert "Restart Sync." in blob
+    assert "#30" not in blob
+    _assert_log_not_pasted(blob, log, seeded)
+
+    bare = MagicFolderCtl(config_dir=tmp_path / "mf", nodedir=tmp_path / "tahoe", mf_bin=None)
+    with pytest.raises(SyncError) as missing:
+        bare.list_folders()
+    missing_blob = missing.value.banner()
+    assert "could not refresh folders" in missing_blob
+    assert "not installed" in missing_blob
+    assert "folder not added" not in missing_blob.lower()
+    assert "install magic-folder" in missing_blob
+
+
+def test_add_folder_daemon_exit_still_says_folder_not_added(tmp_path: Path, monkeypatch):
+    """Add folder still owns the ensure_running sentences."""
+    ctl, log, seeded = _exiting_magic_folder(tmp_path, monkeypatch)
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    with pytest.raises(SyncError) as exc:
+        ctl.add_folder(str(folder))
+    blob = exc.value.banner()
+    assert "folder not added" in blob
+    assert "could not refresh folders" not in blob
+    assert "Magic Folder stopped while starting" in blob
+    assert "Restart Sync." in blob
+    _assert_log_not_pasted(blob, log, seeded)
+
+    bare = MagicFolderCtl(config_dir=tmp_path / "mf-add", nodedir=tmp_path / "tahoe", mf_bin=None)
+    with pytest.raises(SyncError) as missing:
+        bare.add_folder(str(folder))
+    missing_blob = missing.value.banner()
+    assert "folder not added" in missing_blob
+    assert "could not refresh folders" not in missing_blob
+    assert "not installed" in missing_blob
+
+
+def test_refresh_http_500_maps_on_status_code_not_text(tmp_path: Path, monkeypatch):
+    """#30 on refresh is the HTTP status, not the words "HTTP 500" in the sentence."""
+    ctl = _mf_api_ready(tmp_path)
+    fake = SyncError(
+        "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
+        "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+    )
+    assert fake.http_status is None
+    mapped = ctl._refresh_http_message(fake)
+    assert "could not refresh folders" not in mapped.message
+    assert "folder not added" in mapped.message
+    assert mapped.http_status != 500
+
+    other = SyncError(
+        "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
+        "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+        http_status=404,
+    )
+    mapped_other = ctl._refresh_http_message(other)
+    assert "could not refresh folders" not in mapped_other.message
+    assert mapped_other.http_status == 404
+
+    def raise_fake(_path, base=None, timeout=10.0):
+        raise fake
+
+    with patch.object(ctl, "ensure_running", return_value=None), patch.object(
+        ctl, "_http_get", raise_fake
+    ):
+        with pytest.raises(SyncError) as listed:
+            ctl.list_folders()
+    assert "could not refresh folders" not in listed.value.message
+    assert "folder not added" in listed.value.message
+    assert listed.value.http_status != 500
+
+    def boom(req, timeout=10):
+        raise _poison_http(500)
+
+    monkeypatch.setattr(backend_mod.urllib.request, "urlopen", boom)
+    with patch.object(ctl, "ensure_running", return_value=None):
+        with pytest.raises(SyncError) as exc:
+            ctl.list_folders()
+    assert exc.value.http_status == 500
+    blob = exc.value.banner()
+    assert "could not refresh folders" in blob
+    assert "folder not added" not in blob.lower()
+    assert "Magic Folder HTTP 500" in blob
+    assert "#30" in blob
+    assert "docs/TESTERS.md" in blob
+    assert_no_raw_user_text(blob)

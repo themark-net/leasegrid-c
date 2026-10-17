@@ -81,7 +81,13 @@ def _title_grab_inside(window: MainWindow) -> bool:
     return any(screen.availableGeometry().contains(strip) for screen in screens)
 
 
-def _save_moved(home: Path, x: int, y: int, width: int, height: int) -> None:
+def _save_moved(home: Path, x: int, y: int, width: int, height: int) -> int:
+    """Save a moved window and return the width it really had.
+
+    The layout's minimum width depends on the platform fonts (863 px on the
+    windows-2022 runner), so a requested width below it is clamped by Qt.
+    The restore must bring back the width that was saved, whatever it was.
+    """
     first = MainWindow(home=home, autoload=False)
     try:
         first.win.show()
@@ -89,19 +95,21 @@ def _save_moved(home: Path, x: int, y: int, width: int, height: int) -> None:
         first.win.resize(width, height)
         first.win.move(x, y)
         first.QtWidgets.QApplication.processEvents()
+        saved_width = first.win.width()
         first.quit()
     finally:
         _hide(first)
+    return saved_width
 
 
 def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    _save_moved(home, 40, -650, 700, 700)
+    saved_width = _save_moved(home, 40, -650, 700, 700)
     second = MainWindow(home=home, autoload=False)
     try:
         second.show()
         second.QtWidgets.QApplication.processEvents()
-        assert second.win.width() == 700
+        assert second.win.width() == saved_width
         assert _title_grab_inside(second)
     finally:
         _hide(second)
@@ -109,12 +117,12 @@ def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
 
 def test_title_bar_left_of_the_screen_stays_on_screen(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    _save_moved(home, -200, 40, 500, 400)
+    saved_width = _save_moved(home, -200, 40, 500, 400)
     second = MainWindow(home=home, autoload=False)
     try:
         second.show()
         second.QtWidgets.QApplication.processEvents()
-        assert second.win.width() == 500
+        assert second.win.width() == saved_width
         assert _title_grab_inside(second)
     finally:
         _hide(second)

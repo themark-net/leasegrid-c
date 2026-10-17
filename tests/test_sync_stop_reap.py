@@ -67,6 +67,37 @@ def test_stop_reaps_child_that_ignores_sigterm(tmp_path: Path, kind: str) -> Non
             proc.wait(timeout=2)
 
 
+def test_quit_stops_tahoe_and_magic_folder(tmp_path: Path) -> None:
+    """The window quit path must stop both daemons, not only call shutdown."""
+    pytest.importorskip("PyQt5")
+    from leasegrid_sync.app import MainWindow
+
+    window = MainWindow(home=tmp_path / "home", nodedir=tmp_path / "tahoe", autoload=False)
+    procs: list[subprocess.Popen] = []
+    try:
+        for ctl in (window.tahoe, window.mf):
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            ctl._proc = proc
+            procs.append(proc)
+        window.quit()
+        for proc in procs:
+            assert proc.poll() is not None
+    finally:
+        for proc in procs:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+        window.poll.stop()
+        window.win.hide()
+        if window.tray is not None:
+            window.tray.hide()
+
+
 def test_stop_is_safe_when_the_child_already_exited(tmp_path: Path) -> None:
     proc = subprocess.Popen([sys.executable, "-c", "import sys; sys.exit(0)"])
     proc.wait(timeout=5)

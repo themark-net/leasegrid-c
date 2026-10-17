@@ -46,3 +46,7 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
 2. B2 geometry | DONE | ci-local: 475 passed, 5 xfailed, 4 warnings in 42.54s | files: app.py, tests/test_sync_window_geometry.py, AUTONOMOUS-DECISIONS, this log | err: none
    Tests: test_title_bar_above_the_screen_stays_on_screen, test_title_bar_left_of_the_screen_stays_on_screen, test_geometry_round_trips_across_two_windows
    RED without fix: test_title_bar_above_the_screen_stays_on_screen at tests/test_sync_window_geometry.py:104 and test_title_bar_left_of_the_screen_stays_on_screen at tests/test_sync_window_geometry.py:117 (unconditional move() put back)
+
+3. quit stops daemons | DONE | ci-local: 476 passed, 5 xfailed, 4 warnings in 42.71s | files: tests/test_sync_stop_reap.py, this log | err: none
+   Tests: test_quit_stops_tahoe_and_magic_folder
+   RED without fix: test_quit_stops_tahoe_and_magic_folder at tests/test_sync_stop_reap.py:89 (shutdown() never calls stop())

@@ -63,8 +63,12 @@ class SyncError(Exception):
     def banner(self) -> str:
         text = self.message if self.message.startswith("FAIL") else "FAIL — " + self.message
         if self.next_hint:
-            return text + "\nNext: " + self.next_hint
-        return text
+            text = text + "\nNext: " + self.next_hint
+        # Every window label renders this string. Mask at that moment, not when
+        # the error is built, so the stored message keeps the real path.
+        from .app import mask_shown_paths
+
+        return mask_shown_paths(text)
 
 
 @dataclass

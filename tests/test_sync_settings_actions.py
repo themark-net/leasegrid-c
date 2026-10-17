@@ -47,6 +47,8 @@ def test_shown_paths_hide_the_account_name(tmp_path: Path, monkeypatch) -> None:
     """A planted account name stays off the Settings line, the report, and the banner."""
     fake = tmp_path / "Users" / "fakeuser"
     fake.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake))
+    monkeypatch.setenv("USERPROFILE", str(fake))
     monkeypatch.setattr(Path, "home", lambda *_args, **_kwargs: fake)
     home = fake / "LeasegridSync"
     nodedir = tmp_path / "tahoe"

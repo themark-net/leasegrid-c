@@ -147,24 +147,93 @@ def _test_env(name: str) -> str:
     return os.environ.get(name) or ""
 
 
+def _tilde(rel: str) -> str:
+    if rel in ("", "."):
+        return "~"
+    if sys.platform == "win32":
+        return "~\\" + rel.replace("/", "\\")
+    return "~/" + rel.replace("\\", "/")
+
+
+def _under_home(path: Path, home: Path, fold: bool) -> Optional[str]:
+    """Tail under ``home``, or None. A root home matches everything, so skip it."""
+    if len(home.parts) <= 1:
+        return None
+    parts = path.parts
+    base = home.parts
+    if len(parts) < len(base):
+        return None
+    left = parts[: len(base)]
+    if fold:
+        left = tuple(part.casefold() for part in left)
+        base = tuple(part.casefold() for part in base)
+    if left != base:
+        return None
+    tail = parts[len(home.parts) :]
+    if not tail:
+        return "."
+    return str(Path(*tail))
+
+
 def display_path(path: object) -> str:
     """Home-relative form for a path a person sees or copies.
 
     ``~/…`` on POSIX and ``~\\…`` on Windows. Files on disk keep the real path.
-    A path outside the account home is unchanged.
+    A path outside the account home is unchanged. ``..`` is collapsed before
+    the home check, so a path that leaves home is not masked. The home symlink
+    and its target are both homes. Letter case is ignored on Windows and macOS.
     """
     text = str(path)
+    if text == "":
+        return ""
+    # pb:// and other URLs are not filesystem paths. abspath() would join them
+    # onto the working directory and then hide that directory.
+    if "://" in text:
+        return text
     try:
         home = Path.home()
-        rel = Path(text).expanduser().absolute().relative_to(home)
-    except (OSError, ValueError, TypeError):
+        expanded = Path(text).expanduser()
+        if not expanded.is_absolute():
+            return text
+        try:
+            home_real = home.resolve()
+        except OSError:
+            home_real = home
+        absolute = Path(os.path.abspath(expanded))
+        collapsed = Path(os.path.normpath(str(absolute)))
+        try:
+            resolved = collapsed.resolve()
+        except OSError:
+            resolved = collapsed
+    except (OSError, ValueError, RuntimeError, TypeError):
         return text
-    tail = str(rel)
-    if tail in ("", "."):
-        return "~"
-    if sys.platform == "win32":
-        return "~\\" + tail.replace("/", "\\")
-    return "~/" + tail.replace("\\", "/")
+    fold = sys.platform in ("win32", "darwin")
+    for candidate in (collapsed, resolved):
+        for base in (home, home_real):
+            rel = _under_home(candidate, base, fold)
+            if rel is not None:
+                return _tilde(rel)
+    return text
+
+
+# An absolute path inside buyer text. The trailing punctuation stays put.
+_SHOWN_PATH = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|/)[^\s\"'<>|]+")
+
+
+def mask_shown_paths(text: str) -> str:
+    """Replace home paths in a banner. Other words stay as they are."""
+    if not text:
+        return text
+
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        trimmed = token.rstrip(".,;:)")
+        shown = display_path(trimmed)
+        if shown == trimmed:
+            return token
+        return shown + token[len(trimmed) :]
+
+    return _SHOWN_PATH.sub(repl, text)
 
 
 def instance_lock_path(home: Path) -> Path:

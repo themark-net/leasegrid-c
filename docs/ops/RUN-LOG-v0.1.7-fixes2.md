@@ -58,3 +58,8 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 566 passed, 5 xfailed, 4 warnings in 121.29s | files: src/leasegrid_sync/app.py, tests/test_sync_handed_invite.py | err: none
   RED: overwrite the Join field unconditionally → test_handed_invite_keeps_typed_text_unless_the_user_says_yes (assert 'B' == 'A').
+
+## 8 path masking
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 568 passed, 5 xfailed, 4 warnings in 121.62s | files: src/leasegrid_sync/app.py, src/leasegrid_sync/backend.py, tests/test_sync_display_path.py, tests/test_sync_settings_actions.py | err: none
+  RED: identity helper → test_display_path_table (link-home == '~'). RED: no resolve() → test_display_path_table (real/fakeuser/logs/tahoe.log == '~/logs/tahoe.log').

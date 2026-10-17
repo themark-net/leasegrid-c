@@ -106,7 +106,43 @@ def _style_primary(btn) -> None:
 
 
 UI_LOG_NAME = "sync-ui.log"
+UI_LOG_MAX_BYTES = 1024 * 1024
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
+ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
+_INSTANCE_LOCK = None
+
+
+def instance_lock_path(home: Path) -> Path:
+    return Path(home) / ".leasegrid-sync.lock"
+
+
+def acquire_instance_lock(home: Path) -> bool:
+    """Lock this Sync home. A dead holder's lock is taken over.
+
+    The QLockFile object is kept for the process lifetime. Returns False when
+    another live process holds the lock.
+    """
+    global _INSTANCE_LOCK
+    from PyQt5.QtCore import QLockFile
+
+    path = instance_lock_path(home)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return True
+    lock = QLockFile(str(path))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        return False
+    _INSTANCE_LOCK = lock
+    return True
+
+
+def _show_already_running() -> None:
+    _QtCore, _QtGui, QtWidgets = _qt_api()
+    if QtWidgets.QApplication.instance() is None:
+        QtWidgets.QApplication(sys.argv)
+    QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
 
 
 def format_status_chip(status: ConnectionStatus) -> str:
@@ -135,11 +171,32 @@ def about_line() -> str:
     return "%s (buyer) · version %s" % (APP_NAME, __version__)
 
 
+def _rotate_ui_log(path: Path) -> None:
+    """If ``path`` is over 1 MiB, move it to ``sync-ui.log.1``. Never raises.
+
+    An older ``.1`` is replaced. A failure (read-only directory, busy name)
+    leaves the current file in place so the caller can still append.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size <= UI_LOG_MAX_BYTES:
+            return
+        backup = path.with_name(path.name + ".1")
+        try:
+            if backup.exists():
+                backup.unlink()
+        except OSError:
+            return
+        os.replace(path, backup)
+    except OSError:
+        return
+
+
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     """Append a traceback to <home>/logs/sync-ui.log; never raises."""
     path = Path(home) / "logs" / UI_LOG_NAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_ui_log(path)
         with path.open("a", encoding="utf-8") as f:
             f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), where))
             f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
@@ -2617,6 +2674,10 @@ def run_app(
     offer_storage: bool = True,
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    # One window per Sync home. Headless CLI commands never reach here.
+    if not acquire_instance_lock(default_home()):
+        _show_already_running()
+        return 0
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
     install_excepthook(ui)
     ui.show()

@@ -46,8 +46,8 @@ Failing tests: none
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
 | 1 | DONE | 7a12515 | test_linked_worktree_uses_its_own_venv, test_explicit_python_is_honored_in_a_worktree, test_main_checkout_still_prefers_shared_venv | RED without fix: test_linked_worktree_uses_its_own_venv at tests/test_ci_local_worktree.py:79 (old script selected /home/mark/tahoe-venv and reached pip install) |
-| 2 | DONE | (this commit) | test_stop_reaps_child_that_ignores_sigterm, test_stop_is_safe_when_the_child_already_exited | RED without fix: test_stop_reaps_child_that_ignores_sigterm at tests/test_sync_stop_reap.py:59 (TypeError: stop() got an unexpected keyword argument 'terminate_timeout') |
-| 3 | pending | | | |
+| 2 | DONE | 0792361 | test_stop_reaps_child_that_ignores_sigterm, test_stop_is_safe_when_the_child_already_exited | RED without fix: test_stop_reaps_child_that_ignores_sigterm at tests/test_sync_stop_reap.py:59 (TypeError: stop() got an unexpected keyword argument 'terminate_timeout') |
+| 3 | DONE | (this commit) | test_log_rotates_when_over_one_mebibyte_and_keeps_one_backup, test_rotation_failure_still_appends_and_does_not_raise | RED without fix: test_log_rotates_when_over_one_mebibyte_and_keeps_one_backup at tests/test_sync_ui_log.py:32 (no sync-ui.log.1) |
 | 4 | pending | | | |
 | 5 | pending | | | |
 | 6 | pending | | | |

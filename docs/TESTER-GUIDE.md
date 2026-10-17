@@ -120,7 +120,7 @@ Include:
 - The About line from **More → Settings** (`version 0.1.5` on this build).
 - The clicks, in order, and the exact FAIL line.
 - The chip text, and the folder Status if you added a folder.
-- The `logs` folder from the Sync home. Useful files there are `sync-ui.log`, `tahoe.log`, and `magic-folder.log`.
+- The `logs` folder from the Sync home. Useful files there are `sync-ui.log` (older lines rotate to `sync-ui.log.1`), `tahoe.log`, and `magic-folder.log`.
 
 | OS | Logs |
 |----|------|

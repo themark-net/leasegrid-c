@@ -1,0 +1,81 @@
+"""Window size and position survive a quit, and a bad file does not."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+PyQt5 = pytest.importorskip("PyQt5")
+
+from leasegrid_sync.app import MainWindow  # noqa: E402
+
+
+def _hide(window: MainWindow) -> None:
+    window.poll.stop()
+    window.win.hide()
+    if window.tray is not None:
+        window.tray.hide()
+
+
+def test_geometry_round_trips_across_two_windows(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    first = MainWindow(home=home, autoload=False)
+    try:
+        first.win.show()
+        first.QtWidgets.QApplication.processEvents()
+        # Taller than the layout's minimum, and still touching the offscreen desktop.
+        first.win.resize(1000, 980)
+        first.win.move(15, 10)
+        first.QtWidgets.QApplication.processEvents()
+        assert (first.win.width(), first.win.height(), first.win.x(), first.win.y()) == (1000, 980, 15, 10)
+        first.quit()
+    finally:
+        _hide(first)
+
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert (second.win.width(), second.win.height(), second.win.x(), second.win.y()) == (1000, 980, 15, 10)
+    finally:
+        _hide(second)
+
+
+def test_offscreen_geometry_falls_back_to_the_default_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    first = MainWindow(home=home, autoload=False)
+    try:
+        first.win.show()
+        first.QtWidgets.QApplication.processEvents()
+        first.win.resize(400, 300)
+        first.win.move(-100000, -100000)
+        first.QtWidgets.QApplication.processEvents()
+        first.quit()
+    finally:
+        _hide(first)
+
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.win.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert (second.win.width(), second.win.height()) == (920, second.win.minimumHeight())
+        assert second.win.x() >= 0 and second.win.y() >= 0
+        frame = second.win.frameGeometry()
+        screens = second.QtGui.QGuiApplication.screens()
+        assert any(screen.availableGeometry().intersects(frame) for screen in screens)
+    finally:
+        _hide(second)
+
+
+def test_corrupt_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "window-geometry.json").write_text("{", encoding="utf-8")
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
+    finally:
+        _hide(window)

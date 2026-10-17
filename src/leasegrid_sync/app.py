@@ -5,9 +5,12 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import platform
 import re
+import struct
 import sys
 import time
 import traceback
@@ -1110,6 +1113,30 @@ class DisconnectServerDialog:
         v.addLayout(brow)
 
 
+WINDOW_GEOMETRY_FILE = "window-geometry.json"
+DEFAULT_WINDOW_SIZE = (920, 620)
+_GEOM_MAGIC = 0x1D9D0CB
+
+
+def _saved_frame(blob: bytes) -> Optional[tuple]:
+    """Return the frame saved by QWidget.saveGeometry, or None if it is not that blob.
+
+    Qt's restoreGeometry pulls an off-screen window back onto the screen and
+    keeps the old size, so the frame has to be read before restore.
+    """
+    if len(blob) < 24:
+        return None
+    magic, major, _minor = struct.unpack_from(">IHH", blob, 0)
+    if magic != _GEOM_MAGIC or major < 1:
+        return None
+    left, top, right, bottom = struct.unpack_from(">iiii", blob, 8)
+    width = right - left + 1
+    height = bottom - top + 1
+    if width <= 0 or height <= 0:
+        return None
+    return (left, top, width, height)
+
+
 class MainWindow:
     """Thin wrapper so tests can construct the window without exec_."""
 
@@ -1142,7 +1169,8 @@ class MainWindow:
 
         self.win = QtWidgets.QMainWindow()
         self.win.setWindowTitle(APP_NAME)
-        self.win.resize(920, 620)
+        self.win.resize(*DEFAULT_WINDOW_SIZE)
+        self._restore_window_geometry()
         self.win.closeEvent = self._on_close  # type: ignore[method-assign]
 
         central = QtWidgets.QWidget()
@@ -2151,6 +2179,10 @@ class MainWindow:
 
     def show(self) -> None:
         self.win.show()
+        pending = getattr(self, "_pending_geometry_pos", None)
+        if pending is not None:
+            self.win.move(*pending)
+            self._pending_geometry_pos = None
         self.win.raise_()
         self.win.activateWindow()
 
@@ -2166,10 +2198,47 @@ class MainWindow:
             except Exception:
                 pass
 
+    def _rect_on_a_screen(self, rect) -> bool:
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return True
+        return any(screen.availableGeometry().intersects(rect) for screen in screens)
+
+    def _restore_window_geometry(self) -> None:
+        """Apply a saved frame when it is still on a screen. Otherwise keep the default."""
+        path = self.home / WINDOW_GEOMETRY_FILE
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            blob = base64.b64decode(raw["geometry"], validate=True)
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        saved = _saved_frame(blob)
+        if saved is None:
+            return
+        rect = self.QtCore.QRect(*saved)
+        if not self._rect_on_a_screen(rect):
+            return
+        if not self.win.restoreGeometry(self.QtCore.QByteArray(blob)):
+            self.win.resize(*DEFAULT_WINDOW_SIZE)
+            self.win.move(0, 0)
+            return
+        # show() on the offscreen plugin nudges a restored frame. Put the
+        # saved top-left back on the first show, then leave later shows alone.
+        self._pending_geometry_pos = (rect.x(), rect.y())
+
+    def _save_window_geometry(self) -> None:
+        try:
+            blob = bytes(self.win.saveGeometry())
+            text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")})
+            (self.home / WINDOW_GEOMETRY_FILE).write_text(text + "\n", encoding="utf-8")
+        except OSError:
+            return
+
     def quit(self) -> None:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
+        self._save_window_geometry()
         self.poll.stop()
         self.shutdown()
         self.app.quit()

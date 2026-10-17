@@ -54,8 +54,8 @@ Failing tests: none
 | 7 | DONE | 35e7488 | test_copy_bug_report_has_about_line_and_no_secrets | RED without fix: test_copy_bug_report_has_about_line_and_no_secrets at tests/test_sync_settings_actions.py:96 (clipboard stayed STALE) |
 | 8 | DONE | 5820ee7 | test_double_click_opens_an_existing_folder, test_context_menu_open_folder_uses_the_same_path, test_missing_folder_shows_a_banner_and_does_not_crash | RED without fix: test_missing_folder_shows_a_banner_and_does_not_crash at tests/test_sync_open_folder.py:89 (openUrl ran for a missing path) |
 | 9 | DONE | 774ddcf | test_current_release_notes_match_the_template_shape, test_placeholder_and_sixth_bullet_are_rejected | RED without fix: test_placeholder_and_sixth_bullet_are_rejected at tests/test_release_notes.py:81 (checker returned no problems) |
-| 10 | DONE | (this commit) | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED without fix: test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:21 (section missing) |
-| 11 | pending | | | |
+| 10 | DONE | ea39bd1 | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED without fix: test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:21 (section missing) |
+| 11 | DONE | (this commit) | test_geometry_round_trips_across_two_windows, test_offscreen_geometry_falls_back_to_the_default_size, test_corrupt_geometry_file_uses_the_default_size | RED without fix: test_geometry_round_trips_across_two_windows at tests/test_sync_window_geometry.py:40 (second window stayed 920×947 at 0,0) |
 
 ## Finish
 

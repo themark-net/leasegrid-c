@@ -10,3 +10,4 @@ One line per choice: `choice | alternatives | why`
 - QLockFile with staleLockTime 0 on the window launch only | fcntl.flock, or also blocking --join | kill -9 recovery worked in a probe; headless CLI stays unblocked
 - Allow `openUrl` only when the argument is `fromLocalFile` | keep the blanket ban and skip Open logs | the WUI ban stays, and a local folder is not the Tahoe web UI
 - Trouble-section checks live in `tests/test_tester_trouble.py` | add them to `tests/test_tester_pages.py` | v0.1.5 already edits that file; a new file keeps the rebase hunk local
+- Saved frame is checked before restoreGeometry; file is `window-geometry.json` | restore first, or an ini file | Qt's restoreGeometry moved an off-screen window back on screen and kept the old size

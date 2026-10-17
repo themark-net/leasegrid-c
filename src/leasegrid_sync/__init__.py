@@ -3,6 +3,6 @@
 APP_NAME = "Leasegrid Sync"
 APP_ID = "leasegrid-sync"
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 __all__ = ["APP_NAME", "APP_ID", "__version__"]

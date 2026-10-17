@@ -2,3 +2,4 @@
 
 v0.1.2 bump PR on Mark approval (notes via body_path, SHA256SUMS for checksums); tag/release only after merge | hand-edit v0.1.1 release body | v0.1.1 stays as cut; next tag gets the tester notes
 Docs tighten (release notes, TESTERS, README): short pages + long content moved to docs/TESTER-GUIDE.md and docs/OVERVIEW.md; add docs/release-notes/TEMPLATE.md (no workflow change; body_path still reads <tag>.md) | delete detail or edit the v0.1.2 release body by hand | no facts lost; published v0.1.2 body stays as cut until the next tag
+v0.1.3 bump PR opened before #64-#69 land (pyproject + __version__ to 0.1.3; docs/release-notes/v0.1.3.md from TEMPLATE listing #64-#69 by PR number, no merge SHAs yet); README/TESTERS/TESTER-GUIDE asset links stay on v0.1.2 | point the tester pages at v0.1.3 assets now | v0.1.3 download links would 404 until the tag exists; update the pages and fill in merge SHAs once #64-#69 are merged. No tag, no release

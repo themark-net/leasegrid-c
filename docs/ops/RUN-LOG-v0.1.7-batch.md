@@ -77,4 +77,4 @@ Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_rest
 | 9 | DONE | 0aa58b3 | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED: change ALREADY_RUNNING → test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:39 |
 | 10 | DONE | 9e81896 | test_long_snake_case_name_survives_on_an_allowlisted_line, tests/test_tahoe_log_filter.py leak tests | RED: old `[A-Za-z0-9_-]{40,}` rule → test_long_snake_case_name_survives_on_an_allowlisted_line at tests/test_tahoe_log_filter.py:206 |
 | 11 | DONE | fcd3d87 | docs only | docs only; no behavior mutation |
-| 12 | DONE | (this commit) | docs/design/60-DESKTOP-UI-V016.md | docs only; no behavior mutation |
+| 12 | DONE | a946f80 | docs/design/60-DESKTOP-UI-V016.md | docs only; no behavior mutation |

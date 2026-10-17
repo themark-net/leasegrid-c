@@ -5,7 +5,9 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 
 from __future__ import annotations
 
+import json
 import os
+import platform
 import re
 import sys
 import time
@@ -14,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import APP_NAME, __version__
+from .pgp_words import WORMHOLE_WORDS
 from .backend import (
     ConnectionStatus,
     DiskSlices,
@@ -106,7 +109,59 @@ def _style_primary(btn) -> None:
 
 
 UI_LOG_NAME = "sync-ui.log"
+UI_LOG_MAX_BYTES = 1024 * 1024
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
+ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
+INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
+_INSTANCE_LOCK = None
+
+
+def instance_lock_path(home: Path) -> Path:
+    return Path(home) / ".leasegrid-sync.lock"
+
+
+def acquire_instance_lock(home: Path) -> bool:
+    """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
+
+    Qt's default stale time (30s) is what makes an empty file, a garbage file,
+    or a lock from another machine recoverable. Stale time 0 never recovers
+    those. A live same-host holder is still refused. The QLockFile object stays
+    referenced until a clean quit, or the destructor would unlock it early.
+    Returns False when another live process holds the lock.
+    """
+    global _INSTANCE_LOCK
+    from PyQt5.QtCore import QLockFile
+
+    path = instance_lock_path(home)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return True
+    lock = QLockFile(str(path))
+    if not lock.tryLock(0):
+        return False
+    _INSTANCE_LOCK = lock
+    return True
+
+
+def release_instance_lock() -> None:
+    """Unlock and remove the Sync-home lock. Safe when no lock is held."""
+    global _INSTANCE_LOCK
+    lock = _INSTANCE_LOCK
+    _INSTANCE_LOCK = None
+    if lock is None:
+        return
+    try:
+        lock.unlock()
+    except Exception:
+        return
+
+
+def _show_already_running() -> None:
+    _QtCore, _QtGui, QtWidgets = _qt_api()
+    if QtWidgets.QApplication.instance() is None:
+        QtWidgets.QApplication(sys.argv)
+    QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
 
 
 def format_status_chip(status: ConnectionStatus) -> str:
@@ -135,11 +190,63 @@ def about_line() -> str:
     return "%s (buyer) · version %s" % (APP_NAME, __version__)
 
 
+# Whole tokens only. redact_furl keeps a head and a tail, and an 8-character
+# fragment is still a leak. A Tahoe invite code is a magic-wormhole code:
+# 1–3 digits and two or more hyphen-joined words, and every word is in the
+# PGP word list. The boundary is the start, the end, or a character that is
+# not a letter, digit, hyphen, or dot, so "(7-guitarist-revenge)" matches,
+# "500-from-server-side" does not, and "v0.1.6-rc-final" does not.
+_BUG_JOIN_RE = re.compile(
+    r"leasegrid:\S+|https?://\S+#\S*|(?:(?<=\s)|^)#[^\s]*i(?:=|%3[Dd])[^\s]*",
+    re.IGNORECASE,
+)
+_BUG_PB_RE = re.compile(r"pb://\S+", re.IGNORECASE)
+_BUG_CODE_RE = re.compile(
+    r"(?<![a-z0-9.-])[0-9]{1,3}(?:-[a-z]+){2,}(?![a-z0-9-])",
+    re.IGNORECASE,
+)
+
+
+def _redact_wormhole_code(match: re.Match) -> str:
+    words = match.group(0).split("-")[1:]
+    if words and all(word.lower() in WORMHOLE_WORDS for word in words):
+        return "[redacted]"
+    return match.group(0)
+
+
+def scrub_bug_report(text: str) -> str:
+    """Remove invite material from a report that is about to be copied."""
+    text = _BUG_JOIN_RE.sub("[redacted]", text)
+    text = _BUG_PB_RE.sub("[redacted]", text)
+    return _BUG_CODE_RE.sub(_redact_wormhole_code, text)
+
+
+def _rotate_ui_log(path: Path) -> None:
+    """If ``path`` is over 1 MiB, move it to ``sync-ui.log.1``. Never raises.
+
+    An older ``.1`` is replaced. A failure (read-only directory, busy name)
+    leaves the current file in place so the caller can still append.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size <= UI_LOG_MAX_BYTES:
+            return
+        backup = path.with_name(path.name + ".1")
+        try:
+            if backup.exists():
+                backup.unlink()
+        except OSError:
+            return
+        os.replace(path, backup)
+    except OSError:
+        return
+
+
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     """Append a traceback to <home>/logs/sync-ui.log; never raises."""
     path = Path(home) / "logs" / UI_LOG_NAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_ui_log(path)
         with path.open("a", encoding="utf-8") as f:
             f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), where))
             f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
@@ -1051,6 +1158,60 @@ class DisconnectServerDialog:
         v.addLayout(brow)
 
 
+WINDOW_GEOMETRY_FILE = "window-geometry.json"
+DEFAULT_WINDOW_SIZE = (920, 620)
+_GEOMETRY_VERSION = 2
+# A coordinate past this, or a span past Qt's widget maximum, is not a window.
+_COORD_LIMIT = 1 << 30
+_QWIDGETSIZE_MAX = 16777215
+# The part of the title bar a person drags. The whole frame can be wider than
+# the desktop and still be a normal on-screen window.
+_TITLE_GRAB = (80, 28)
+
+
+def _record_int(value) -> bool:
+    """True for a JSON integer. A bool is an int in Python, and a float is not."""
+    if isinstance(value, bool):
+        return False
+    if not isinstance(value, int):
+        return False
+    return True
+
+
+def _window_record(raw) -> Optional[tuple]:
+    """Return (x, y, width, height, maximized) or None when the record is not usable.
+
+    Each field is checked on its own. Version 2 is the plain record. An old
+    saveGeometry blob is not a record and returns None so the caller can ignore it.
+    """
+    if not isinstance(raw, dict) or raw.get("version") != _GEOMETRY_VERSION:
+        return None
+    x = raw.get("x")
+    y = raw.get("y")
+    width = raw.get("width")
+    height = raw.get("height")
+    maximized = raw.get("maximized")
+    if not _record_int(x):
+        return None
+    if not _record_int(y):
+        return None
+    if not _record_int(width):
+        return None
+    if not _record_int(height):
+        return None
+    if not isinstance(maximized, bool):
+        return None
+    if x < -_COORD_LIMIT or x > _COORD_LIMIT:
+        return None
+    if y < -_COORD_LIMIT or y > _COORD_LIMIT:
+        return None
+    if width < 1 or width > _QWIDGETSIZE_MAX or width > _COORD_LIMIT:
+        return None
+    if height < 1 or height > _QWIDGETSIZE_MAX or height > _COORD_LIMIT:
+        return None
+    return (x, y, width, height, maximized)
+
+
 class MainWindow:
     """Thin wrapper so tests can construct the window without exec_."""
 
@@ -1083,7 +1244,7 @@ class MainWindow:
 
         self.win = QtWidgets.QMainWindow()
         self.win.setWindowTitle(APP_NAME)
-        self.win.resize(920, 620)
+        self.win.resize(*DEFAULT_WINDOW_SIZE)
         self.win.closeEvent = self._on_close  # type: ignore[method-assign]
 
         central = QtWidgets.QWidget()
@@ -1110,6 +1271,9 @@ class MainWindow:
         self.tray_credit_action = None
         self._init_tray()
         self._sync_gated_chrome()
+        # After the pages exist, so the layout hint is the real window, not an
+        # empty shell. An earlier restore treated that shell as the size cap.
+        self._restore_window_geometry()
 
         self.poll = QtCore.QTimer(self.win)
         self.poll.setInterval(3000)
@@ -1306,6 +1470,9 @@ class MainWindow:
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.table.itemDoubleClicked.connect(self.on_folder_double_clicked)
+        self.table.setContextMenuPolicy(self.QtCore.Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.on_folder_context_menu)
         fl.addWidget(self.table, 1)
         self.folder_error = QtWidgets.QLabel("")
         self.folder_error.setObjectName("folderError")
@@ -1893,7 +2060,68 @@ class MainWindow:
         self.payment_lecture.setObjectName("paymentLecture")
         self.payment_lecture.hide()
         sl.addWidget(self.payment_lecture)
+        self.open_logs_btn = QtWidgets.QPushButton("Open logs folder")
+        self.open_logs_btn.setObjectName("openLogsButton")
+        self.open_logs_btn.setAutoDefault(False)
+        self.open_logs_btn.clicked.connect(self.on_open_logs)
+        sl.addWidget(self.open_logs_btn)
+        self.copy_bug_btn = QtWidgets.QPushButton("Copy bug-report details")
+        self.copy_bug_btn.setObjectName("copyBugReport")
+        self.copy_bug_btn.setAutoDefault(False)
+        self.copy_bug_btn.clicked.connect(self.on_copy_bug_report)
+        sl.addWidget(self.copy_bug_btn)
+        self.settings_status = QtWidgets.QLabel("")
+        self.settings_status.setObjectName("settingsStatus")
+        self.settings_status.setWordWrap(True)
+        self.settings_status.setTextInteractionFlags(self.QtCore.Qt.TextSelectableByMouse)
+        sl.addWidget(self.settings_status)
         sl.addStretch(1)
+
+    def on_open_logs(self) -> None:
+        """Open <Sync home>/logs. On failure, show the path in Settings."""
+        logs = self.home / "logs"
+        try:
+            logs.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.settings_status.setText(str(logs))
+            return
+        QtCore, QtGui, _QtWidgets = _qt_api()
+        opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(logs)))
+        if not opened:
+            self.settings_status.setText(str(logs))
+
+    def bug_report_lines(self) -> list[str]:
+        """The report lines before scrubbing. An allowlist: nothing else is copied.
+
+        A raw dump (invite code, tahoe.cfg, the share link, a log tail) is an
+        extra line here. Scrubbing the joined text is not what keeps it out.
+        """
+        statuses: list[str] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            statuses.append(item.text() if item is not None else "")
+        if len(statuses) == 1:
+            folders = "1 folder: %s" % statuses[0]
+        else:
+            folders = "%d folders" % len(statuses)
+            if statuses:
+                folders += ": " + ", ".join(statuses)
+        return [
+            about_line(),
+            platform.platform(),
+            "Chip: %s" % self.status_chip.text(),
+            "Joined: %s" % ("yes" if self._joined else "no"),
+            folders,
+            "Logs: %s" % (self.home / "logs"),
+        ]
+
+    def bug_report_text(self) -> str:
+        """Short clipboard report. No invite, furl, recovery key, or wallet."""
+        return scrub_bug_report("\n".join(self.bug_report_lines()))
+
+    def on_copy_bug_report(self) -> None:
+        self.QtWidgets.QApplication.clipboard().setText(self.bug_report_text())
+        self.settings_status.setText("Copied. Paste it into your bug report.")
 
     def on_join_details(self) -> None:
         QtWidgets = self.QtWidgets
@@ -1980,6 +2208,18 @@ class MainWindow:
     def _init_tray(self) -> None:
         QtWidgets = self.QtWidgets
         QtGui = self.QtGui
+        # The menu exists even when this platform has no tray icon, so Quit is
+        # the same action a tray would show. The icon is shown only when a tray
+        # is actually there.
+        menu = QtWidgets.QMenu()
+        menu.setObjectName("trayMenu")
+        open_act = menu.addAction("Open Sync")
+        open_act.triggered.connect(self.show)
+        self.tray_credit_action = menu.addAction("Credit")
+        self.tray_credit_action.triggered.connect(self.open_credit_place)
+        quit_act = menu.addAction("Quit")
+        quit_act.triggered.connect(self._on_tray_quit)
+        self.tray_menu = menu
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QtWidgets.QSystemTrayIcon(self.win)
@@ -1987,13 +2227,6 @@ class MainWindow:
         pix.fill(QtGui.QColor("#1f6feb"))
         self.tray.setIcon(QtGui.QIcon(pix))
         self.tray.setToolTip(APP_NAME)
-        menu = QtWidgets.QMenu()
-        open_act = menu.addAction("Open Sync")
-        open_act.triggered.connect(self.show)
-        self.tray_credit_action = menu.addAction("Credit")
-        self.tray_credit_action.triggered.connect(self.open_credit_place)
-        quit_act = menu.addAction("Quit")
-        quit_act.triggered.connect(self.quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
@@ -2006,13 +2239,62 @@ class MainWindow:
         ):
             self.show()
 
+    def _invite_process_running(self) -> bool:
+        session = getattr(self, "_invite_session", None)
+        proc = getattr(session, "proc", None)
+        return proc is not None and proc.poll() is None
+
+    def _confirm_quit(self) -> bool:
+        """True when the app should quit. A live invite asks first.
+
+        Keep open is the default, including Esc. The window close and the tray
+        Quit item both use this.
+        """
+        if not self._invite_process_running():
+            return True
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QMessageBox(self.win)
+        box.setObjectName("inviteClosePrompt")
+        box.setWindowTitle(APP_NAME)
+        box.setText(INVITE_CLOSE_QUESTION)
+        quit_btn = box.addButton("Quit", QtWidgets.QMessageBox.AcceptRole)
+        keep_btn = box.addButton("Keep open", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(keep_btn)
+        box.exec_()
+        return box.clickedButton() is quit_btn
+
+    def _on_tray_quit(self) -> None:
+        if self._confirm_quit():
+            self.quit()
+
     def _on_close(self, event) -> None:
-        """The window is the app. X quits; hiding to tray looked like a crash."""
+        """The window is the app. X quits; hiding to tray looked like a crash.
+
+        A running invite asks first. Keep open leaves the window and the invite.
+        """
+        if not self._confirm_quit():
+            event.ignore()
+            return
         event.accept()
         self.quit()
 
     def show(self) -> None:
         self.win.show()
+        pending = getattr(self, "_pending_geometry_pos", None)
+        on_screen = getattr(self, "_pending_title_on_screen", None)
+        maximized = getattr(self, "_pending_maximized", False)
+        self._pending_geometry_pos = None
+        self._pending_title_on_screen = None
+        self._pending_maximized = False
+        if maximized:
+            self.win.showMaximized()
+        elif on_screen is False:
+            # The offscreen plugin leaves a window that starts above or left of
+            # the desktop there. Pull only the title-bar grab back on.
+            self._pull_title_bar_on_screen()
+        elif pending is not None and on_screen:
+            self.win.move(*pending)
+        self._guard_applied_size()
         self.win.raise_()
         self.win.activateWindow()
 
@@ -2027,11 +2309,185 @@ class MainWindow:
                 ctl.stop()
             except Exception:
                 pass
+        release_instance_lock()
+
+    def _rect_on_a_screen(self, rect) -> bool:
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return True
+        return any(screen.availableGeometry().intersects(rect) for screen in screens)
+
+    def _title_grab(self, rect):
+        width = min(max(rect.width(), 1), _TITLE_GRAB[0])
+        height = min(max(rect.height(), 1), _TITLE_GRAB[1])
+        return self.QtCore.QRect(rect.x(), rect.y(), width, height)
+
+    def _title_bar_on_a_screen(self, rect) -> bool:
+        """True when the saved title-bar grab lies inside a screen's available area."""
+        strip = self._title_grab(rect)
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return True
+        return any(screen.availableGeometry().contains(strip) for screen in screens)
+
+    def _pull_title_bar_on_screen(self) -> None:
+        """Move the least amount that puts the title-bar grab inside a screen."""
+        frame = self.win.frameGeometry()
+        if self._title_bar_on_a_screen(frame):
+            return
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return
+        screen = screens[0].availableGeometry()
+        for candidate in screens:
+            area = candidate.availableGeometry()
+            if area.intersects(frame):
+                screen = area
+                break
+        strip = self._title_grab(frame)
+        x, y = strip.x(), strip.y()
+        if x < screen.left():
+            x = screen.left()
+        if y < screen.top():
+            y = screen.top()
+        right = screen.left() + screen.width()
+        bottom = screen.top() + screen.height()
+        if x + strip.width() > right:
+            x = right - strip.width()
+        if y + strip.height() > bottom:
+            y = bottom - strip.height()
+        dx, dy = x - strip.x(), y - strip.y()
+        if dx or dy:
+            self.win.move(self.win.x() + dx, self.win.y() + dy)
+
+    def _screen_span(self):
+        """Bounding available area of every screen, or None when Qt has no screen."""
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return None
+        union = screens[0].availableGeometry()
+        for screen in screens[1:]:
+            union = union.united(screen.availableGeometry())
+        return union
+
+    def _oversized(self, width: int, height: int) -> bool:
+        """True when a side is past the screen, the default, and the layout hint.
+
+        The join page is taller than the offscreen desktop (about 800x600) and
+        the default width is 920, so a raw compare with the screen would treat
+        every normal window as untrusted. A size such as 16,777,215 still fails.
+        """
+        union = self._screen_span()
+        if union is None:
+            return False
+        hint = self.win.minimumSizeHint()
+        width_cap = max(union.width(), DEFAULT_WINDOW_SIZE[0], hint.width())
+        height_cap = max(union.height(), DEFAULT_WINDOW_SIZE[1], hint.height())
+        return width > width_cap or height > height_cap
+
+    def _fitted_size(self, width: int, height: int) -> tuple:
+        """Default size when the saved size is oversized. Otherwise keep it."""
+        if not self._oversized(width, height):
+            return (width, height)
+        log_exception(
+            self.home,
+            "window geometry",
+            ValueError("saved window is larger than the screen; using the default size"),
+        )
+        return DEFAULT_WINDOW_SIZE
+
+    def _reset_default_geometry(self) -> None:
+        self._pending_geometry_pos = None
+        self._pending_title_on_screen = None
+        self._pending_maximized = False
+        self.win.resize(*DEFAULT_WINDOW_SIZE)
+        self.win.move(0, 0)
+
+    def _guard_applied_size(self) -> None:
+        """Last check: a size Qt still left past the cap goes back to the default."""
+        if self._oversized(self.win.width(), self.win.height()):
+            self._reset_default_geometry()
+
+    def _apply_window_record(self, x: int, y: int, width: int, height: int, maximized: bool) -> None:
+        rect = self.QtCore.QRect(int(x), int(y), int(width), int(height))
+        if not self._rect_on_a_screen(rect):
+            return
+        width, height = self._fitted_size(width, height)
+        self.win.resize(width, height)
+        self.win.move(x, y)
+        frame = self.win.frameGeometry()
+        self._pending_geometry_pos = (x, y)
+        self._pending_title_on_screen = self._title_bar_on_a_screen(frame)
+        self._pending_maximized = maximized
+        self._guard_applied_size()
+
+    def _restore_window_geometry(self) -> None:
+        """Apply a saved record with resize and move. Never call restoreGeometry.
+
+        A missing file is a first launch and is not logged. An old
+        ``{"geometry": "<base64>"}`` blob is ignored. A version-2 field that
+        is the wrong type or out of range is logged once and the default
+        size is put back.
+        """
+        path = self.home / WINDOW_GEOMETRY_FILE
+        if not path.is_file():
+            return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                isinstance(raw, dict)
+                and raw.get("version") != _GEOMETRY_VERSION
+                and "geometry" in raw
+            ):
+                return
+            saved = _window_record(raw)
+            if saved is None:
+                raise ValueError("saved window geometry is not usable")
+            self._apply_window_record(*saved)
+        except Exception as exc:
+            log_exception(self.home, "window geometry", exc)
+            self._reset_default_geometry()
+
+    def _save_window_geometry(self) -> None:
+        try:
+            if self.win.isMaximized():
+                normal = self.win.normalGeometry()
+                x, y = normal.x(), normal.y()
+                width, height = normal.width(), normal.height()
+                maximized = True
+            else:
+                x, y = self.win.x(), self.win.y()
+                width, height = self.win.width(), self.win.height()
+                maximized = False
+            text = json.dumps(
+                {
+                    "version": _GEOMETRY_VERSION,
+                    "x": int(x),
+                    "y": int(y),
+                    "width": int(width),
+                    "height": int(height),
+                    "maximized": maximized,
+                }
+            ) + "\n"
+            path = self.home / WINDOW_GEOMETRY_FILE
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(text, encoding="utf-8")
+            try:
+                os.replace(tmp, path)
+            except OSError:
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+                return
+        except OSError:
+            return
 
     def quit(self) -> None:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
+        self._save_window_geometry()
         self.poll.stop()
         self.shutdown()
         self.app.quit()
@@ -2367,6 +2823,41 @@ class MainWindow:
         )
         return True
 
+    def _folder_path_on_row(self, row: int) -> str:
+        item = self.table.item(row, 2)
+        return item.text() if item is not None else ""
+
+    def on_folder_double_clicked(self, item) -> None:
+        self.open_folder_path(self._folder_path_on_row(item.row()))
+
+    def on_folder_context_menu(self, pos) -> None:
+        row = self.table.rowAt(pos.y())
+        if row < 0:
+            return
+        QtWidgets = self.QtWidgets
+        menu = QtWidgets.QMenu(self.table)
+        menu.setObjectName("folderContextMenu")
+        action = menu.addAction("Open folder")
+        chosen = menu.exec_(self.table.viewport().mapToGlobal(pos))
+        if chosen is action:
+            self.open_folder_path(self._folder_path_on_row(row))
+
+    def open_folder_path(self, path: str) -> None:
+        if not path:
+            return
+        target = Path(path)
+        if not target.is_dir():
+            if target.is_file():
+                message = "That path is not a folder: %s" % path
+            else:
+                message = "That folder is not on this computer any more: %s" % path
+            self.show_folder_error(
+                SyncError(message, "Add the folder again if you still want it.")
+            )
+            return
+        QtCore, QtGui, _QtWidgets = _qt_api()
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
+
     def _render_rows(self, rows: list[FolderRow]) -> None:
         self.table.setRowCount(len(rows))
         self.empty_label.setVisible(not rows)
@@ -2617,6 +3108,10 @@ def run_app(
     offer_storage: bool = True,
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    # One window per Sync home. Headless CLI commands never reach here.
+    if not acquire_instance_lock(default_home()):
+        _show_already_running()
+        return 0
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
     install_excepthook(ui)
     ui.show()

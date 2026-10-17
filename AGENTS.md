@@ -19,3 +19,5 @@ bash scripts/ci-local.sh
 # optional local grid dogfood:
 # bash scripts/dev-grid.sh
 ```
+
+A linked git worktree uses `$ROOT/.venv` (created if missing) instead of a shared venv. `CI_LOCAL_PRINT_PYTHON=1` prints the chosen interpreter and exits without installing.

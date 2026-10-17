@@ -1,0 +1,83 @@
+# Run log — v0.1.6 fix round (Tester FAIL @ bd7b09e)
+
+Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v016-fixes`
+Branch: `build/v0.1.6-batch` (PR #73). Start HEAD `3caa6bf` (drop-in on `bd7b09e`).
+Base: `86a28c8` (v0.1.5). Interpreter: this tree's `.venv` (Python 3.14; PyQt5 abi3 wheel installs).
+
+## Plan
+
+Overview: Fix the two Tester blockers (lock wedge, off-screen restore) and the listed follow-ups, one commit per item, on this branch only. The lead implements in order because the items share `app.py` and this drop-in forbids any other worktree.
+
+Phases:
+
+- baseline | docs/ops/RUN-LOG-v0.1.6-fixes.md | ci-local recorded | none | lead
+- 1 B1 lock | app.py, tests/test_sync_instance_lock.py | empty/garbage/foreign locks recover; live holder refused; real two-process app test; RED proofs | baseline | lead
+- 2 B2 geometry | app.py, tests/test_sync_window_geometry.py | y=-650 and left-of-screen title bar stays on screen; on-screen round-trip; RED proof | 1 | lead
+- 3 quit stops daemons | app.py (read), tests/test_sync_stop_reap.py | quit() leaves stub Tahoe and Magic Folder children gone; mutant 2e RED | 2 | lead
+- 4 rotation shrink | tests/test_sync_ui_log.py | live file smaller than the limit, old bytes in .1 once; copy-instead-of-move RED | 3 | lead
+- 5 tray quit prompt | app.py, tests/test_sync_close_invite.py | tray Quit with a live invite + Keep open stays up; no invite quits | 4 | lead
+- 6 open folder is_dir | app.py, tests/test_sync_open_folder.py | a regular file never reaches openUrl | 5 | lead
+- 7 geometry file | app.py, tests/test_sync_window_geometry.py | 100k-deep JSON falls back; failed replace leaves the good file | 6 | lead
+- 8 bug-report scrub | app.py, tests/test_sync_settings_actions.py | planted pb://, wormhole codes, and join links do not survive; log and env plants absent | 7 | lead
+- 9 docs | HANDOFF, AUTONOMOUS-DECISIONS, tester pages if behavior changed | stale 468 and the What's-new decision line corrected | 8 | lead
+- handoff | docs/HANDOFF-v0.1.6.md, this log | final ci-local counts, table, v0.1.7 list, push | 9 | lead
+
+Risks:
+
+- Shared `app.py` — one item at a time, no parallel editors.
+- Mutation proofs must be restored before commit.
+- A 35 s live-lock wait is too slow — refuse as soon as the holder is alive and the file is younger than Qt's default stale time.
+- Python 3.14 venv — PyQt5 has an abi3 wheel; if sync extra fails, log it and do not retarget another venv.
+- Windows CI — no bash-WSL assumption; skip a case only with a reason.
+
+## Baseline
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 469 passed, 5 xfailed, 4 warnings in 43.12s, ci-local PASS | files: run log + one decision line | err: none
+
+Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or other-host lock older than that is taken; the same files with stale time 0 are not. A live same-host holder is refused even after the file mtime is moved 120 s into the past. unlock() removes the lock file.
+
+## Items
+
+1. B1 lock | DONE | ci-local: 473 passed, 5 xfailed, 4 warnings in 43.16s | files: app.py, tests/test_sync_instance_lock.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered, test_live_app_refuses_a_second_launch_and_releases_on_quit
+   RED without fix: test_live_app_refuses_a_second_launch_and_releases_on_quit at tests/test_sync_instance_lock.py:330 (deleted `_INSTANCE_LOCK = lock`; the lock file was already gone while the first window was up)
+   RED without fix: test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered at tests/test_sync_instance_lock.py:209 (`setStaleLockTime(0)` put back)
+
+2. B2 geometry | DONE | ci-local: 475 passed, 5 xfailed, 4 warnings in 42.54s | files: app.py, tests/test_sync_window_geometry.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_title_bar_above_the_screen_stays_on_screen, test_title_bar_left_of_the_screen_stays_on_screen, test_geometry_round_trips_across_two_windows
+   RED without fix: test_title_bar_above_the_screen_stays_on_screen at tests/test_sync_window_geometry.py:104 and test_title_bar_left_of_the_screen_stays_on_screen at tests/test_sync_window_geometry.py:117 (unconditional move() put back)
+
+3. quit stops daemons | DONE | ci-local: 476 passed, 5 xfailed, 4 warnings in 42.71s | files: tests/test_sync_stop_reap.py, this log | err: none
+   Tests: test_quit_stops_tahoe_and_magic_folder
+   RED without fix: test_quit_stops_tahoe_and_magic_folder at tests/test_sync_stop_reap.py:89 (shutdown() never calls stop())
+
+4. rotation shrinks the live file | DONE | ci-local: 477 passed, 5 xfailed, 4 warnings in 42.69s | files: tests/test_sync_ui_log.py, this log | err: none
+   Tests: test_rotation_leaves_a_short_live_file_and_the_old_bytes_once
+   RED without fix: test_rotation_leaves_a_short_live_file_and_the_old_bytes_once at tests/test_sync_ui_log.py:64 (copy the bytes instead of os.replace)
+
+5. tray Quit asks | DONE | ci-local: 479 passed, 5 xfailed, 4 warnings in 42.89s | files: app.py, tests/test_sync_close_invite.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_tray_quit_keep_open_leaves_the_invite_running, test_tray_quit_with_no_invite_quits
+   RED without fix: test_tray_quit_keep_open_leaves_the_invite_running at tests/test_sync_close_invite.py:125 (tray Quit connected straight to quit())
+
+6. open folder is_dir | DONE | ci-local: 480 passed, 5 xfailed, 4 warnings in 43.27s | files: app.py, tests/test_sync_open_folder.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_a_file_path_never_reaches_open_url
+   RED without fix: test_a_file_path_never_reaches_open_url at tests/test_sync_open_folder.py:91 (exists() instead of is_dir())
+   Tester-guide wording for the new banner is item 9.
+
+7. geometry file | DONE | ci-local: 482 passed, 5 xfailed, 4 warnings in 43.37s | files: app.py, tests/test_sync_window_geometry.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_deeply_nested_geometry_file_uses_the_default_size, test_failed_geometry_replace_keeps_the_previous_file
+   RED without fix: test_deeply_nested_geometry_file_uses_the_default_size at tests/test_sync_window_geometry.py:127 (narrow except lets RecursionError out)
+   RED without fix: test_failed_geometry_replace_keeps_the_previous_file at tests/test_sync_window_geometry.py:154 (write the file directly instead of os.replace)
+
+8. bug-report scrub | DONE | ci-local: 484 passed, 5 xfailed, 4 warnings in 43.16s | files: app.py, tests/test_sync_settings_actions.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_scrub_bug_report_removes_each_secret_shape, test_bug_report_omits_secrets_planted_in_logs_and_env
+   RED without fix: test_scrub_bug_report_removes_each_secret_shape at tests/test_sync_settings_actions.py:93 and test_bug_report_omits_secrets_planted_in_logs_and_env at tests/test_sync_settings_actions.py:126 (scrub returns the text unchanged)
+
+9. docs | DONE | ci-local: 484 passed, 5 xfailed, 4 warnings in 43.38s | files: HANDOFF-v0.1.6.md, TESTER-GUIDE.md, AUTONOMOUS-DECISIONS, this log | err: none
+   No new behavior test. test_trouble_section_names_shipped_recovery_in_at_most_eight_lines still passes with the updated bullets. The 468 count was historical and wrong; bd7b09e was 469, and this round is 484.
+
+## Finish
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 484 passed, 5 xfailed, 4 warnings in 42.77s, ci-local PASS | files: docs/HANDOFF-v0.1.6.md, this log | err: none
+
+Items 1–9 DONE. None skipped. v0.1.7 follow-ups are listed in the handoff and were not implemented. Head is this commit (`v0.1.6 fixes: handoff`), parent `1613d0d`.

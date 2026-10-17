@@ -35,6 +35,9 @@ STORAGE_SETTLE_SECONDS = 6.0
 # code join normally completes in seconds; this bounds a dead code / relay.
 WORMHOLE_JOIN_TIMEOUT = 120.0
 TAHOE_CONNECT_TIMEOUT = 30.0
+# stop() waits this long for SIGTERM, then SIGKILL, then waits again.
+TAHOE_STOP_WAIT = 10.0
+MF_STOP_WAIT = 5.0
 
 
 class SyncError(Exception):
@@ -181,6 +184,37 @@ def redact_furl(value: str) -> str:
     if text.startswith("pb://") and len(text) > 12:
         return text[:8] + "…" + text[-6:]
     return text
+
+
+def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
+    """Terminate a child and wait so it cannot stay a zombie.
+
+    Safe if the process has already exited. SIGTERM is tried first. After
+    that times out, SIGKILL is followed by another wait. Only
+    ``TimeoutExpired`` and ``OSError`` are caught.
+    """
+    if proc.poll() is not None:
+        return
+    try:
+        if proc.stdin:
+            proc.stdin.close()
+    except OSError:
+        pass
+    try:
+        proc.terminate()
+        proc.wait(timeout=terminate_timeout)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    except OSError:
+        pass
+    try:
+        proc.kill()
+        proc.wait(timeout=terminate_timeout)
+    except subprocess.TimeoutExpired:
+        pass
+    except OSError:
+        pass
 
 
 def popen_hidden(cmd: list[str], log_f) -> subprocess.Popen:
@@ -1031,23 +1065,12 @@ class TahoeClient:
             "see %s; Retry." % self.log_path,
         )
 
-    def stop(self) -> None:
+    def stop(self, terminate_timeout: Optional[float] = None) -> None:
         proc = self._proc
         if proc is None:
             return
-        try:
-            if proc.stdin:
-                proc.stdin.close()
-        except OSError:
-            pass
-        try:
-            proc.terminate()
-            proc.wait(timeout=10)
-        except Exception:
-            try:
-                proc.kill()
-            except OSError:
-                pass
+        timeout = TAHOE_STOP_WAIT if terminate_timeout is None else terminate_timeout
+        reap_child(proc, timeout)
         self._proc = None
 
     def owns_process(self) -> bool:
@@ -1423,23 +1446,12 @@ class MagicFolderCtl:
             "see %s; Restart Sync." % self.log_path,
         )
 
-    def stop(self) -> None:
+    def stop(self, terminate_timeout: Optional[float] = None) -> None:
         proc = self._proc
         if proc is None:
             return
-        try:
-            if proc.stdin:
-                proc.stdin.close()
-        except OSError:
-            pass
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except Exception:
-            try:
-                proc.kill()
-            except OSError:
-                pass
+        timeout = MF_STOP_WAIT if terminate_timeout is None else terminate_timeout
+        reap_child(proc, timeout)
         self._proc = None
 
     def _auth_headers(self) -> dict[str, str]:

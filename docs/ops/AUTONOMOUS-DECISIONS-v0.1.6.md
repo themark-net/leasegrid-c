@@ -1,0 +1,46 @@
+# Autonomous decisions — v0.1.6 batch
+
+One line per choice: `choice | alternatives | why`
+
+- Sequential commits in this worktree, lead implements | parallel sub-agents or extra git worktrees | items share `app.py`, tests, and one branch; the drop-in forbids any other worktree
+- `CI_LOCAL_PRINT_PYTHON=1` prints only the interpreter path | path plus the reason sentence | a worktree run must not print the shared venv path
+- ci-local tests arm a bash DEBUG trap that refuses `pip install` | run a reverted script with no guard | a red proof must not retarget the shared venv
+- One `reap_child` for Tahoe and Magic Folder `stop` | two copied wait-after-kill blocks | the bug is the same missing `wait` after `kill`
+- Rotate `sync-ui.log` only when size is over 1 MiB | rotate at exactly 1 MiB | the prompt says over 1 MiB
+- QLockFile with staleLockTime 0 on the window launch only | fcntl.flock, or also blocking --join | kill -9 recovery worked in a probe; headless CLI stays unblocked
+- Allow `openUrl` only when the argument is `fromLocalFile` | keep the blanket ban and skip Open logs | the WUI ban stays, and a local folder is not the Tahoe web UI
+- Trouble-section checks live in `tests/test_tester_trouble.py` | add them to `tests/test_tester_pages.py` | v0.1.5 already edits that file; a new file keeps the rebase hunk local
+- Saved frame is checked before restoreGeometry; file is `window-geometry.json` | restore first, or an ini file | Qt's restoreGeometry moved an off-screen window back on screen and kept the old size
+- README and TESTERS "What's new" keep the v0.1.6 bullets and v0.1.5's #30 correction | describe 0.1.6 only | `test_tester_pages` requires that correction sentence to stay
+- Fix round stays sequential in this worktree | one sub-agent per item, or extra git worktrees | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
+- Keep Qt's default stale lock time by deleting setStaleLockTime(0) | pass 30000 explicitly | the default is already 30000 ms; the bug is that 0 turns staleness off
+- Age empty, garbage, and foreign locks by 120s with os.utime | sleep 30s in the test | the file only has to be older than Qt's 30s stale time
+- Foreign lock is three lines (pid, app name, other hostname) | rewrite a live lock's hostname and boot id | a probed 3-line other-host file older than 30s is taken; a fresh one is not
+- Live-holder refusal is checked as soon as the first process prints WINDOW_SHOWN | wait 35s past the stale time | the holder is alive and the lock is younger than 30s; a probe also kept an aged live lock refused
+- Title-bar check is an 80 by 28 grab at the top-left | require the whole frame inside the screen | the offscreen desktop is 800x600 and the round-trip window is 1000x980, so the full strip cannot fit
+- A left-of-screen frame is pulled into availableGeometry when Qt leaves it there | rely on Qt's clamp alone | offscreen clamped y=-650 to y=18 but left x=-196 in place
+- Tray menu is built even when the platform has no tray icon | skip the tray-quit test offscreen | offscreen has no system tray; an unshown menu does not change the window, and Quit is the same action
+- A file path says "That path is not a folder" | reuse the missing-folder banner | the file is on the computer, so "not on this computer any more" would be wrong
+- Geometry read catches Exception | only ValueError, RecursionError, OSError, and TypeError | a missing geometry key is a KeyError and must fall back too; RecursionError is a RuntimeError
+- Geometry write-failure test patches os.replace | a read-only directory | a read-only directory does not block rename on Windows
+- Bug-report scrub deletes the whole pb://, wormhole code, and join link | reuse redact_furl | redact_furl keeps an 8-character head and a 6-character tail, which counts as a leak
+- Fix round 2 stays sequential in this worktree | one sub-agent per item, or another worktree | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
+- A missing geometry file returns before the restore try and is not logged | log FileNotFoundError on every first launch | a missing file is the normal first launch, not a corrupt save
+- Frame-left is the int32 at `_GEOM_HEADER.size` in the saveGeometry blob | a hard-coded byte offset | the drop-in says to locate the field from the layout `_saved_frame` reads
+- A partial restore is proved by patching `restoreGeometry` to resize and raise | only a corrupt blob | a blob rejected by the range check never reaches QRect, so it does not prove the except block puts the default size back
+- `bug_report_lines()` is the pre-scrub allowlist `bug_report_text()` joins and scrubs | keep one function and inspect the clipboard only | the four raw-dump mutants are masked once scrub runs, so the test has to see the lines first
+- The three title-bar tests request a width of 1000 | 1100, or the screen width | 1000 is already kept by the round-trip test on an 800px offscreen desktop, and it is above the 920 default and the 863 px windows minimum
+- Unlink `window-geometry.json.tmp` only when `os.replace` fails, and ignore an unlink error | also unlink after a failed `write_text` | the drop-in names the failed replace, and the cleanup must not raise
+- An invite code is exactly two letter-words, and a hyphen does not end it | two or more words, as the sentence "2+" can be read | `500-from-server-side` is three letter-words and must stay; a two-word prefix must not be cut out of it
+- Fix round 3 stays sequential in this worktree | one sub-agent per item, or another worktree | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
+- A saved size is oversized only when it exceeds the screen and the default and the layout hint; the default size is then used | clamp every side to the 800x600 union | the join page is about 947 px tall and the default is 920 wide, both bigger than the offscreen desktop
+- An old geometry blob is ignored and not logged | log it as corrupt, or still call restoreGeometry | it is the previous format, and the next quit rewrites a record
+- The post-apply size guard uses that same cap | reset whenever the size exceeds the 800x600 union | a literal reset would move every offscreen window to (0, 0)
+- Restore runs after the pages are built | restore before the central widget, as before | the empty shell's size hint is not the layout, so a normal height looked oversized
+- Title-bar tests request a width of 700 | keep 1000 | 1000 is past the 920 default on an 800 px offscreen desktop, so the cap would replace it and the width check would not prove a restore
+- The real-launch driver prints the size before show() | assert only the size after show() | show() runs the guard, which hides a restoreGeometry that already inflated the window
+- Scrub tests use real PGP words (guitarist, revenge, gazelle, passenger) | keep the literal 7-purple-sausage fixture | purple and sausage are not in wormhole's PGP list, and the drop-in says to use real PGP words
+- The word list is copied from magic-wormhole 0.24.0 in another venv | pip install magic-wormhole into this venv | this tree's .venv has no wormhole, and the drop-in forbids new packages
+- The 11e bullet stays in the v0.1.7 list and now says Tester shows it RED | delete the bullet | the drop-in says to keep the list and to fix the stale line
+- The round-2 B3 sentence is rewritten to the whole saved record | leave that sentence and correct it only in the new section | Tester named that sentence, and it still described only the frame rect
+- The handoff names its head as the commit that last edits the file | add the SHA in a later commit | the SHA does not exist until this commit, and round 2 used the same sentence

@@ -39,3 +39,5 @@ One line per choice: `choice | alternatives | why`
 - Restore runs after the pages are built | restore before the central widget, as before | the empty shell's size hint is not the layout, so a normal height looked oversized
 - Title-bar tests request a width of 700 | keep 1000 | 1000 is past the 920 default on an 800 px offscreen desktop, so the cap would replace it and the width check would not prove a restore
 - The real-launch driver prints the size before show() | assert only the size after show() | show() runs the guard, which hides a restoreGeometry that already inflated the window
+- Scrub tests use real PGP words (guitarist, revenge, gazelle, passenger) | keep the literal 7-purple-sausage fixture | purple and sausage are not in wormhole's PGP list, and the drop-in says to use real PGP words
+- The word list is copied from magic-wormhole 0.24.0 in another venv | pip install magic-wormhole into this venv | this tree's .venv has no wormhole, and the drop-in forbids new packages

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import APP_NAME, __version__
+from .pgp_words import WORMHOLE_WORDS
 from .backend import (
     ConnectionStatus,
     DiskSlices,
@@ -190,27 +191,34 @@ def about_line() -> str:
 
 
 # Whole tokens only. redact_furl keeps a head and a tail, and an 8-character
-# fragment is still a leak. A code is 1–3 digits and exactly two hyphen-joined
-# words of letters. The boundary is the start, the end, or a character that is
-# not a letter, digit, or hyphen, so "(7-purple-sausage)" matches and
-# "500-from-server-side" does not. A platform string such as
-# Linux-6.8.0-101-generic has digits in the words and does not match.
+# fragment is still a leak. A Tahoe invite code is a magic-wormhole code:
+# 1–3 digits and two or more hyphen-joined words, and every word is in the
+# PGP word list. The boundary is the start, the end, or a character that is
+# not a letter, digit, hyphen, or dot, so "(7-guitarist-revenge)" matches,
+# "500-from-server-side" does not, and "v0.1.6-rc-final" does not.
 _BUG_JOIN_RE = re.compile(
     r"leasegrid:\S+|https?://\S+#\S*|(?:(?<=\s)|^)#[^\s]*i(?:=|%3[Dd])[^\s]*",
     re.IGNORECASE,
 )
 _BUG_PB_RE = re.compile(r"pb://\S+", re.IGNORECASE)
 _BUG_CODE_RE = re.compile(
-    r"(?<![a-z0-9-])[0-9]{1,3}(?:-[a-z]+){2}(?![a-z0-9-])",
+    r"(?<![a-z0-9.-])[0-9]{1,3}(?:-[a-z]+){2,}(?![a-z0-9-])",
     re.IGNORECASE,
 )
+
+
+def _redact_wormhole_code(match: re.Match) -> str:
+    words = match.group(0).split("-")[1:]
+    if words and all(word.lower() in WORMHOLE_WORDS for word in words):
+        return "[redacted]"
+    return match.group(0)
 
 
 def scrub_bug_report(text: str) -> str:
     """Remove invite material from a report that is about to be copied."""
     text = _BUG_JOIN_RE.sub("[redacted]", text)
     text = _BUG_PB_RE.sub("[redacted]", text)
-    return _BUG_CODE_RE.sub("[redacted]", text)
+    return _BUG_CODE_RE.sub(_redact_wormhole_code, text)
 
 
 def _rotate_ui_log(path: Path) -> None:

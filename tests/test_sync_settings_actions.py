@@ -70,12 +70,20 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
 @pytest.mark.parametrize(
     ("raw", "kept"),
     [
-        ("(7-purple-sausage)", False),
-        ("code:7-purple-sausage", False),
-        ("7-purple-sausage.", False),
-        ("7-PURPLE-SAUSAGE", False),
+        ("7-guitarist-revenge", False),
+        ("(7-guitarist-revenge)", False),
+        ("code:7-GUITARIST-REVENGE.", False),
+        ("7-guitarist-gazelle-passenger", False),
+        ("7-guitarist-revenge.", False),
+        ("code:7-guitarist-revenge", False),
         ("see 12-03-2026 today", True),
         ("500-from-server-side", True),
+        ("404-not-found", True),
+        ("1-way-sync", True),
+        ("3-day-trip", True),
+        ("v0.1.6-rc-final", True),
+        ("v0.1.6-guitarist-revenge", True),
+        ("Logs: /home/u/3-day-trip/logs", True),
     ],
 )
 def test_scrub_bug_report_code_boundaries(raw: str, kept: bool) -> None:
@@ -83,8 +91,11 @@ def test_scrub_bug_report_code_boundaries(raw: str, kept: bool) -> None:
     if kept:
         assert out == raw
     else:
-        assert "7-purple-sausage" not in out.lower()
+        assert out != raw
         assert "[redacted]" in out
+        for word in ("guitarist", "revenge", "gazelle", "passenger"):
+            if word in raw.lower():
+                assert word not in out.lower()
 
 
 def test_scrub_bug_report_removes_each_secret_shape() -> None:
@@ -93,7 +104,7 @@ def test_scrub_bug_report_removes_each_secret_shape() -> None:
             about_line(),
             platform.platform(),
             "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS",
-            "7-fake-code",
+            "7-guitarist-revenge",
             "leasegrid:join#v=1&i=pb://FAKE-TUBID@127.0.0.1:1/FAKE-LINK",
             "http://example.i2p/join#v=1&i=pb://FAKE-TUBID@127.0.0.1:1/FAKE-PAGE",
         ]
@@ -106,7 +117,7 @@ def test_scrub_bug_report_removes_each_secret_shape() -> None:
         "FAKE-SWISS",
         "FAKE-LINK",
         "FAKE-PAGE",
-        "7-fake-code",
+        "7-guitarist-revenge",
         "pb://",
         "leasegrid:",
     ):

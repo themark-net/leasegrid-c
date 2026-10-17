@@ -52,7 +52,12 @@ Fuzz (`/tmp/geo_fuzz3.py`, Tester's old-blob cases plus record bit-flips and ext
 
 ### 2. Scrub wordlist
 
-(pending)
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 516 passed, 5 xfailed, 4 warnings in 43.62s, ci-local PASS | files: pgp_words.py, app.py, test_sync_settings_actions.py, decisions, this log | err: none
+
+A code is redacted only when every word is in the magic-wormhole 0.24.0 PGP list (512 words, copied, not imported). The number must not be preceded by a dot. Two or more words match, so a three-word code is redacted and `500-from-server-side` stays because those words are not in the list. Tests use `7-guitarist-revenge` and `7-guitarist-gazelle-passenger`. `purple` and `sausage` are not PGP words.
+
+RED: drop the wordlist check → `test_scrub_bug_report_code_boundaries` for `404-not-found`, `1-way-sync`, `3-day-trip`, `500-from-server-side`, and the `3-day-trip` path. `v0.1.6-rc-final` stayed green: the dot already blocks it.
+RED: drop the dot from the lookbehind → `v0.1.6-guitarist-revenge` becomes `v0.1.[redacted]`. `v0.1.6-rc-final` stayed green: `rc` and `final` are not PGP words.
 
 ### 3. Handoff accuracy
 

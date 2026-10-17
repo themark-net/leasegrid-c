@@ -1592,3 +1592,78 @@ def test_refresh_http_500_maps_on_status_code_not_text(tmp_path: Path, monkeypat
     assert "#30" in blob
     assert "docs/TESTERS.md" in blob
     assert_no_raw_user_text(blob)
+
+
+@pytest.mark.parametrize(
+    ("code", "is_30"),
+    [(400, False), (499, False), (500, True), (501, False), (502, False), (503, False)],
+)
+def test_issue_30_is_exactly_http_500(code: int, is_30: bool):
+    """#30 is HTTP 500 only. 499 and 501 (and other 5xx) are not #30."""
+    assert backend_mod.is_issue_30_status(code) is is_30
+
+
+def test_issue_30_status_none_is_not_30():
+    assert backend_mod.is_issue_30_status(None) is False
+
+
+@pytest.mark.parametrize(
+    ("code", "is_30"), [(499, False), (500, True), (501, False), (503, False)]
+)
+def test_http_failure_names_30_only_for_500(tmp_path: Path, code: int, is_30: bool):
+    ctl = _mf_api_ready(tmp_path)
+    err = ctl._http_failure(_poison_http(code))
+    blob = err.message + " " + err.next_hint
+    assert err.http_status == code
+    assert ("#30" in blob) is is_30
+    if not is_30:
+        assert "Magic Folder API error (%d)." % code == err.message
+    assert_no_raw_user_text(blob)
+
+
+@pytest.mark.parametrize(
+    ("code", "is_30"), [(499, False), (500, True), (501, False), (503, False)]
+)
+def test_add_and_refresh_name_30_only_for_500(
+    tmp_path: Path, monkeypatch, code: int, is_30: bool
+):
+    """Add says #30 only on 500; refresh rewrites to 'could not refresh' only on 500."""
+    ctl = _mf_api_ready(tmp_path)
+
+    def boom(req, timeout=10):
+        raise _poison_http(code)
+
+    monkeypatch.setattr(backend_mod.urllib.request, "urlopen", boom)
+    with patch.object(ctl, "ensure_running", return_value=None):
+        with pytest.raises(SyncError) as listed:
+            ctl.list_folders()
+        with pytest.raises(SyncError) as posted:
+            ctl._http_post("/v1/magic-folder", body={"name": "x"})
+    refresh = listed.value.message + " " + listed.value.next_hint
+    add = posted.value.message + " " + posted.value.next_hint
+    assert listed.value.http_status == code
+    assert posted.value.http_status == code
+    assert ("#30" in refresh) is is_30
+    assert ("#30" in add) is is_30
+    assert ("could not refresh folders" in refresh) is is_30
+    assert ("folder not added" in add) is is_30
+    assert "folder not added" not in refresh
+    assert_no_raw_user_text(refresh)
+    assert_no_raw_user_text(add)
+
+
+@pytest.mark.parametrize(
+    ("code", "is_30"), [(499, False), (500, True), (501, False), (503, False)]
+)
+def test_refresh_http_message_rewrites_only_status_500(tmp_path: Path, code: int, is_30: bool):
+    """The refresh rewrite keys on http_status == 500 alone, even for add-shaped text."""
+    ctl = _mf_api_ready(tmp_path)
+    err = SyncError(
+        "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
+        "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
+        http_status=code,
+    )
+    mapped = ctl._refresh_http_message(err)
+    assert mapped.http_status == code
+    assert ("could not refresh folders" in mapped.message) is is_30
+    assert (mapped is err) is (not is_30)

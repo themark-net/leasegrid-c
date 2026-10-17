@@ -1,18 +1,17 @@
 # Leasegrid
 
 Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject.
-**Leasegrid Sync** is the desktop app: join a friend's grid, add a folder, and it syncs. Current friends-and-family build: [v0.1.3](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.3) (unsigned).
-Download links point at the v0.1.3 release; they resolve once the `v0.1.3` tag is pushed and the Installers workflow publishes the assets.
+**Leasegrid Sync** is the desktop app: join a friend's grid, add a folder, and it syncs. Current friends-and-family build: [v0.1.4](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.4) (unsigned) · newest: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest).
 
 ## Install Leasegrid Sync
 
 | OS | Download | One-liner |
 |----|----------|-----------|
-| Linux x86_64 (glibc 2.35+) | [`Leasegrid_Sync-0.1.3-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-x86_64.AppImage) | `chmod +x` it and run it (needs FUSE). |
-| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.3-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.3-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-win64-setup.exe) or [`.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-win64.zip) | SmartScreen: **More info → Run anyway**. From the zip, start `leasegrid-sync.exe`; `leasegrid-sync-cli.exe` is the console program, not the window. |
+| Linux x86_64 (glibc 2.35+) | [`Leasegrid_Sync-0.1.4-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.4/Leasegrid_Sync-0.1.4-x86_64.AppImage) | `chmod +x` it and run it (needs FUSE). |
+| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.4-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.4/Leasegrid_Sync-0.1.4-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (below). |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.4-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.4/Leasegrid_Sync-0.1.4-win64-setup.exe) or [`.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.4/Leasegrid_Sync-0.1.4-win64.zip) | SmartScreen: **More info → Run anyway**. From the zip, start `leasegrid-sync.exe`; `leasegrid-sync-cli.exe` is the console program, not the window. |
 
-**Checksums:** compare your download with the matching `SHA256SUMS-*` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.3).
+**Checksums:** compare your download with the matching `SHA256SUMS-*` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.4).
 
 <details>
 <summary>macOS: “unidentified developer” — Open Anyway steps</summary>
@@ -26,11 +25,11 @@ On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead
 
 Tester page (join, add a folder, report a bug): [`docs/TESTERS.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTERS.md) · full guide: [`docs/TESTER-GUIDE.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md).
 
-## What's new in v0.1.3
+## What's new in v0.1.4
 
-- Clearer error text: **Refresh** after Magic Folder stops, the **Import recovery key** dialog, and Android invite errors.
-- One release body per tag; `--version` and the About line are tested against the package version.
-- Details: [v0.1.3 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.3.md) (and [v0.1.2](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.2.md) before it).
+- The #30 hint shows only for Magic Folder HTTP 500. Other errors say *Magic Folder API error (NNN)*.
+- Android short-code error names the real desktop controls: **Share invite**, then **Show full join link (advanced)**.
+- Details: [v0.1.4 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.4.md) (and [v0.1.3](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.3.md) before it).
 
 ## Known issues
 

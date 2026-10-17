@@ -523,6 +523,125 @@ def test_import_dialog_restore_error_shows_whole_next_line(ui: MainWindow, tmp_p
     dlg.dlg.hide()
 
 
+def _assert_import_minimum_heights(dlg, empty_label_height: int, dialog_min_before: int) -> None:
+    """setMinimumHeight covers the banner. Geometry is _assert_import_status_visible."""
+    label = dlg.status
+    dialog = dlg.dlg
+    layout = dialog.layout()
+    layout.activate()
+    assert label.minimumHeight() >= label.heightForWidth(label.width())
+    assert label.minimumHeight() > empty_label_height
+    layout_height = layout.totalHeightForWidth(dialog.width())
+    assert dialog.minimumHeight() >= layout_height
+    assert dialog.minimumHeight() > dialog_min_before
+
+
+def test_import_dialog_missing_file_sets_minimum_heights(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=tmp_path / "nope")
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    empty_label_height = dlg.status.height()
+    dialog_min_before = dlg.dlg.minimumHeight()
+    dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert "File not found" in dlg.status.text()
+    _assert_import_minimum_heights(dlg, empty_label_height, dialog_min_before)
+    dlg.dlg.hide()
+
+
+def test_import_dialog_restore_error_sets_minimum_heights(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=key)
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    empty_label_height = dlg.status.height()
+    dialog_min_before = dlg.dlg.minimumHeight()
+    long_message = (
+        "could not import this recovery key. Wrong passphrase, corrupt file, "
+        "or incompatible grid. The backup did not match this friendnet and the "
+        "passphrase check failed after several tries."
+    )
+    next_line = (
+        "check passphrase; try the file from your backup; confirm this is the "
+        "friendnet that wrote the key; Retry."
+    )
+    with patch.object(
+        ui.recovery,
+        "restore",
+        side_effect=SyncError(long_message, next_line),
+    ):
+        dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert "Next:" in dlg.status.text()
+    _assert_import_minimum_heights(dlg, empty_label_height, dialog_min_before)
+    dlg.dlg.hide()
+
+
+def test_import_dialog_shorter_second_failure_keeps_minimum_heights(ui: MainWindow, tmp_path):
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    key = tmp_path / "k.leasegrid-recovery"
+    key.write_text("{}", encoding="utf-8")
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=key)
+    dlg.dlg.show()
+    ui.QtWidgets.QApplication.processEvents()
+    long_message = (
+        "could not import this recovery key. Wrong passphrase, corrupt file, "
+        "or incompatible grid. The backup did not match this friendnet and the "
+        "passphrase check failed after several tries."
+    )
+    next_line = (
+        "check passphrase; try the file from your backup; confirm this is the "
+        "friendnet that wrote the key; Retry."
+    )
+    with patch.object(
+        ui.recovery,
+        "restore",
+        side_effect=SyncError(long_message, next_line),
+    ):
+        dlg.on_import()
+    with patch.object(
+        ui.recovery,
+        "restore",
+        side_effect=SyncError("could not import this recovery key.", "Retry."),
+    ):
+        dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert "several tries" not in dlg.status.text()
+    assert dlg.status.text().endswith("Next: Retry.")
+    assert dlg.status.minimumHeight() >= dlg.status.heightForWidth(dlg.status.width())
+    layout = dlg.dlg.layout()
+    layout.activate()
+    assert dlg.dlg.minimumHeight() >= layout.totalHeightForWidth(dlg.dlg.width())
+    dlg.dlg.hide()
+
+
+def test_import_dialog_unshown_failure_sets_minimum_heights(ui: MainWindow, tmp_path):
+    """Not visible, so _fit_status uses max(open width, minimumWidth)."""
+    from leasegrid_sync.app import ImportRecoveryDialog
+
+    dlg = ImportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, path=tmp_path / "nope")
+    dialog = dlg.dlg
+    assert not dialog.isVisible()
+    branch_width = max(dlg._open_width, dialog.minimumWidth())
+    dlg.on_import()
+    ui.QtWidgets.QApplication.processEvents()
+    assert not dialog.isVisible()
+    assert dialog.width() == branch_width
+    label = dlg.status
+    assert label.minimumHeight() > 0
+    assert dialog.minimumHeight() > 0
+    assert label.minimumHeight() >= label.heightForWidth(label.width())
+    layout = dialog.layout()
+    layout.activate()
+    assert dialog.minimumHeight() >= layout.totalHeightForWidth(branch_width)
+
+
 def test_apply_restore_result_enters_main_with_note(ui: MainWindow):
     from leasegrid_sync.recovery import RestoreResult
 

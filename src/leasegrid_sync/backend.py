@@ -80,6 +80,16 @@ class FolderRow:
     detail: str = ""
 
 
+#: Known issue #30 is Magic Folder answering exactly HTTP 500. Not 5xx: a 501,
+#: 502 or 503 is some other failure and must not be reported as #30.
+ISSUE_30_HTTP_STATUS = 500
+
+
+def is_issue_30_status(status: Optional[int]) -> bool:
+    """True only for HTTP 500 (#30). ``None`` (no HTTP response) is never #30."""
+    return status is not None and status == ISSUE_30_HTTP_STATUS
+
+
 def default_home(platform: Optional[str] = None) -> Path:
     """Sync's data dir: Tahoe node, Magic Folder config, wallet, logs.
 
@@ -1484,7 +1494,7 @@ class MagicFolderCtl:
             exc.read()
         except Exception:
             pass
-        if exc.code == 500:
+        if is_issue_30_status(exc.code):
             return SyncError(
                 "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
                 "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
@@ -1538,7 +1548,7 @@ class MagicFolderCtl:
         The status is ``exc.http_status``. The words "HTTP 500" in some other
         sentence are not issue #30.
         """
-        if exc.http_status != 500:
+        if not is_issue_30_status(exc.http_status):
             return exc
         return self._refresh_add_copy(exc)
 

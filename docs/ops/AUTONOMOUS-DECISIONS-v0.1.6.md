@@ -41,3 +41,5 @@ One line per choice: `choice | alternatives | why`
 - The real-launch driver prints the size before show() | assert only the size after show() | show() runs the guard, which hides a restoreGeometry that already inflated the window
 - Scrub tests use real PGP words (guitarist, revenge, gazelle, passenger) | keep the literal 7-purple-sausage fixture | purple and sausage are not in wormhole's PGP list, and the drop-in says to use real PGP words
 - The word list is copied from magic-wormhole 0.24.0 in another venv | pip install magic-wormhole into this venv | this tree's .venv has no wormhole, and the drop-in forbids new packages
+- The 11e bullet stays in the v0.1.7 list and now says Tester shows it RED | delete the bullet | the drop-in says to keep the list and to fix the stale line
+- The round-2 B3 sentence is rewritten to the whole saved record | leave that sentence and correct it only in the new section | Tester named that sentence, and it still described only the frame rect

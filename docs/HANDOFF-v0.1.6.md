@@ -74,14 +74,15 @@ Head is the commit that last edits this file (`v0.1.6 fixes: handoff counts afte
 - The `--join <invite>` second-launch case.
 - A design doc for the v0.1.6 UI additions.
 - Import `ALREADY_RUNNING` and `INVITE_CLOSE_QUESTION` into the tester-guide test (10c/10d).
-- 11e: skipping the frame pre-check still survives the geometry tests.
+- 11e is closed: Tester at `8a70dd3` shows that skipping the frame pre-check is RED (`35c3b90`).
 - Qt treats a fresh lock from another host as stale after about 30 seconds, so a shared Sync home can refuse a launch for that long.
+- A live lock held by another host is taken over after about 30 seconds.
 
 ## Fix round 2 after Tester FAIL @ 3455c8f
 
 Tester failed PR #73 at `3455c8f`. Reviewer had passed. B1 and B2 stayed fixed. B3 and B4 are fixed. Items 1–6 are DONE. None skipped.
 Final ci-local: 496 passed, 5 xfailed, 4 warnings in 43.72s.
-Corrected B3 claim: a saved frame that cannot be decoded, is out of range, or raises while it is applied leaves the default size, and the window still opens. That includes a one-bit sign flip of frame-left and a frame of `(0, 0, 2^31-1, 2^31-1)`. A missing file is not an error and is not logged. The old sentence "Any parse failure keeps the default" was false for the sign flip: `QRect` raised `OverflowError` and the process never started.
+Corrected B3 claim: a saved geometry that cannot be decoded, is out of range, or raises while it is applied leaves the default size, and the window still opens. The check covers the whole saved file: a version-2 record of x, y, width, height, and maximized, including a one-bit sign flip of frame-left and a frame of `(0, 0, 2^31-1, 2^31-1)`. An old geometry blob is ignored. A missing file is not an error and is not logged. The old sentence "Any parse failure keeps the default" was false for the sign flip: `QRect` raised `OverflowError` and the process never started.
 Last behavior commit: `1e4cf0b`. Head is the commit that last edits this file (`v0.1.6 fix2: handoff`).
 
 | # | Status | Commit | Tests | RED without fix |

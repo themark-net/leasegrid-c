@@ -20,3 +20,4 @@ One line per choice: `choice | alternatives | why`
 - Title-bar check is an 80 by 28 grab at the top-left | require the whole frame inside the screen | the offscreen desktop is 800x600 and the round-trip window is 1000x980, so the full strip cannot fit
 - A left-of-screen frame is pulled into availableGeometry when Qt leaves it there | rely on Qt's clamp alone | offscreen clamped y=-650 to y=18 but left x=-196 in place
 - Tray menu is built even when the platform has no tray icon | skip the tray-quit test offscreen | offscreen has no system tray; an unshown menu does not change the window, and Quit is the same action
+- A file path says "That path is not a folder" | reuse the missing-folder banner | the file is on the computer, so "not on this computer any more" would be wrong

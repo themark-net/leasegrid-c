@@ -58,3 +58,8 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
 5. tray Quit asks | DONE | ci-local: 479 passed, 5 xfailed, 4 warnings in 42.89s | files: app.py, tests/test_sync_close_invite.py, AUTONOMOUS-DECISIONS, this log | err: none
    Tests: test_tray_quit_keep_open_leaves_the_invite_running, test_tray_quit_with_no_invite_quits
    RED without fix: test_tray_quit_keep_open_leaves_the_invite_running at tests/test_sync_close_invite.py:125 (tray Quit connected straight to quit())
+
+6. open folder is_dir | DONE | ci-local: 480 passed, 5 xfailed, 4 warnings in 43.27s | files: app.py, tests/test_sync_open_folder.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_a_file_path_never_reaches_open_url
+   RED without fix: test_a_file_path_never_reaches_open_url at tests/test_sync_open_folder.py:91 (exists() instead of is_dir())
+   Tester-guide wording for the new banner is item 9.

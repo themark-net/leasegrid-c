@@ -79,6 +79,24 @@ def test_context_menu_open_folder_uses_the_same_path(tmp_path: Path) -> None:
         _close(window)
 
 
+def test_a_file_path_never_reaches_open_url(tmp_path: Path) -> None:
+    window = _window(tmp_path)
+    target = tmp_path / "notes.txt"
+    target.write_text("hello", encoding="utf-8")
+    target.chmod(0o755)
+    window._render_rows([FolderRow(name="Notes", path=str(target), status="Up to date")])
+    try:
+        with patch("PyQt5.QtGui.QDesktopServices.openUrl") as open_url:
+            window.table.itemDoubleClicked.emit(window.table.item(0, 0))
+        assert open_url.call_count == 0
+        text = window.folder_error.text()
+        assert "That path is not a folder: %s" % target in text
+        assert "\nNext: " in text
+        assert_no_raw_user_text(text)
+    finally:
+        _close(window)
+
+
 def test_missing_folder_shows_a_banner_and_does_not_crash(tmp_path: Path) -> None:
     window = _window(tmp_path)
     missing = tmp_path / "gone"

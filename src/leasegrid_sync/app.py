@@ -2685,12 +2685,14 @@ class MainWindow:
     def open_folder_path(self, path: str) -> None:
         if not path:
             return
-        if not Path(path).exists():
+        target = Path(path)
+        if not target.is_dir():
+            if target.is_file():
+                message = "That path is not a folder: %s" % path
+            else:
+                message = "That folder is not on this computer any more: %s" % path
             self.show_folder_error(
-                SyncError(
-                    "That folder is not on this computer any more: %s" % path,
-                    "Add the folder again if you still want it.",
-                )
+                SyncError(message, "Add the folder again if you still want it.")
             )
             return
         QtCore, QtGui, _QtWidgets = _qt_api()

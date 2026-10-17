@@ -494,11 +494,15 @@ def hand_join_invite(invite: str) -> str:
     "sent" means the open window took it. "busy" means the home is locked and
     nothing is listening (an old build, or a stale socket). "free" means no
     instance is holding the home, so the caller should join as it does today.
+    "rejected" means the text is empty or longer than the handoff cap, and the
+    home is free: the caller must not join. "held" is that same text while
+    another instance holds the home: say already-running, and do not send.
     """
     text = (invite or "").strip()
-    if not text or len(text) > _JOIN_HANDOFF_MAX:
-        return "free"
     home = default_home()
+    if not text or len(text) > _JOIN_HANDOFF_MAX:
+        # Never send this, and never start a join. A held home is already running.
+        return "held" if _lock_is_held(home) else "rejected"
     # Lock first. A free home joins normally and never connects.
     if not _lock_is_held(home):
         return "free"

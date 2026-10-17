@@ -24,3 +24,5 @@ One line per choice: `choice | alternatives | why`
 - Geometry read catches Exception | only ValueError, RecursionError, OSError, and TypeError | a missing geometry key is a KeyError and must fall back too; RecursionError is a RuntimeError
 - Geometry write-failure test patches os.replace | a read-only directory | a read-only directory does not block rename on Windows
 - Bug-report scrub deletes the whole pb://, wormhole code, and join link | reuse redact_furl | redact_furl keeps an 8-character head and a 6-character tail, which counts as a leak
+- Fix round 2 stays sequential in this worktree | one sub-agent per item, or another worktree | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
+- A missing geometry file returns before the restore try and is not logged | log FileNotFoundError on every first launch | a missing file is the normal first launch, not a corrupt save

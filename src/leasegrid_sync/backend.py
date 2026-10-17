@@ -39,6 +39,8 @@ TAHOE_CONNECT_TIMEOUT = 30.0
 # stop() waits this long for SIGTERM, then SIGKILL, then waits again.
 TAHOE_STOP_WAIT = 10.0
 MF_STOP_WAIT = 5.0
+# Daemon logs and sync-ui.log rotate when they are over this size, not at it.
+LOG_ROTATE_BYTES = 1024 * 1024
 
 
 class SyncError(Exception):
@@ -292,6 +294,26 @@ def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
         pass
     except OSError:
         pass
+
+
+def rotate_log(path: Path) -> None:
+    """If ``path`` is over 1 MiB, rename it to ``<name>.1``. Never raises.
+
+    An older ``.1`` is replaced. A failure (read-only directory, busy name)
+    leaves the current file in place so the caller can still open it.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size <= LOG_ROTATE_BYTES:
+            return
+        backup = path.with_name(path.name + ".1")
+        try:
+            if backup.exists():
+                backup.unlink()
+        except OSError:
+            return
+        os.replace(path, backup)
+    except OSError:
+        return
 
 
 def popen_hidden(cmd: list[str], log_f) -> subprocess.Popen:
@@ -1124,6 +1146,7 @@ class TahoeClient:
             return
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            rotate_log(self.log_path)
             log_f = open(self.log_path, "ab")
         except OSError as exc:
             raise join_filesystem_failure(exc) from exc
@@ -1499,6 +1522,7 @@ class MagicFolderCtl:
             )
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            rotate_log(self.log_path)
             log_f = open(self.log_path, "ab")
         except OSError as exc:
             raise SyncError(

@@ -32,6 +32,7 @@ from .backend import (
     format_hosted_strip,
     is_wormhole_code,
     join_filesystem_failure,
+    rotate_log,
     read_disk_offer,
     read_hosted_shares,
     read_local_accepted,
@@ -111,7 +112,6 @@ def _style_primary(btn) -> None:
 
 
 UI_LOG_NAME = "sync-ui.log"
-UI_LOG_MAX_BYTES = 1024 * 1024
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
 ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
 INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
@@ -223,32 +223,12 @@ def scrub_bug_report(text: str) -> str:
     return _BUG_CODE_RE.sub(_redact_wormhole_code, text)
 
 
-def _rotate_ui_log(path: Path) -> None:
-    """If ``path`` is over 1 MiB, move it to ``sync-ui.log.1``. Never raises.
-
-    An older ``.1`` is replaced. A failure (read-only directory, busy name)
-    leaves the current file in place so the caller can still append.
-    """
-    try:
-        if not path.is_file() or path.stat().st_size <= UI_LOG_MAX_BYTES:
-            return
-        backup = path.with_name(path.name + ".1")
-        try:
-            if backup.exists():
-                backup.unlink()
-        except OSError:
-            return
-        os.replace(path, backup)
-    except OSError:
-        return
-
-
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     """Append a traceback to <home>/logs/sync-ui.log; never raises."""
     path = Path(home) / "logs" / UI_LOG_NAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _rotate_ui_log(path)
+        rotate_log(path)
         with path.open("a", encoding="utf-8") as f:
             f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), where))
             f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))

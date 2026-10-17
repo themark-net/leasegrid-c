@@ -132,7 +132,7 @@ Include:
 - **Copy bug-report details** (More → Settings) copies the About line, OS, chip, join state, folder Status, and the logs path.
 - The clicks, in order, and the exact FAIL line.
 - The chip text, and the folder Status if you added a folder.
-- The `logs` folder from the Sync home. Useful files there are `sync-ui.log` (older lines rotate to `sync-ui.log.1`), `tahoe.log`, and `magic-folder.log`.
+- The `logs` folder from the Sync home. Useful files there are `sync-ui.log`, `tahoe.log`, and `magic-folder.log`. A file over 1 MiB rotates to the same name with `.1` (one older copy).
 
 | OS | Logs |
 |----|------|

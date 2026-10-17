@@ -50,14 +50,15 @@ Log: `/tmp/v017-baseline.log`
 
 Item 1 ci-local: PASS, 520 passed, 5 xfailed, 4 warnings in 74.61s.
 Item 2 ci-local: PASS, 521 passed, 5 xfailed, 4 warnings in 75.79s.
+Item 3 ci-local: PASS, 525 passed, 5 xfailed, 4 warnings in 76.82s.
 
 ## Items
 
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
 | 1 | DONE | 1ca7a9b | test_signal_quits_and_reaps_the_stub[SIGTERM,SIGINT,SIGHUP] | RED: no handler installed → test_signal_quits_and_reaps_the_stub[SIGTERM] at tests/test_sync_signal_quit.py:195 (returncode -15) |
-| 2 | DONE | (this commit) | test_stop_kills_daemon_and_grandchild | RED: kill only the leader → test_stop_kills_daemon_and_grandchild at tests/test_sync_process_group.py:156 |
-| 3 | pending | | | |
+| 2 | DONE | 2e03456 | test_stop_kills_daemon_and_grandchild | RED: kill only the leader → test_stop_kills_daemon_and_grandchild at tests/test_sync_process_group.py:156 |
+| 3 | DONE | (this commit) | test_daemon_log_rotates_when_the_daemon_starts[tahoe,magic-folder], test_daemon_starts_when_log_rotation_fails[tahoe,magic-folder] | RED: skip the rotate call → test_daemon_log_rotates_when_the_daemon_starts at tests/test_sync_daemon_log.py:142 |
 | 4 | pending | | | |
 | 5 | pending | | | |
 | 6 | pending | | | |

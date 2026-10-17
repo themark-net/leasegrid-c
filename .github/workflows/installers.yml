@@ -153,12 +153,11 @@ jobs:
           OUT="${RUNNER_TEMP}/release-body.md"
           if [[ -f "$NOTES" ]]; then
             cp "$NOTES" "$OUT"
-            echo "generate=false" >> "$GITHUB_OUTPUT"
+            echo "path=$OUT" >> "$GITHUB_OUTPUT"
           else
-            printf 'Release %s\n\n' "$TAG" > "$OUT"
-            echo "generate=true" >> "$GITHUB_OUTPUT"
+            echo "path=" >> "$GITHUB_OUTPUT"
           fi
-          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "generate=false" >> "$GITHUB_OUTPUT"
           cd dist
           shasum -a 256 Leasegrid_Sync-*.dmg > SHA256SUMS-macos-x86_64
           echo "Wrote SHA256SUMS-macos-x86_64:"
@@ -171,7 +170,7 @@ jobs:
             dist/Leasegrid_Sync-*.dmg
             dist/SHA256SUMS-macos-x86_64
           body_path: ${{ steps.relnotes.outputs.path }}
-          generate_release_notes: ${{ steps.relnotes.outputs.generate == 'true' }}
+          generate_release_notes: false
 
   windows:
     runs-on: windows-2022
@@ -226,12 +225,11 @@ jobs:
           OUT="${RUNNER_TEMP}/release-body.md"
           if [[ -f "$NOTES" ]]; then
             cp "$NOTES" "$OUT"
-            echo "generate=false" >> "$GITHUB_OUTPUT"
+            echo "path=$OUT" >> "$GITHUB_OUTPUT"
           else
-            printf 'Release %s\n\n' "$TAG" > "$OUT"
-            echo "generate=true" >> "$GITHUB_OUTPUT"
+            echo "path=" >> "$GITHUB_OUTPUT"
           fi
-          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "generate=false" >> "$GITHUB_OUTPUT"
           cd dist
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum Leasegrid_Sync-*-win64.zip Leasegrid_Sync-*-win64-setup.exe > SHA256SUMS-win64
@@ -249,4 +247,4 @@ jobs:
             dist/Leasegrid_Sync-*-win64-setup.exe
             dist/SHA256SUMS-win64
           body_path: ${{ steps.relnotes.outputs.path }}
-          generate_release_notes: ${{ steps.relnotes.outputs.generate == 'true' }}
+          generate_release_notes: false

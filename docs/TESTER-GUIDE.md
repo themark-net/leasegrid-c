@@ -2,7 +2,7 @@
 
 The long version of the [tester page](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTERS.md): install on each OS, join with an invite, add a folder, read the status chip, and report a bug. You do not need Python. One friend invites you. You join, add a folder, and put a file in it.
 
-The published build is [Leasegrid Sync v0.1.2 (friends & family)](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.2). More → Settings shows `Leasegrid Sync (buyer) · version 0.1.2` on that build. What changed: [`docs/release-notes/v0.1.2.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.2.md) (and [v0.1.1](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.1.md) before it).
+The published build is [Leasegrid Sync v0.1.3 (friends & family)](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.3). More → Settings shows `Leasegrid Sync (buyer) · version 0.1.3` on that build. What changed: [`docs/release-notes/v0.1.3.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.3.md) (and [v0.1.2](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.2.md) before it). Download links point at the v0.1.3 release; they resolve once the `v0.1.3` tag is pushed and the Installers workflow publishes the assets.
 
 The installers are unsigned. Details and the CI runners that produce them are in [`docs/ops/installers.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/installers.md).
 
@@ -10,9 +10,9 @@ The installers are unsigned. Details and the CI runners that produce them are in
 
 | Your computer | Download | Runs on |
 |---------------|----------|---------|
-| Linux x86_64 | `Leasegrid_Sync-0.1.2-x86_64.AppImage` | glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). No `.deb`. |
-| Mac | `Leasegrid_Sync-0.1.2-macos-x86_64.dmg` | Intel Macs. Apple Silicon only through Rosetta 2. |
-| Windows 10/11 x64 | `Leasegrid_Sync-0.1.2-win64-setup.exe` | Same bits are in `Leasegrid_Sync-0.1.2-win64.zip` if you would rather not run the setup. |
+| Linux x86_64 | `Leasegrid_Sync-0.1.3-x86_64.AppImage` | glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). No `.deb`. |
+| Mac | `Leasegrid_Sync-0.1.3-macos-x86_64.dmg` | Intel Macs. Apple Silicon only through Rosetta 2. |
+| Windows 10/11 x64 | `Leasegrid_Sync-0.1.3-win64-setup.exe` | Same bits are in `Leasegrid_Sync-0.1.3-win64.zip` if you would rather not run the setup. |
 
 ## Checksums
 
@@ -21,21 +21,21 @@ Each release attaches `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` and `
 ## Linux
 
 ```bash
-chmod +x Leasegrid_Sync-0.1.2-x86_64.AppImage
-./Leasegrid_Sync-0.1.2-x86_64.AppImage
+chmod +x Leasegrid_Sync-0.1.3-x86_64.AppImage
+./Leasegrid_Sync-0.1.3-x86_64.AppImage
 ```
 
 The AppImage needs FUSE. On Ubuntu that package is `libfuse2`. With no FUSE, the documented fallback is:
 
 ```bash
-./Leasegrid_Sync-0.1.2-x86_64.AppImage --appimage-extract-and-run
+./Leasegrid_Sync-0.1.3-x86_64.AppImage --appimage-extract-and-run
 ```
 
 ## Mac (Gatekeeper)
 
 The disk image is ad-hoc signed only. It is not notarized. Gatekeeper reports an unidentified developer.
 
-1. Open `Leasegrid_Sync-0.1.2-macos-x86_64.dmg`.
+1. Open `Leasegrid_Sync-0.1.3-macos-x86_64.dmg`.
 2. Drag **Leasegrid Sync** onto **Applications**.
 3. On macOS 15 and newer, try to open **Leasegrid Sync** first (double-click it in Applications). Gatekeeper blocks that launch. **Open Anyway** appears only after the block, in **System Settings → Privacy & Security**, and it stays there for about an hour. Click **Open Anyway**. macOS asks for the login password. Control-click → **Open** no longer bypasses Gatekeeper on macOS 15 or newer.
 4. On macOS 14 and earlier, Control-click **Leasegrid Sync** in Applications and choose **Open**, then **Open** again. If it is still blocked, use **System Settings → Privacy & Security → Open Anyway**.
@@ -54,17 +54,17 @@ The setup and the programs inside it are unsigned. SmartScreen warns that the pu
 
 A code-signing certificate would not skip this warning. Since 2024, signed files still show SmartScreen until they build reputation. On Windows 11, Smart App Control can block the app and not offer **Run anyway**.
 
-1. Start `Leasegrid_Sync-0.1.2-win64-setup.exe`.
+1. Start `Leasegrid_Sync-0.1.3-win64-setup.exe`.
 2. On **Windows protected your PC**, click **More info**, then **Run anyway**.
 3. Finish setup and start **Leasegrid Sync**. Launching the app can show the same dialog.
 
-Zip instead of setup: unzip `Leasegrid_Sync-0.1.2-win64.zip` and start `leasegrid-sync.exe`. The same SmartScreen dialog can appear on that launch. `leasegrid-sync-cli.exe` is the console program, not the window.
+Zip instead of setup: unzip `Leasegrid_Sync-0.1.3-win64.zip` and start `leasegrid-sync.exe`. The same SmartScreen dialog can appear on that launch. `leasegrid-sync-cli.exe` is the console program, not the window.
 
 ## Join with an invite
 
 A fresh install opens **Join a friendnet**. Nothing is shared until you join.
 
-**If your window has a Short code field and a Copy code button,** you are on v0.1.2 (also shipped in v0.1.1). That screen shipped in source at `83b3e66` (issue [#32](https://github.com/themark-net/leasegrid-c/issues/32)). It is not in the v0.1.0 download.
+**If your window has a Short code field and a Copy code button,** you are on v0.1.1 or newer. That screen shipped in source at `83b3e66` (issue [#32](https://github.com/themark-net/leasegrid-c/issues/32)). It is not in the v0.1.0 download.
 
 1. The person already on the friendnet opens **Share invite** on Folders, **More → Invite…**, or **Settings → Invite others**. The card shows a QR, a **Short code** such as `7-word-word`, and **Copy code**.
 2. They leave Leasegrid Sync open until you have joined. Closing the window quits. **Copy code** copies the short code.
@@ -117,7 +117,7 @@ Open an issue: <https://github.com/themark-net/leasegrid-c/issues/new>
 Include:
 
 - Operating system (Windows 11, macOS and whether it is Apple Silicon, Ubuntu version, and so on).
-- The About line from **More → Settings** (`version 0.1.2` on this build).
+- The About line from **More → Settings** (`version 0.1.3` on this build).
 - The clicks, in order, and the exact FAIL line.
 - The chip text, and the folder Status if you added a folder.
 - The `logs` folder from the Sync home. Useful files there are `sync-ui.log`, `tahoe.log`, and `magic-folder.log`.
@@ -126,6 +126,8 @@ Include:
 |----|------|
 | Linux | `~/.local/share/leasegrid-sync/logs/` (or `$XDG_DATA_HOME/leasegrid-sync/logs/`) |
 | Mac | `~/Library/Application Support/leasegrid-sync/logs/` |
-| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` |
+| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` (or `%APPDATA%\leasegrid-sync\logs\` if `%LOCALAPPDATA%` is not set) |
+
+If you set `LEASEGRID_SYNC_HOME`, the logs are in its `logs` folder instead, on every OS.
 
 Leave out invite codes, join links, anything that starts with `pb://`, recovery keys, and `credit-wallet.json`. Crop screenshots that show those.

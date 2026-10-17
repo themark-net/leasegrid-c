@@ -130,6 +130,11 @@ def format_status_chip(status: ConnectionStatus) -> str:
     return status.state
 
 
+def about_line() -> str:
+    """More → Settings. Buyer-visible version line."""
+    return "%s (buyer) · version %s" % (APP_NAME, __version__)
+
+
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     """Append a traceback to <home>/logs/sync-ui.log; never raises."""
     path = Path(home) / "logs" / UI_LOG_NAME
@@ -638,6 +643,8 @@ class ImportRecoveryDialog:
         brow.addWidget(cancel)
         brow.addStretch(1)
         v.addLayout(brow)
+        # Width before any banner. A later sizeHint follows the unwrapped line.
+        self._open_width = self.dlg.sizeHint().width()
 
     def on_browse(self) -> None:
         path, _ = self.QtWidgets.QFileDialog.getOpenFileName(
@@ -654,6 +661,48 @@ class ImportRecoveryDialog:
         self.status.setText(text)
         self.QtWidgets.QApplication.processEvents()
 
+    def _fit_status(self) -> None:
+        """Grow so a wrapped status banner stays inside the dialog.
+
+        The dialog opens at the empty label's size hint. Offscreen Qt does
+        not apply a later hint (``propagateSizeHints`` is unsupported).
+        ``adjustSize`` follows the label's unwrapped size hint, which is
+        shorter than ``heightForWidth`` at the width on screen.
+        """
+        dialog = self.dlg
+        label = self.status
+        layout = dialog.layout()
+        layout.activate()
+        if dialog.isVisible() and dialog.width() > 100:
+            width = dialog.width()
+        else:
+            width = max(self._open_width, dialog.minimumWidth())
+        for _ in range(2):
+            layout.activate()
+            label_width = label.width()
+            if label_width < 40:
+                margins = layout.contentsMargins()
+                label_width = max(40, width - margins.left() - margins.right())
+            needed = label.heightForWidth(label_width)
+            if needed < 1:
+                needed = label.sizeHint().height()
+            label.setMinimumHeight(needed)
+            height = max(
+                layout.totalHeightForWidth(width),
+                layout.minimumSize().height(),
+                layout.sizeHint().height(),
+            )
+            dialog.setMinimumHeight(height)
+            if (
+                dialog.width() == width
+                and dialog.height() >= height
+                and label.height() >= needed
+            ):
+                break
+            dialog.resize(width, height)
+            self.QtWidgets.QApplication.processEvents()
+        layout.activate()
+
     def on_import(self) -> None:
         path = Path(self.path_edit.text().strip()).expanduser()
         if not path.is_file():
@@ -664,6 +713,7 @@ class ImportRecoveryDialog:
                     "pick the file from your backup; Retry.",
                 ).banner()
             )
+            self._fit_status()
             return
         self.import_btn.setEnabled(False)
         self._progress("Importing recovery key…")
@@ -674,6 +724,7 @@ class ImportRecoveryDialog:
             self.status.setText(exc.banner())
             self.import_btn.setText("Retry import")
             self.import_btn.setEnabled(True)
+            self._fit_status()
             return
         self.dlg.accept()
 
@@ -1827,9 +1878,9 @@ class MainWindow:
             "is how much of this disk that is. Reachable from other machines only if "
             "LEASEGRID_STORAGE_HOSTNAME is a LAN name or IP (lab default is 127.0.0.1).\n\n"
             "About\n"
-            "%s (buyer) · version %s\n"
+            "%s\n"
             "Grid: lab-friendnet"
-            % (APP_NAME, __version__)
+            % about_line()
         )
         note.setWordWrap(True)
         note.setObjectName("settingsNote")

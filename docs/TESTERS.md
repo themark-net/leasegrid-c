@@ -1,18 +1,19 @@
 # Leasegrid Sync — friends and family
 
 Leasegrid Sync is the desktop window. One friend invites you; you join, add a folder, and put a file in it. You do not need Python.
-Current build: [v0.1.2](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.2). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.2`. The installers are unsigned.
+Current build: [v0.1.3](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.3). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.3`. The installers are unsigned.
+Download links point at the v0.1.3 release; they resolve once the `v0.1.3` tag is pushed and the Installers workflow publishes the assets.
 
 ## Install
 
 | OS | Download | One-liner |
 |----|----------|-----------|
-| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.2-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
-| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.2-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.2-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
-| Windows x64, no setup | [`Leasegrid_Sync-0.1.2-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64.zip) | Unzip and start `leasegrid-sync.exe`. |
+| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.3-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
+| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.3-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.3-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
+| Windows x64, no setup | [`Leasegrid_Sync-0.1.3-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.3/Leasegrid_Sync-0.1.3-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
 
-**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.2) before you run it.
+**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.3) before you run it.
 
 <details>
 <summary>macOS: “unidentified developer” — Open Anyway steps</summary>
@@ -26,11 +27,12 @@ On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead
 
 Then: open **Join a friendnet**, paste the short code your friend copied with **Copy code**, tick **I understand the four points above.**, click **Join friendnet**, and **Add folder** on **Folders**.
 
-## What's new in v0.1.2
+## What's new in v0.1.3
 
-- Same app as v0.1.1; the release page and installer CI changed.
-- Release text comes from the repo's release notes, with `SHA256SUMS-*` files per platform.
-- Details: [v0.1.2 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.2.md) (and [v0.1.1](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.1.md) before it).
+- **Refresh** after Magic Folder stops says *could not refresh folders*, not *folder not added*.
+- The **Import recovery key** dialog shows the whole Next line after a failure.
+- Android invite errors ask for the full join link from desktop Sync.
+- Details: [v0.1.3 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.3.md) (and [v0.1.2](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.2.md) before it).
 
 ## Known issues
 
@@ -50,6 +52,8 @@ Open an issue: <https://github.com/themark-net/leasegrid-c/issues/new>. Include 
 |----|------|
 | Linux | `~/.local/share/leasegrid-sync/logs/` (or `$XDG_DATA_HOME/leasegrid-sync/logs/`) |
 | Mac | `~/Library/Application Support/leasegrid-sync/logs/` |
-| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` |
+| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` (or `%APPDATA%\leasegrid-sync\logs\` if `%LOCALAPPDATA%` is not set) |
+
+If you set `LEASEGRID_SYNC_HOME`, the logs are in its `logs` folder instead, on every OS.
 
 Leave out invite codes, join links, anything that starts with `pb://`, recovery keys, and `credit-wallet.json`. Crop screenshots that show those.

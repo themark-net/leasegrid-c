@@ -228,6 +228,27 @@ def test_garbage_lock_older_than_stale_time_is_recovered(tmp_path: Path, monkeyp
     _recovered(monkeypatch, home)
 
 
+def test_fresh_empty_lock_relaunches_at_once(tmp_path: Path, monkeypatch) -> None:
+    """A crash mid-write leaves an empty lock of age 0. It must not wait 30s."""
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    started = time.monotonic()
+    _recovered(monkeypatch, home)
+    assert time.monotonic() - started < 5
+
+
+def test_fresh_garbage_lock_relaunches_at_once(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"not a qt lock\n%%%\n")
+    started = time.monotonic()
+    _recovered(monkeypatch, home)
+    assert time.monotonic() - started < 5
+
+
 def test_foreign_host_lock_older_than_stale_time_is_recovered(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
@@ -359,3 +380,47 @@ def test_live_app_refuses_a_second_launch_and_releases_on_quit(tmp_path: Path) -
             _stop(second)
         if third is not None:
             _stop(third)
+
+
+def test_six_concurrent_starts_open_one_window(tmp_path: Path) -> None:
+    """Six launches at once still produce one window. The other five are refused."""
+    home = tmp_path / "home"
+    nodedir = tmp_path / "no-tahoe"
+    home.mkdir()
+    close_file = tmp_path / "close-now"
+    driver = tmp_path / "driver.py"
+    driver.write_text(_APP_DRIVER, encoding="utf-8")
+    procs: list[subprocess.Popen[str]] = []
+    pipes: list[_Pipe] = []
+    try:
+        for _ in range(6):
+            proc, pipe = _spawn_app(home, nodedir, close_file, driver)
+            procs.append(proc)
+            pipes.append(pipe)
+        shown = 0
+        boxes = 0
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            shown = sum("WINDOW_SHOWN" in pipe.text() for pipe in pipes)
+            boxes = sum(("MSGBOX:%s" % ALREADY_RUNNING) in pipe.text() for pipe in pipes)
+            finished = sum(proc.poll() is not None for proc in procs)
+            if shown == 1 and boxes == 5 and finished >= 5:
+                break
+            time.sleep(0.05)
+        else:
+            details = [
+                (proc.poll(), pipe.text(), pipe.errors()) for proc, pipe in zip(procs, pipes)
+            ]
+            raise AssertionError("six starts did not settle: %s" % (details,))
+        assert shown == 1
+        assert boxes == 5
+        assert not (nodedir / "tahoe.cfg").is_file()
+        close_file.write_text("quit", encoding="utf-8")
+        winner = next(
+            proc for proc, pipe in zip(procs, pipes) if "WINDOW_SHOWN" in pipe.text()
+        )
+        assert winner.wait(timeout=15) == 0
+        assert not instance_lock_path(home).exists()
+    finally:
+        for proc in procs:
+            _stop(proc)

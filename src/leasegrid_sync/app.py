@@ -129,14 +129,30 @@ def instance_lock_path(home: Path) -> Path:
     return Path(home) / ".leasegrid-sync.lock"
 
 
+def _lock_pid_readable(lock) -> bool:
+    """True when getLockInfo can read a PID. Empty and garbage files cannot.
+
+    PyQt5 returns (ok, pid, hostname, appname). The pid slot is uninitialized
+    when ok is false, so the flag is the check.
+    """
+    info = lock.getLockInfo()
+    if isinstance(info, tuple) and info and isinstance(info[0], bool):
+        return bool(info[0])
+    if isinstance(info, tuple) and info:
+        return bool(info[0])
+    return False
+
+
 def acquire_instance_lock(home: Path) -> bool:
     """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
 
-    Qt's default stale time (30s) is what makes an empty file, a garbage file,
-    or a lock from another machine recoverable. Stale time 0 never recovers
-    those. A live same-host holder is still refused. The QLockFile object stays
-    referenced until a clean quit, or the destructor would unlock it early.
-    Returns False when another live process holds the lock.
+    Qt's default stale time (30s) recovers an empty file, a garbage file, or a
+    lock from another machine once that file is old. A crash mid-write leaves
+    the same file with no readable PID while it is still new, so that file is
+    removed and the lock is tried once more. A readable live PID is still
+    refused. The QLockFile object stays referenced until a clean quit, or the
+    destructor would unlock it early. Returns False when another live process
+    holds the lock.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -148,7 +164,11 @@ def acquire_instance_lock(home: Path) -> bool:
         return True
     lock = QLockFile(str(path))
     if not lock.tryLock(0):
-        return False
+        if _lock_pid_readable(lock):
+            return False
+        lock.removeStaleLockFile()
+        if not lock.tryLock(0):
+            return False
     _INSTANCE_LOCK = lock
     return True
 

@@ -60,7 +60,11 @@ RED: 7h' env dumped → same test at :145
 
 ### 3. Partial title bar
 
-Pending.
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 490 passed, 5 xfailed, 4 warnings in 43.41s, ci-local PASS | files: test_sync_window_geometry.py | err: none
+
+A saved x of -40 ends with the 80×28 title grab inside `availableGeometry()`. The fully-off cases stayed green under the mutant.
+
+RED: `contains` → `intersects` in `_title_bar_on_a_screen` → `test_title_bar_partly_off_the_left_edge_stays_on_screen` at tests/test_sync_window_geometry.py:156
 
 ### 4. Saved width
 

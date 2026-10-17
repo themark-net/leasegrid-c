@@ -140,6 +140,24 @@ def test_title_bar_left_of_the_screen_stays_on_screen(tmp_path: Path) -> None:
         _hide(second)
 
 
+def test_title_bar_partly_off_the_left_edge_stays_on_screen(tmp_path: Path) -> None:
+    """x=-40 leaves part of the 80px grab on the screen and part off it.
+
+    `intersects` would call that on-screen and keep the saved x. The grab has
+    to end fully inside availableGeometry.
+    """
+    home = tmp_path / "home"
+    saved_width = _save_moved(home, -40, 40, 700, 500)
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert second.win.width() == saved_width
+        assert _title_grab_inside(second)
+    finally:
+        _hide(second)
+
+
 def test_deeply_nested_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

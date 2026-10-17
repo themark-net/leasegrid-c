@@ -48,8 +48,8 @@ Failing tests: none
 | 1 | DONE | 7a12515 | test_linked_worktree_uses_its_own_venv, test_explicit_python_is_honored_in_a_worktree, test_main_checkout_still_prefers_shared_venv | RED without fix: test_linked_worktree_uses_its_own_venv at tests/test_ci_local_worktree.py:79 (old script selected /home/mark/tahoe-venv and reached pip install) |
 | 2 | DONE | 0792361 | test_stop_reaps_child_that_ignores_sigterm, test_stop_is_safe_when_the_child_already_exited | RED without fix: test_stop_reaps_child_that_ignores_sigterm at tests/test_sync_stop_reap.py:59 (TypeError: stop() got an unexpected keyword argument 'terminate_timeout') |
 | 3 | DONE | a4c4b2e | test_log_rotates_when_over_one_mebibyte_and_keeps_one_backup, test_rotation_failure_still_appends_and_does_not_raise | RED without fix: test_log_rotates_when_over_one_mebibyte_and_keeps_one_backup at tests/test_sync_ui_log.py:32 (no sync-ui.log.1) |
-| 4 | DONE | (this commit) | test_second_instance_on_the_same_home_starts_no_window, test_a_different_sync_home_is_not_blocked, test_stale_lock_from_a_killed_process_is_recovered, test_status_cli_is_not_blocked_by_the_home_lock | RED without fix: test_second_instance_on_the_same_home_starts_no_window at tests/test_sync_instance_lock.py:80 (MainWindow was constructed) |
-| 5 | pending | | | |
+| 4 | DONE | d9045e1 | test_second_instance_on_the_same_home_starts_no_window, test_a_different_sync_home_is_not_blocked, test_stale_lock_from_a_killed_process_is_recovered, test_status_cli_is_not_blocked_by_the_home_lock | RED without fix: test_second_instance_on_the_same_home_starts_no_window at tests/test_sync_instance_lock.py:80 (MainWindow was constructed) |
+| 5 | DONE | (this commit) | test_keep_open_ignores_close_and_leaves_the_invite, test_quit_accepts_close_and_closes_the_invite, test_close_without_a_live_invite_quits_without_a_dialog | RED without fix: test_keep_open_ignores_close_and_leaves_the_invite at tests/test_sync_close_invite.py:77 (quit ran with no prompt) |
 | 6 | pending | | | |
 | 7 | pending | | | |
 | 8 | pending | | | |

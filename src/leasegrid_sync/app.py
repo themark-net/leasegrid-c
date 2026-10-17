@@ -109,6 +109,7 @@ UI_LOG_NAME = "sync-ui.log"
 UI_LOG_MAX_BYTES = 1024 * 1024
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
 ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
+INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
 _INSTANCE_LOCK = None
 
 
@@ -2063,8 +2064,29 @@ class MainWindow:
         ):
             self.show()
 
+    def _invite_process_running(self) -> bool:
+        session = getattr(self, "_invite_session", None)
+        proc = getattr(session, "proc", None)
+        return proc is not None and proc.poll() is None
+
     def _on_close(self, event) -> None:
-        """The window is the app. X quits; hiding to tray looked like a crash."""
+        """The window is the app. X quits; hiding to tray looked like a crash.
+
+        A running invite asks first. Keep open leaves the window and the invite.
+        """
+        if self._invite_process_running():
+            QtWidgets = self.QtWidgets
+            box = QtWidgets.QMessageBox(self.win)
+            box.setObjectName("inviteClosePrompt")
+            box.setWindowTitle(APP_NAME)
+            box.setText(INVITE_CLOSE_QUESTION)
+            quit_btn = box.addButton("Quit", QtWidgets.QMessageBox.AcceptRole)
+            keep_btn = box.addButton("Keep open", QtWidgets.QMessageBox.RejectRole)
+            box.setDefaultButton(keep_btn)
+            box.exec_()
+            if box.clickedButton() is not quit_btn:
+                event.ignore()
+                return
         event.accept()
         self.quit()
 

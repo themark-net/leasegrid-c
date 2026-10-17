@@ -51,8 +51,8 @@ Failing tests: none
 | 4 | DONE | d9045e1 | test_second_instance_on_the_same_home_starts_no_window, test_a_different_sync_home_is_not_blocked, test_stale_lock_from_a_killed_process_is_recovered, test_status_cli_is_not_blocked_by_the_home_lock | RED without fix: test_second_instance_on_the_same_home_starts_no_window at tests/test_sync_instance_lock.py:80 (MainWindow was constructed) |
 | 5 | DONE | 9e17bbb | test_keep_open_ignores_close_and_leaves_the_invite, test_quit_accepts_close_and_closes_the_invite, test_close_without_a_live_invite_quits_without_a_dialog | RED without fix: test_keep_open_ignores_close_and_leaves_the_invite at tests/test_sync_close_invite.py:77 (quit ran with no prompt) |
 | 6 | DONE | c0237f7 | test_open_logs_button_opens_the_real_logs_directory, test_open_logs_failure_shows_the_path_without_exception_text | RED without fix: test_open_logs_button_opens_the_real_logs_directory at tests/test_sync_settings_actions.py:45 (logs directory was not created) |
-| 7 | DONE | (this commit) | test_copy_bug_report_has_about_line_and_no_secrets | RED without fix: test_copy_bug_report_has_about_line_and_no_secrets at tests/test_sync_settings_actions.py:96 (clipboard stayed STALE) |
-| 8 | pending | | | |
+| 7 | DONE | 35e7488 | test_copy_bug_report_has_about_line_and_no_secrets | RED without fix: test_copy_bug_report_has_about_line_and_no_secrets at tests/test_sync_settings_actions.py:96 (clipboard stayed STALE) |
+| 8 | DONE | (this commit) | test_double_click_opens_an_existing_folder, test_context_menu_open_folder_uses_the_same_path, test_missing_folder_shows_a_banner_and_does_not_crash | RED without fix: test_missing_folder_shows_a_banner_and_does_not_crash at tests/test_sync_open_folder.py:89 (openUrl ran for a missing path) |
 | 9 | pending | | | |
 | 10 | pending | | | |
 | 11 | pending | | | |

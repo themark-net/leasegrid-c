@@ -1365,6 +1365,9 @@ class MainWindow:
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.table.itemDoubleClicked.connect(self.on_folder_double_clicked)
+        self.table.setContextMenuPolicy(self.QtCore.Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.on_folder_context_menu)
         fl.addWidget(self.table, 1)
         self.folder_error = QtWidgets.QLabel("")
         self.folder_error.setObjectName("folderError")
@@ -2501,6 +2504,39 @@ class MainWindow:
             open_credit=True,
         )
         return True
+
+    def _folder_path_on_row(self, row: int) -> str:
+        item = self.table.item(row, 2)
+        return item.text() if item is not None else ""
+
+    def on_folder_double_clicked(self, item) -> None:
+        self.open_folder_path(self._folder_path_on_row(item.row()))
+
+    def on_folder_context_menu(self, pos) -> None:
+        row = self.table.rowAt(pos.y())
+        if row < 0:
+            return
+        QtWidgets = self.QtWidgets
+        menu = QtWidgets.QMenu(self.table)
+        menu.setObjectName("folderContextMenu")
+        action = menu.addAction("Open folder")
+        chosen = menu.exec_(self.table.viewport().mapToGlobal(pos))
+        if chosen is action:
+            self.open_folder_path(self._folder_path_on_row(row))
+
+    def open_folder_path(self, path: str) -> None:
+        if not path:
+            return
+        if not Path(path).exists():
+            self.show_folder_error(
+                SyncError(
+                    "That folder is not on this computer any more: %s" % path,
+                    "Add the folder again if you still want it.",
+                )
+            )
+            return
+        QtCore, QtGui, _QtWidgets = _qt_api()
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
 
     def _render_rows(self, rows: list[FolderRow]) -> None:
         self.table.setRowCount(len(rows))

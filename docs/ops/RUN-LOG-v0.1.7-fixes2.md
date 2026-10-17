@@ -26,3 +26,9 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 557 passed, 5 xfailed, 4 warnings in 81.14s | files: packaging/tahoe-log-filter.sh, tests/test_tahoe_log_filter.py | err: none
   RED: awk `{40,}` under mawk 1.3.4 20200120 → test_v015_shapes_never_leak[base64url-unpadded] (181/200). Local /usr/bin/mawk is 1.3.4 20260129, which honors intervals, so that binary stays green. Diff vs b4e9b70 is the sed-only snake_case keep. Full file also passed with PATH shims for /usr/bin/mawk and /usr/bin/gawk.
+
+## 2 empty-lock age
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 559 passed, 5 xfailed, 4 warnings in 120.25s | files: src/leasegrid_sync/app.py, tests/test_sync_instance_lock.py | err: none
+  1000 trials × 6 workers: empty >1 holder=0 (0 holders=1000); garbage >1=0 (0 holders=1000); none >1=0 (0 holders=0); aged (mtime now-5) >1=0 (0 holders=0). No "Could not remove our own lock file".
+  RED: drop setStaleLockTime and the young-age return, then removeStaleLockFile → test_fresh_empty_lock_is_refused (AssertionError: window). Removing only the Python age return stays green, because staleLockTime 2000 ms already refuses a young file.

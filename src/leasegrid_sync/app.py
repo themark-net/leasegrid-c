@@ -185,17 +185,34 @@ def _lock_writer_grace() -> None:
     time.sleep(0.1)
 
 
+# A PID-less lock younger than this is a rival still writing, or a crash
+# mid-write. Qt takes an older one inside tryLock. This code does not unlink
+# the file: a rename or removeStaleLockFile deletes a rival's new lock.
+_LOCK_PIDLESS_MAX_AGE_S = 2.0
+
+
+def _pidless_lock_is_young(path: Path) -> bool:
+    """True when a lock with no readable PID must not be taken.
+
+    A missing stat or a timestamp in the future counts as young.
+    """
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return True
+    return age < _LOCK_PIDLESS_MAX_AGE_S
+
+
 def acquire_instance_lock(home: Path) -> bool:
     """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
 
-    Qt's default stale time (30s) recovers an empty file, a garbage file, or a
-    lock from another machine once that file is old. A crash mid-write leaves
-    the same file with no readable PID while it is still new. Wait briefly so a
-    starter that is still writing its PID can finish. Only if the PID is still
-    unreadable is that file removed and the lock tried once more. A readable
-    PID is refused. The QLockFile object stays referenced until a clean quit,
-    or the destructor would unlock it early. Returns False when another live
-    process holds the lock.
+    Qt recovers a dead PID at once. A PID-less file (empty, garbage, or a
+    crash mid-write) is taken only once it is older than 2s, inside tryLock,
+    so two callers cannot both delete it. A younger PID-less file is left in
+    place and this call refuses. Wait briefly first so a starter that is still
+    writing its PID can finish. A readable PID is refused. The QLockFile object
+    stays referenced until a clean quit, or the destructor would unlock it
+    early. Returns False when another live process holds the lock.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -206,13 +223,13 @@ def acquire_instance_lock(home: Path) -> bool:
     except OSError:
         return True
     lock = QLockFile(str(path))
+    lock.setStaleLockTime(int(_LOCK_PIDLESS_MAX_AGE_S * 1000))
     if not lock.tryLock(0):
         if not _lock_pid_readable(lock):
             # The other starter may be between O_EXCL create and the PID write.
             _lock_writer_grace()
-        if _lock_pid_readable(lock):
+        if _lock_pid_readable(lock) or _pidless_lock_is_young(path):
             return False
-        lock.removeStaleLockFile()
         if not lock.tryLock(0):
             return False
     _INSTANCE_LOCK = lock

@@ -57,6 +57,7 @@ Item 6 ci-local: PASS, 532 passed, 5 xfailed, 4 warnings in 77.57s.
 Item 7 ci-local: PASS, 536 passed, 5 xfailed, 4 warnings in 77.19s.
 Item 8 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.13s.
 Item 9 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.35s.
+Item 10 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 77.46s.
 Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_restores_the_normal_size and test_three_maximize_cycles_keep_the_normal_position (2 passed in 0.17s). The normal position did not drift.
 
 ## Items
@@ -71,7 +72,7 @@ Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_rest
 | 6 | DONE | 24783e4 | test_shown_paths_hide_the_account_name | RED: helper returns the path unchanged → test_shown_paths_hide_the_account_name at tests/test_sync_settings_actions.py:64 |
 | 7 | DONE | ca070ce | test_other_geometry_version_opens_at_the_default, test_unmaximize_restores_the_normal_size, test_three_maximize_cycles_keep_the_normal_position, test_fitter_alone_rejects_an_oversized_record, test_guard_resets_a_size_the_fitter_let_through | RED: drop version check → test_other_geometry_version_opens_at_the_default at tests/test_sync_window_geometry.py:98; save geometry() → test_unmaximize_restores_the_normal_size at :144; fitter off → test_fitter_alone_rejects_an_oversized_record at :489; guard off → test_guard_resets_a_size_the_fitter_let_through at :520 |
 | 8 | DONE | caae73d | test_scrub_bug_report_code_boundaries | RED: any() → test_scrub_bug_report_code_boundaries[7-guitarist-side-True] at tests/test_sync_settings_actions.py:143 |
-| 9 | DONE | (this commit) | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED: change ALREADY_RUNNING → test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:39 |
-| 10 | pending | | | |
+| 9 | DONE | 0aa58b3 | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED: change ALREADY_RUNNING → test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:39 |
+| 10 | DONE | (this commit) | test_long_snake_case_name_survives_on_an_allowlisted_line, tests/test_tahoe_log_filter.py leak tests | RED: old `[A-Za-z0-9_-]{40,}` rule → test_long_snake_case_name_survives_on_an_allowlisted_line at tests/test_tahoe_log_filter.py:206 |
 | 11 | pending | | | |
 | 12 | pending | | | |

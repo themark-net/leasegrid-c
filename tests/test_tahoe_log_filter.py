@@ -192,6 +192,21 @@ def test_legit_lines_survive_the_new_rules():
         assert line in out, line
 
 
+_SNAKE40 = "_get_magic_folder_participants_for_collective"
+
+
+def test_long_snake_case_name_survives_on_an_allowlisted_line():
+    """A 40+ identifier with no digit and one letter case is not a secret."""
+    assert len(_SNAKE40) >= 40
+    line = (
+        "2026-10-15T21:40:11.000Z [-] Exception in "
+        f"{_SNAKE40} (pid 77)"
+    )
+    out = _filter_stdout(line + "\n")
+    assert _SNAKE40 in out
+    assert "REDACTED" not in out
+
+
 # --- v0.1.5: glued hex + base32 (Tester, PR #71 review) ---------------------
 # In v0.1.4 the hex rule ran first and could eat the hex-alphabet prefix of a
 # base32 secret glued to a 32+ hex run, leaving a sub-20 base32 remnant that

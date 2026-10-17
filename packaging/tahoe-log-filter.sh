@@ -18,6 +18,9 @@
 #   (a swissnum chunked for reading), bounded by non-alphanumerics.
 # Known limit: a base32 fragment shorter than 20 chars on an allowlisted line
 # is not redacted; it is indistinguishable from an ordinary word or path part.
+# v0.1.7: a 40+ [A-Za-z0-9_-] token is redacted only when it has a digit, or
+# both an uppercase and a lowercase letter. A long snake_case or UPPER_SNAKE
+# name stays. The check is the same pipeline slot as the old blanket rule.
 set -euo pipefail
 LC_ALL=C
 TS='^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.]+[^ ]* '
@@ -30,7 +33,21 @@ grep -E "(${TS}.*${KEY})|^Traceback|^[[:space:]]+File \"|^[A-Za-z_.]*(Error|Exce
       -e 's#[A-Za-z0-9]*[0-9a-fA-F]{32,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{16,}={1,2}#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{40,}#REDACTED#g' \
-      -e 's#[A-Za-z0-9_-]{40,}#REDACTED#g' \
+  | awk '
+{
+  line = $0
+  out = ""
+  while (match(line, /[A-Za-z0-9_-]{40,}/)) {
+    token = substr(line, RSTART, RLENGTH)
+    if (token ~ /[0-9]/ || (token ~ /[A-Z]/ && token ~ /[a-z]/))
+      token = "REDACTED"
+    out = out substr(line, 1, RSTART - 1) token
+    line = substr(line, RSTART + RLENGTH)
+  }
+  print out line
+}
+' \
+  | sed -E \
       -e 's#[A-Za-z0-9]*[A-Z2-7]{20,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#[A-Za-z0-9]*[A-Za-z2-7]{32,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#(^|[^A-Za-z0-9])[a-z2-7]{8}(-[a-z2-7]{8}){2,}([^A-Za-z0-9]|$)#\1REDACTED\3#g' \

@@ -60,6 +60,7 @@ Item 9 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.35s.
 Item 10 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 77.46s.
 Item 11 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 77.13s. Docs only.
 Item 12 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 76.71s. Docs only. Design doc is 54 lines.
+Final ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 77.59s. Never below the baseline (517 passed, 5 xfailed).
 Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_restores_the_normal_size and test_three_maximize_cycles_keep_the_normal_position (2 passed in 0.17s). The normal position did not drift.
 
 ## Items

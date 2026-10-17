@@ -63,3 +63,8 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 568 passed, 5 xfailed, 4 warnings in 121.62s | files: src/leasegrid_sync/app.py, src/leasegrid_sync/backend.py, tests/test_sync_display_path.py, tests/test_sync_settings_actions.py | err: none
   RED: identity helper → test_display_path_table (link-home == '~'). RED: no resolve() → test_display_path_table (real/fakeuser/logs/tahoe.log == '~/logs/tahoe.log').
+
+## 9 stub reap
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 568 passed, 5 xfailed, 4 warnings in 122.98s | files: tests/test_sync_signal_quit.py, tests/test_sync_process_group.py | err: none
+  The drop-in names no mutant. The module fixture asserts every recorded stub pid is dead after the file. The signal stub now writes a grandchild pid, and finally SIGKILLs only the pids in those files.

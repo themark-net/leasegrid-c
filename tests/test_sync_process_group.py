@@ -138,6 +138,22 @@ def _wait_reaped(pid: int, timeout: float = 5.0) -> bool:
     return False
 
 
+_STUB_PIDS: list[int] = []
+
+
+def _remember(pid: int) -> None:
+    if pid > 0 and pid not in _STUB_PIDS:
+        _STUB_PIDS.append(pid)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _no_stub_left_after_the_module():
+    """Stub pids this file recorded, including the grandchild, are dead."""
+    yield
+    alive = [pid for pid in _STUB_PIDS if not _reaped(pid)]
+    assert alive == [], alive
+
+
 def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
     home = tmp_path / "home"
     nodedir = home / "tahoe"
@@ -162,6 +178,8 @@ def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
         assert child_file.is_file()
         leader = int(leader_file.read_text(encoding="utf-8").strip())
         child = int(child_file.read_text(encoding="utf-8").strip())
+        _remember(leader)
+        _remember(child)
         assert leader > 0 and child > 0 and leader != child
         if sys.platform != "win32":
             assert os.getpgid(child) == os.getpgid(leader)
@@ -183,8 +201,15 @@ def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
         if proc is not None and proc.poll() is None:
             proc.kill()
             proc.wait(timeout=5)
-        for pid in (leader, child):
-            if pid and not _reaped(pid):
+        for path in (leader_file, child_file):
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8").strip()
+            if not text.isdigit():
+                continue
+            pid = int(text)
+            _remember(pid)
+            if not _reaped(pid):
                 try:
                     os.kill(pid, signal.SIGKILL)
                 except OSError:

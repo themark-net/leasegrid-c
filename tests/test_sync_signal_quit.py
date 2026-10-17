@@ -32,6 +32,7 @@ _STUB = """
 import json
 import os
 import signal
+import subprocess
 import sys
 import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -79,6 +80,26 @@ def main():
     pidfile = os.environ.get("LEASEGRID_TEST_TAHOE_PIDFILE", "")
     if pidfile:
         Path(pidfile).write_text(str(os.getpid()), encoding="utf-8")
+    child_pidfile = os.environ.get("LEASEGRID_TEST_TAHOE_CHILD_PID", "")
+    if child_pidfile:
+        # Same process group as this stub, so the app's group kill reaches it.
+        # The test's finally kills only this pid, never a reused group.
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import os, signal, sys, time\\n"
+                "from pathlib import Path\\n"
+                "try:\\n"
+                "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\\n"
+                "except (OSError, ValueError):\\n"
+                "    pass\\n"
+                "Path(sys.argv[1]).write_text(str(os.getpid()), encoding='utf-8')\\n"
+                "while True:\\n"
+                "    time.sleep(60)\\n",
+                child_pidfile,
+            ]
+        )
     server.serve_forever()
 
 
@@ -160,6 +181,51 @@ def _reaped(pid: int) -> bool:
     return False
 
 
+# Pids the stubs wrote. The module fixture asserts every one is gone.
+_STUB_PIDS: list[int] = []
+
+
+def _remember(pid: int) -> None:
+    if pid > 0 and pid not in _STUB_PIDS:
+        _STUB_PIDS.append(pid)
+
+
+def _pids_in(path: Path) -> list[int]:
+    if not path.is_file():
+        return []
+    found: list[int] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.isdigit():
+            found.append(int(line))
+    return found
+
+
+def _kill_pid(pid: int) -> None:
+    """SIGKILL one recorded stub. Do not signal its process group."""
+    if pid <= 0 or _reaped(pid):
+        return
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        return
+    deadline = time.time() + 2
+    while time.time() < deadline and not _reaped(pid):
+        time.sleep(0.05)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _no_stub_left_after_the_module():
+    """After every test in this file, each stub pid the tests recorded is dead."""
+    yield
+    alive = [pid for pid in _STUB_PIDS if not _reaped(pid)]
+    try:
+        assert alive == [], alive
+    finally:
+        for pid in alive:
+            _kill_pid(pid)
+
+
 def _wait_until(predicate, timeout: float) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -180,6 +246,7 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
     tahoe_bin = _executable(bins, "tahoe", _STUB)
     mf_bin = _executable(bins, "magic-folder", _MF_STUB)
     pidfile = tmp_path / "tahoe.pid"
+    child_pidfile = tmp_path / "tahoe-child.pid"
     ready = tmp_path / "signal-ready"
     err_path = tmp_path / "app.err"
     lock = instance_lock_path(home)
@@ -189,6 +256,7 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
     env["LEASEGRID_TAHOE_BIN"] = tahoe_bin
     env["LEASEGRID_MAGIC_FOLDER_BIN"] = mf_bin
     env["LEASEGRID_TEST_TAHOE_PIDFILE"] = str(pidfile)
+    env["LEASEGRID_TEST_TAHOE_CHILD_PID"] = str(child_pidfile)
     env["LEASEGRID_TEST_SIGNAL_READY"] = str(ready)
     env["QT_QPA_PLATFORM"] = "offscreen"
     err_f = err_path.open("w", encoding="utf-8")
@@ -211,8 +279,12 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
         )
         assert proc.poll() is None, err_path.read_text(encoding="utf-8")
         assert pidfile.is_file(), "stub Tahoe did not start"
+        assert _wait_until(child_pidfile.is_file, 10), "stub grandchild did not start"
         stub_pid = int(pidfile.read_text(encoding="utf-8").strip())
-        assert stub_pid > 0
+        child_pid = int(child_pidfile.read_text(encoding="utf-8").strip())
+        _remember(stub_pid)
+        _remember(child_pid)
+        assert stub_pid > 0 and child_pid > 0 and stub_pid != child_pid
         # os.kill(pid, SIGBREAK) on Windows is TerminateProcess(pid, 21), not a
         # console event. CTRL_BREAK_EVENT reaches the child's process group.
         send = sig
@@ -224,17 +296,14 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
         assert not lock.exists()
         assert _wait_until(lambda: _reaped(stub_pid), 5)
         assert _reaped(stub_pid)
+        assert _wait_until(lambda: _reaped(child_pid), 5)
+        assert _reaped(child_pid)
     finally:
         err_f.close()
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=5)
-        if stub_pid and not _reaped(stub_pid):
-            try:
-                os.kill(stub_pid, signal.SIGKILL)
-            except OSError:
-                pass
-            try:
-                os.waitpid(stub_pid, os.WNOHANG)
-            except OSError:
-                pass
+        for path in (pidfile, child_pidfile):
+            for pid in _pids_in(path):
+                _remember(pid)
+                _kill_pid(pid)

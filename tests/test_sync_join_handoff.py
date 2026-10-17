@@ -17,9 +17,8 @@ from leasegrid_sync.app import (  # noqa: E402
     ALREADY_RUNNING,
     HANDED_INVITE_DROPPED,
     MainWindow,
-    _join_socket_path,
     instance_lock_path,
-    join_server_name,
+    join_endpoint,
 )
 
 # A wormhole-shaped fake. Not a secret, and the app must not write it to the log.
@@ -202,7 +201,9 @@ def test_second_launch_fills_the_open_join_field(tmp_path: Path) -> None:
         _reap(app)
         if sys.platform != "win32":
             try:
-                os.unlink(_join_socket_path(join_server_name(home)))
+                endpoint = join_endpoint(home)
+                if endpoint:
+                    os.unlink(endpoint)
             except OSError:
                 pass
 
@@ -217,11 +218,15 @@ def test_stale_socket_keeps_the_already_running_message(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
     nodedir = tmp_path / "missing-node"
+    stale = None
     if sys.platform != "win32":
-        stale = Path(_join_socket_path(join_server_name(home)))
+        endpoint = join_endpoint(home)
+        assert endpoint
+        parent = Path(endpoint).parent
+        parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(parent, 0o700)
+        stale = Path(endpoint)
         stale.write_text("not-a-socket\n", encoding="utf-8")
-    else:
-        stale = None
     holder = _hold(home)
     env = _env(home, nodedir, tmp_path / "unused-ready", tmp_path / "unused-dump")
     second: subprocess.Popen[str] | None = None
@@ -239,6 +244,8 @@ def test_stale_socket_keeps_the_already_running_message(tmp_path: Path) -> None:
         assert "MSGBOX:%s" % ALREADY_RUNNING in out
         assert FAKE_INVITE not in out
         assert not nodedir.exists()
+        if stale is not None:
+            assert FAKE_INVITE not in stale.read_text(encoding="utf-8")
     finally:
         if second is not None:
             _reap(second)

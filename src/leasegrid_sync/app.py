@@ -12,6 +12,7 @@ import platform
 import re
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -213,15 +214,159 @@ def release_instance_lock() -> None:
         return
 
 
+# Stay under the AF_UNIX cap (about 104 bytes on macOS, 108 on Linux).
+_JOIN_PATH_MAX = 100
+
+
+def _home_digest(home: Path) -> str:
+    raw = str(Path(home).resolve()).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 def join_server_name(home: Path) -> str:
     """Per-home local-server name. The invite is never part of the name."""
-    raw = str(Path(home).resolve()).encode("utf-8")
-    return "leasegrid-sync-" + hashlib.sha256(raw).hexdigest()[:32]
+    return "leasegrid-sync-" + _home_digest(home)[:32]
 
 
-def _join_socket_path(name: str) -> str:
-    # QLocalServer puts a relative name in QDir::tempPath(), which is this dir.
-    return os.path.join(tempfile.gettempdir(), name)
+def join_endpoint(home: Path) -> Optional[str]:
+    """Absolute socket path, or the Windows pipe name, shared by both sides.
+
+    POSIX prefers ``<Sync home>/run/<name>`` when that path is under 100 bytes,
+    then ``$XDG_RUNTIME_DIR/leasegrid-sync/<name>``, then a 0700 directory
+    ``leasegrid-sync-<uid>`` under ``$TMPDIR``. The Windows pipe name is the
+    hash. There is no portable way to read the pipe owner from the client.
+    """
+    name = join_server_name(home)
+    if sys.platform == "win32":
+        return name
+    primary = os.path.join(str(Path(home).resolve()), "run", name)
+    if len(os.fsencode(primary)) < _JOIN_PATH_MAX:
+        return primary
+    xdg = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+    if xdg:
+        secondary = os.path.join(xdg, "leasegrid-sync", name)
+        if len(os.fsencode(secondary)) < _JOIN_PATH_MAX:
+            return secondary
+    return _tmpdir_join_endpoint(home, name)
+
+
+def _tmpdir_join_endpoint(home: Path, name: str) -> Optional[str]:
+    tmp = os.environ.get("TMPDIR", "").strip() or tempfile.gettempdir()
+    directory = os.path.join(tmp, "leasegrid-sync-%d" % os.getuid())
+    full = os.path.join(directory, name)
+    if len(os.fsencode(full)) < _JOIN_PATH_MAX:
+        return full
+    digest = _home_digest(home)
+    for length in range(64, 15, -1):
+        candidate = os.path.join(directory, digest[:length])
+        if len(os.fsencode(candidate)) < _JOIN_PATH_MAX:
+            return candidate
+    return None
+
+
+def _lstat_path(path: str):
+    """lstat, so a symlink is not treated as the directory it points at."""
+    return os.lstat(path)
+
+
+def _uid_is_ours(st: os.stat_result) -> bool:
+    return st.st_uid == os.getuid()
+
+
+def _posix_dir_is_private(st: os.stat_result) -> bool:
+    """A real directory we own, with no group or other permissions."""
+    if not stat.S_ISDIR(st.st_mode):
+        return False
+    if not _uid_is_ours(st):
+        return False
+    if st.st_mode & 0o077:
+        return False
+    return True
+
+
+def _ensure_private_dir(path: str) -> bool:
+    """Create a 0700 directory, or accept one that already passes the checks.
+
+    An existing directory is never chmod'd. A symlink, the wrong owner, or a
+    mode that grants group or other access is refused.
+    """
+    try:
+        _lstat_path(path)
+    except FileNotFoundError:
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+        except OSError:
+            return False
+        else:
+            try:
+                # mkdir honors umask. This directory was just created by us.
+                os.chmod(path, 0o700)
+            except OSError:
+                return False
+            try:
+                return _posix_dir_is_private(_lstat_path(path))
+            except OSError:
+                return False
+    except OSError:
+        return False
+    try:
+        return _posix_dir_is_private(_lstat_path(path))
+    except OSError:
+        return False
+
+
+def _clear_owned_socket(path: str) -> bool:
+    """Unlink a stale socket we own. Anything else stays, and listening stops."""
+    try:
+        st = _lstat_path(path)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    if not stat.S_ISSOCK(st.st_mode) or not _uid_is_ours(st):
+        return False
+    try:
+        os.unlink(path)
+    except OSError:
+        return False
+    return True
+
+
+def _inspect_posix_endpoint(path: str) -> str:
+    """'ok' to connect, 'absent' when nothing is there, 'refused' when it is unsafe."""
+    parent = os.path.dirname(path)
+    try:
+        dir_st = _lstat_path(parent)
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "refused"
+    if not _posix_dir_is_private(dir_st):
+        return "refused"
+    try:
+        st = _lstat_path(path)
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "refused"
+    if not stat.S_ISSOCK(st.st_mode):
+        return "refused"
+    if not _uid_is_ours(st):
+        return "refused"
+    return "ok"
+
+
+def _log_handoff_note(home: Path, note: str) -> None:
+    """One fixed line in the Sync log. The invite is not written."""
+    path = Path(home) / "logs" / UI_LOG_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("%s join handoff: %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), note))
+    except OSError:
+        pass
 
 
 def _lock_is_held(home: Path) -> bool:
@@ -238,9 +383,14 @@ def _lock_is_held(home: Path) -> bool:
     return True
 
 
-def _send_invite_posix(name: str, invite: str) -> bool:
-    path = _join_socket_path(name)
-    if not os.path.exists(path):
+def _send_invite_posix(home: Path, invite: str) -> bool:
+    path = join_endpoint(home)
+    if not path:
+        return False
+    state = _inspect_posix_endpoint(path)
+    if state != "ok":
+        if state == "refused":
+            _log_handoff_note(home, "refused the socket before connecting")
         return False
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
@@ -284,6 +434,7 @@ raise SystemExit(0)
 
 
 def _send_invite_windows(name: str, invite: str) -> bool:
+    """Send on the user-only pipe. The client cannot read the pipe owner."""
     try:
         proc = subprocess.run(
             [sys.executable, "-c", _WIN_JOIN_SEND, name],
@@ -309,16 +460,14 @@ def hand_join_invite(invite: str) -> str:
     if not text or len(text) > _JOIN_HANDOFF_MAX:
         return "free"
     home = default_home()
-    name = join_server_name(home)
+    # Lock first. A free home joins normally and never connects.
+    if not _lock_is_held(home):
+        return "free"
     if sys.platform == "win32":
-        sent = _send_invite_windows(name, text)
+        sent = _send_invite_windows(join_server_name(home), text)
     else:
-        sent = _send_invite_posix(name, text)
-    if sent:
-        return "sent"
-    if _lock_is_held(home):
-        return "busy"
-    return "free"
+        sent = _send_invite_posix(home, text)
+    return "sent" if sent else "busy"
 
 
 def _start_join_server(ui) -> None:
@@ -327,15 +476,25 @@ def _start_join_server(ui) -> None:
         from PyQt5.QtNetwork import QLocalServer
     except ImportError:
         return
-    name = join_server_name(ui.home)
-    QLocalServer.removeServer(name)
+    endpoint = join_endpoint(ui.home)
+    if not endpoint:
+        _log_handoff_note(ui.home, "could not choose a private socket path")
+        return
+    if sys.platform != "win32":
+        parent = os.path.dirname(endpoint)
+        if not _ensure_private_dir(parent):
+            _log_handoff_note(ui.home, "refused the private socket directory")
+            return
+        if not _clear_owned_socket(endpoint):
+            _log_handoff_note(ui.home, "refused a stale socket that is not ours")
+            return
     server = QLocalServer(ui.app)
-    if not server.listen(name):
-        log_exception(
-            ui.home,
-            "join handoff",
-            RuntimeError("could not listen for a second launch"),
-        )
+    # User-only pipe ACL on Windows, and owner-only socket mode on POSIX.
+    server.setSocketOptions(QLocalServer.UserAccessOption)
+    if sys.platform == "win32":
+        QLocalServer.removeServer(endpoint)
+    if not server.listen(endpoint):
+        _log_handoff_note(ui.home, "could not listen for a second launch")
         return
 
     def on_new() -> None:
@@ -382,9 +541,23 @@ def _close_join_server(ui) -> None:
     if server is None:
         return
     try:
+        from PyQt5.QtNetwork import QLocalSocket
+
+        for sock in list(server.findChildren(QLocalSocket)):
+            try:
+                sock.abort()
+            except Exception:
+                pass
         server.close()
+        server.deleteLater()
+        app = getattr(ui, "app", None)
+        if app is not None:
+            app.processEvents()
     except Exception:
-        pass
+        try:
+            server.close()
+        except Exception:
+            pass
 
 
 def _show_already_running() -> None:

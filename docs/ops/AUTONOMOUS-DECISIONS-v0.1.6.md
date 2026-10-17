@@ -26,3 +26,5 @@ One line per choice: `choice | alternatives | why`
 - Bug-report scrub deletes the whole pb://, wormhole code, and join link | reuse redact_furl | redact_furl keeps an 8-character head and a 6-character tail, which counts as a leak
 - Fix round 2 stays sequential in this worktree | one sub-agent per item, or another worktree | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
 - A missing geometry file returns before the restore try and is not logged | log FileNotFoundError on every first launch | a missing file is the normal first launch, not a corrupt save
+- Frame-left is the int32 at `_GEOM_HEADER.size` in the saveGeometry blob | a hard-coded byte offset | the drop-in says to locate the field from the layout `_saved_frame` reads
+- A partial restore is proved by patching `restoreGeometry` to resize and raise | only a corrupt blob | a blob rejected by the range check never reaches QRect, so it does not prove the except block puts the default size back

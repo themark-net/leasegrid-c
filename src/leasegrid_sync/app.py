@@ -1152,26 +1152,43 @@ class DisconnectServerDialog:
 WINDOW_GEOMETRY_FILE = "window-geometry.json"
 DEFAULT_WINDOW_SIZE = (920, 620)
 _GEOM_MAGIC = 0x1D9D0CB
+# QWidget.saveGeometry writes a big-endian QDataStream. The header is magic
+# (uint32), major (uint16), minor (uint16). The frame rect (left, top, right,
+# bottom as int32) starts immediately after that header.
+_GEOM_HEADER = struct.Struct(">IHH")
+_GEOM_RECT = struct.Struct(">iiii")
+# A coordinate past this, or a span past Qt's widget maximum, is not a window.
+# 2^31 does not fit in the signed int QRect takes.
+_COORD_LIMIT = 1 << 30
+_QWIDGETSIZE_MAX = 16777215
 # The part of the title bar a person drags. The whole frame can be wider than
 # the desktop and still be a normal on-screen window.
 _TITLE_GRAB = (80, 28)
 
 
 def _saved_frame(blob: bytes) -> Optional[tuple]:
-    """Return the frame saved by QWidget.saveGeometry, or None if it is not that blob.
+    """Return the frame saved by QWidget.saveGeometry, or None if it is not usable.
 
     Qt's restoreGeometry pulls an off-screen window back onto the screen and
     keeps the old size, so the frame has to be read before restore.
+
+    Coordinates must sit within ±2^30. Width and height must sit in
+    1..QWIDGETSIZE_MAX and also at most 2^30. Anything else returns None so
+    QRect is never handed a size that overflows.
     """
-    if len(blob) < 24:
+    if len(blob) < _GEOM_HEADER.size + _GEOM_RECT.size:
         return None
-    magic, major, _minor = struct.unpack_from(">IHH", blob, 0)
+    magic, major, _minor = _GEOM_HEADER.unpack_from(blob, 0)
     if magic != _GEOM_MAGIC or major < 1:
         return None
-    left, top, right, bottom = struct.unpack_from(">iiii", blob, 8)
+    left, top, right, bottom = _GEOM_RECT.unpack_from(blob, _GEOM_HEADER.size)
+    if any(value < -_COORD_LIMIT or value > _COORD_LIMIT for value in (left, top, right, bottom)):
+        return None
     width = right - left + 1
     height = bottom - top + 1
-    if width <= 0 or height <= 0:
+    if not (1 <= width <= _QWIDGETSIZE_MAX and width <= _COORD_LIMIT):
+        return None
+    if not (1 <= height <= _QWIDGETSIZE_MAX and height <= _COORD_LIMIT):
         return None
     return (left, top, width, height)
 
@@ -2315,30 +2332,40 @@ class MainWindow:
             self.win.move(self.win.x() + dx, self.win.y() + dy)
 
     def _restore_window_geometry(self) -> None:
-        """Apply a saved frame when it is still on a screen. Otherwise keep the default."""
+        """Apply a saved frame when it is still on a screen. Otherwise keep the default.
+
+        A missing file is a first launch and is not logged. A saved value that
+        cannot be decoded, is out of range, or raises while it is applied
+        (including QRect overflow) is logged once and the window is put back
+        on the default size.
+        """
         path = self.home / WINDOW_GEOMETRY_FILE
+        if not path.is_file():
+            return
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             blob = base64.b64decode(raw["geometry"], validate=True)
-        except Exception:
-            # Includes RecursionError from a deeply nested file, and KeyError
-            # when "geometry" is missing. Any parse failure keeps the default.
-            return
-        saved = _saved_frame(blob)
-        if saved is None:
-            return
-        rect = self.QtCore.QRect(*saved)
-        if not self._rect_on_a_screen(rect):
-            return
-        if not self.win.restoreGeometry(self.QtCore.QByteArray(blob)):
+            saved = _saved_frame(blob)
+            if saved is None:
+                return
+            rect = self.QtCore.QRect(*saved)
+            if not self._rect_on_a_screen(rect):
+                return
+            if not self.win.restoreGeometry(self.QtCore.QByteArray(blob)):
+                self.win.resize(*DEFAULT_WINDOW_SIZE)
+                self.win.move(0, 0)
+                return
+            # show() on the offscreen plugin nudges a restored frame. Put the
+            # saved top-left back on the first show only when that title bar is
+            # actually on a screen. An off-screen top-left would undo Qt's clamp.
+            self._pending_geometry_pos = (rect.x(), rect.y())
+            self._pending_title_on_screen = self._title_bar_on_a_screen(rect)
+        except Exception as exc:
+            log_exception(self.home, "window geometry", exc)
+            self._pending_geometry_pos = None
+            self._pending_title_on_screen = None
             self.win.resize(*DEFAULT_WINDOW_SIZE)
             self.win.move(0, 0)
-            return
-        # show() on the offscreen plugin nudges a restored frame. Put the
-        # saved top-left back on the first show only when that title bar is
-        # actually on a screen. An off-screen top-left would undo Qt's clamp.
-        self._pending_geometry_pos = (rect.x(), rect.y())
-        self._pending_title_on_screen = self._title_bar_on_a_screen(rect)
 
     def _save_window_geometry(self) -> None:
         try:

@@ -35,3 +35,32 @@ state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 4
 Failing tests: none. Matches the Tester suite count at `3455c8f`.
 
 ## Items
+
+### 1. B3 corrupted geometry
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 489 passed, 5 xfailed, 4 warnings in 43.60s, ci-local PASS | files: app.py, test_sync_window_geometry.py, HANDOFF sentence, decisions | err: none
+
+A sign-flipped real frame and a `(0, 0, 2^31-1, 2^31-1)` frame open at the default size. The same flipped file launches the real app (`WINDOW_SHOWN`, exit 0). A `restoreGeometry` that resizes and then raises is logged once and the default size is put back.
+
+RED: drop range check → `test_saved_frame_rejects_a_sign_flipped_left` at tests/test_sync_window_geometry.py:244 (also `test_max_int_frame_opens_at_the_default_size` at :261). The window and real-launch tests stayed green: the outer try still caught `OverflowError`.
+RED: drop outer try → `test_partial_geometry_restore_keeps_the_default_size` at tests/test_sync_window_geometry.py:278 (also `test_corrupt_geometry_file_uses_the_default_size` and `test_deeply_nested_geometry_file_uses_the_default_size`). The `_saved_frame` tests stayed green: the range check still returned None.
+
+### 2. B4 bug report
+
+Pending.
+
+### 3. Partial title bar
+
+Pending.
+
+### 4. Saved width
+
+Pending.
+
+### 5. Geometry tmp
+
+Pending.
+
+### 6. Scrub precision
+
+Pending.

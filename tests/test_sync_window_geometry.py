@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import MainWindow  # noqa: E402
+from leasegrid_sync.app import (  # noqa: E402
+    DEFAULT_WINDOW_SIZE,
+    _GEOM_HEADER,
+    _GEOM_RECT,
+    MainWindow,
+    _saved_frame,
+)
 
 
 def _hide(window: MainWindow) -> None:
@@ -175,3 +187,201 @@ def test_corrupt_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
         assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
     finally:
         _hide(window)
+
+
+def _read_geometry_blob(home: Path) -> bytes:
+    raw = json.loads((home / "window-geometry.json").read_text(encoding="utf-8"))
+    return base64.b64decode(raw["geometry"])
+
+
+def _write_geometry_blob(home: Path, blob: bytes) -> None:
+    text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")}) + "\n"
+    (home / "window-geometry.json").write_text(text, encoding="utf-8")
+
+
+def _save_live_geometry(home: Path) -> bytes:
+    """A real MainWindow writes the blob. The next launch is what we corrupt."""
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        window.win.resize(1000, 700)
+        window.win.move(20, 16)
+        window.QtWidgets.QApplication.processEvents()
+        window._save_window_geometry()
+    finally:
+        _hide(window)
+    return _read_geometry_blob(home)
+
+
+def _flip_frame_left_sign(blob: bytes) -> bytes:
+    """Flip the sign bit of frame-left in the layout `_saved_frame` reads."""
+    data = bytearray(blob)
+    at = _GEOM_HEADER.size
+    left, top, right, bottom = _GEOM_RECT.unpack_from(data, at)
+    flipped = (left & 0xFFFFFFFF) ^ 0x80000000
+    if flipped >= 0x80000000:
+        flipped -= 0x100000000
+    _GEOM_RECT.pack_into(data, at, flipped, top, right, bottom)
+    return bytes(data)
+
+
+def _with_frame(blob: bytes, left: int, top: int, right: int, bottom: int) -> bytes:
+    data = bytearray(blob)
+    _GEOM_RECT.pack_into(data, _GEOM_HEADER.size, left, top, right, bottom)
+    return bytes(data)
+
+
+def _assert_default_size(window: MainWindow) -> None:
+    window.win.show()
+    window.QtWidgets.QApplication.processEvents()
+    assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
+
+
+def test_saved_frame_rejects_a_sign_flipped_left(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    blob = _flip_frame_left_sign(_save_live_geometry(home))
+    assert _saved_frame(blob) is None
+
+
+def test_sign_flipped_frame_opens_at_the_default_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    blob = _flip_frame_left_sign(_save_live_geometry(home))
+    _write_geometry_blob(home, blob)
+    window = MainWindow(home=home, autoload=False)
+    try:
+        _assert_default_size(window)
+    finally:
+        _hide(window)
+
+
+def test_max_int_frame_opens_at_the_default_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    blob = _with_frame(_save_live_geometry(home), 0, 0, 2**31 - 1, 2**31 - 1)
+    assert _saved_frame(blob) is None
+    _write_geometry_blob(home, blob)
+    window = MainWindow(home=home, autoload=False)
+    try:
+        _assert_default_size(window)
+    finally:
+        _hide(window)
+
+
+def test_partial_geometry_restore_keeps_the_default_size(tmp_path: Path, monkeypatch) -> None:
+    """A restore that resizes and then raises still leaves the default size."""
+    home = tmp_path / "home"
+    _save_live_geometry(home)
+
+    def boom(self, _blob):
+        self.resize(400, 300)
+        self.move(30, 30)
+        raise RuntimeError("geometry apply stopped")
+
+    monkeypatch.setattr("PyQt5.QtWidgets.QMainWindow.restoreGeometry", boom)
+    window = MainWindow(home=home, autoload=False)
+    try:
+        _assert_default_size(window)
+        assert window.win.width() != 400
+        log = (home / "logs" / "sync-ui.log").read_text(encoding="utf-8")
+        assert log.count("window geometry") == 1
+        assert "RuntimeError" in log
+    finally:
+        _hide(window)
+
+
+_GEOM_DRIVER = r'''
+import os
+import sys
+
+from PyQt5 import QtCore
+
+import leasegrid_sync.app as appmod
+
+_orig_show = appmod.MainWindow.show
+
+
+def show(self):
+    _orig_show(self)
+    sys.stdout.write("WINDOW_SHOWN %d %d\n" % (self.win.width(), self.win.height()))
+    sys.stdout.flush()
+    sentinel = os.environ.get("LEASEGRID_TEST_CLOSE_FILE", "")
+    if not sentinel:
+        return
+
+    def poll():
+        if os.path.exists(sentinel):
+            self.win.close()
+        else:
+            QtCore.QTimer.singleShot(50, poll)
+
+    QtCore.QTimer.singleShot(50, poll)
+
+
+appmod.MainWindow.show = show
+
+from leasegrid_sync.cli import main
+
+rc = main(sys.argv[1:])
+sys.stdout.write("EXIT:%s\n" % rc)
+sys.stdout.flush()
+raise SystemExit(0 if rc is None else int(rc))
+'''
+
+
+def test_sign_flipped_geometry_launches_the_real_app(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    nodedir = tmp_path / "no-tahoe"
+    blob = _flip_frame_left_sign(_save_live_geometry(home))
+    _write_geometry_blob(home, blob)
+    driver = tmp_path / "driver.py"
+    driver.write_text(_GEOM_DRIVER, encoding="utf-8")
+    close_file = tmp_path / "close-now"
+    env = os.environ.copy()
+    env["LEASEGRID_SYNC_HOME"] = str(home)
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["LEASEGRID_TEST_CLOSE_FILE"] = str(close_file)
+    proc = subprocess.Popen(
+        [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    out_lines: list[str] = []
+    err_lines: list[str] = []
+
+    def read_out() -> None:
+        stdout = proc.stdout
+        if stdout is None:
+            return
+        for line in stdout:
+            out_lines.append(line)
+
+    def read_err() -> None:
+        stderr = proc.stderr
+        if stderr is None:
+            return
+        for line in stderr:
+            err_lines.append(line)
+
+    threading.Thread(target=read_out, daemon=True).start()
+    threading.Thread(target=read_err, daemon=True).start()
+    deadline = time.time() + 30
+    try:
+        while time.time() < deadline and not any("WINDOW_SHOWN" in line for line in out_lines):
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        shown = "".join(out_lines)
+        errors = "".join(err_lines)
+        assert "WINDOW_SHOWN" in shown, "%s %s" % (shown, errors)
+        assert "OverflowError" not in errors
+        assert "Traceback" not in errors
+        width = int(shown.split("WINDOW_SHOWN", 1)[1].split()[0])
+        assert width == DEFAULT_WINDOW_SIZE[0]
+        close_file.write_text("quit", encoding="utf-8")
+        assert proc.wait(timeout=20) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)

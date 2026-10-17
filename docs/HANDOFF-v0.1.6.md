@@ -52,6 +52,7 @@ ci-local from a linked worktree no longer retargets another venv. Rebased onto v
 Tester failed PR #73 at `bd7b09e`. Reviewer passed. Items 1–9 are DONE. None skipped.
 Final ci-local: 484 passed, 5 xfailed. GHA at `9230bd5`: ubuntu/macOS test green; windows-2022 475 passed, 9 skipped, 5 xfailed.
 Windows CI fix (`9230bd5`): the two item-2 tests asserted width 700/500, but the layout's minimum width on windows-2022 is 863 px, so Qt clamped the size before saving. They now compare with the width actually saved. No skip; the on-screen rule applies on Windows. The unconditional-`move()` mutation is still RED.
+Corrected geometry claim: a saved frame that cannot be decoded, is out of range, or raises while it is applied (including a one-bit sign flip of frame-left) leaves the default size. The window still opens. "Any parse failure keeps the default" was false for that flip: QRect raised OverflowError and the process never started.
 Head is the commit that last edits this file (`v0.1.6 fixes: handoff counts after Windows CI fix`).
 
 | # | Status | Commit | Tests | RED without fix |

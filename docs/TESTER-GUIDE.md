@@ -126,6 +126,8 @@ Include:
 |----|------|
 | Linux | `~/.local/share/leasegrid-sync/logs/` (or `$XDG_DATA_HOME/leasegrid-sync/logs/`) |
 | Mac | `~/Library/Application Support/leasegrid-sync/logs/` |
-| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` |
+| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` (or `%APPDATA%\leasegrid-sync\logs\` if `%LOCALAPPDATA%` is not set) |
+
+If you set `LEASEGRID_SYNC_HOME`, the logs are in its `logs` folder instead, on every OS.
 
 Leave out invite codes, join links, anything that starts with `pb://`, recovery keys, and `credit-wallet.json`. Crop screenshots that show those.

@@ -9,7 +9,7 @@ Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject
 |----|----------|-----------|
 | Linux x86_64 (glibc 2.35+) | [`Leasegrid_Sync-0.1.2-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-x86_64.AppImage) | `chmod +x` it and run it (needs FUSE). |
 | macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.2-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.2-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64-setup.exe) or [`.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64.zip) | SmartScreen: **More info → Run anyway**. |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.2-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64-setup.exe) or [`.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64.zip) | SmartScreen: **More info → Run anyway**. From the zip, start `leasegrid-sync.exe`; `leasegrid-sync-cli.exe` is the console program, not the window. |
 
 **Checksums:** compare your download with the matching `SHA256SUMS-*` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.2).
 
@@ -20,7 +20,7 @@ Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject
 2. Double-click **Leasegrid Sync** in Applications. Gatekeeper blocks it (the app is ad-hoc signed, not notarized).
 3. Open **System Settings → Privacy & Security** and click **Open Anyway**. It shows for about an hour after the block. Enter your login password.
 
-On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead.
+On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead. Control-click no longer bypasses Gatekeeper on macOS 15.
 </details>
 
 Tester page (join, add a folder, report a bug): [`docs/TESTERS.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTERS.md) · full guide: [`docs/TESTER-GUIDE.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md).

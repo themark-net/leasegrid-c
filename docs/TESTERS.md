@@ -10,7 +10,7 @@ Current build: [v0.1.2](https://github.com/themark-net/leasegrid-c/releases/tag/
 | Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.2-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
 | macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.2-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
 | Windows 10/11 x64 | [`Leasegrid_Sync-0.1.2-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
-| Windows x64, no setup | [`Leasegrid_Sync-0.1.2-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64.zip) | Unzip and start `leasegrid-sync.exe`. |
+| Windows x64, no setup | [`Leasegrid_Sync-0.1.2-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.2/Leasegrid_Sync-0.1.2-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
 
 **Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.2) before you run it.
 
@@ -50,6 +50,8 @@ Open an issue: <https://github.com/themark-net/leasegrid-c/issues/new>. Include 
 |----|------|
 | Linux | `~/.local/share/leasegrid-sync/logs/` (or `$XDG_DATA_HOME/leasegrid-sync/logs/`) |
 | Mac | `~/Library/Application Support/leasegrid-sync/logs/` |
-| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` |
+| Windows | `%LOCALAPPDATA%\leasegrid-sync\logs\` (or `%APPDATA%\leasegrid-sync\logs\` if `%LOCALAPPDATA%` is not set) |
+
+If you set `LEASEGRID_SYNC_HOME`, the logs are in its `logs` folder instead, on every OS.
 
 Leave out invite codes, join links, anything that starts with `pb://`, recovery keys, and `credit-wallet.json`. Crop screenshots that show those.

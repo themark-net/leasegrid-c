@@ -20,7 +20,7 @@ The installers are unsigned, so your OS will warn before the first launch.
 | Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-X.Y.Z-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/vX.Y.Z/Leasegrid_Sync-X.Y.Z-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2` on Ubuntu). |
 | macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-X.Y.Z-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/vX.Y.Z/Leasegrid_Sync-X.Y.Z-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
 | Windows 10/11 x64 | [`Leasegrid_Sync-X.Y.Z-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/vX.Y.Z/Leasegrid_Sync-X.Y.Z-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
-| Windows x64, no setup | [`Leasegrid_Sync-X.Y.Z-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/vX.Y.Z/Leasegrid_Sync-X.Y.Z-win64.zip) | Unzip and start `leasegrid-sync.exe`. |
+| Windows x64, no setup | [`Leasegrid_Sync-X.Y.Z-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/vX.Y.Z/Leasegrid_Sync-X.Y.Z-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
 
 **Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [this release](https://github.com/themark-net/leasegrid-c/releases/tag/vX.Y.Z) before you run it.
 

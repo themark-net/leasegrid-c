@@ -183,3 +183,39 @@ def test_legit_lines_survive_the_new_rules():
     assert "REDACTED" not in out, out
     for line in LEGIT_LINES:
         assert line in out, line
+
+
+# --- v0.1.5: glued hex + base32 (Tester, PR #71 review) ---------------------
+# In v0.1.4 the hex rule ran first and could eat the hex-alphabet prefix of a
+# base32 secret glued to a 32+ hex run, leaving a sub-20 base32 remnant that
+# the base32 rule no longer matched (2/2000 leaked at 26 chars, 107/2000 at 22;
+# 0 on v0.1.3). Seeded, so a failure is reproducible.
+_B32 = "abcdefghijklmnopqrstuvwxyz234567"
+_GLUE_SEED = 20261017
+_GLUE_N = 2000
+_GLUE_TS = "2026-10-15T21:40:01.000Z [-] Error: node lock held for "
+
+
+def _glued_cases(length: int, seed: int) -> list[tuple[str, str, str]]:
+    import random
+
+    rng = random.Random(seed + length)
+    cases = []
+    for _ in range(_GLUE_N):
+        hexrun = "".join(rng.choice("0123456789abcdef") for _ in range(32))
+        secret = "".join(rng.choice(_B32) for _ in range(length))
+        cases.append((hexrun, secret, f"{_GLUE_TS}{hexrun}{secret} ok"))
+    return cases
+
+
+@pytest.mark.parametrize("length", [20, 22, 26, 32])
+def test_glued_hex_and_base32_secret_never_leaks(length: int) -> None:
+    cases = _glued_cases(length, _GLUE_SEED)
+    out_lines = _filter_stdout("\n".join(line for _, _, line in cases) + "\n").splitlines()
+    assert len(out_lines) == len(cases)
+    leaked = 0
+    for (hexrun, secret, _), out in zip(cases, out_lines):
+        body = out[len(_GLUE_TS) :]
+        if any(w in body for w in _windows8(secret)) or any(w in body for w in _windows8(hexrun)):
+            leaked += 1
+    assert leaked == 0, f"{leaked}/{len(cases)} glued lines leaked an 8-char window"

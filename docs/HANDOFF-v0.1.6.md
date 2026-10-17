@@ -97,7 +97,9 @@ Last behavior commit: `1e4cf0b`. Head is the commit that last edits this file (`
 ## Fix round 3 after Tester FAIL @ 8a70dd3 (B5)
 
 Tester failed PR #73 at `8a70dd3` on B5. Reviewer had passed. A saved window is a version-2 record, and `restoreGeometry` is not called. Items 1–3 are DONE. None skipped.
-Final ci-local: 516 passed, 5 xfailed, 4 warnings in 43.12s.
+Final ci-local: 517 passed, 5 xfailed (516 + the fitter-alone test added after the Build run).
+Independent check by Grok Bot after the run: own fuzz, 1424 cases (every bit and 0x00/0xFF byte of a real old blob, every bit of a record, per-field extremes and type swaps, NaN/Infinity, maximized, 16777215 both sides, 100k nesting), one subprocess per 60 cases. Offscreen: 1424/1424 ok, 0 crashes, 0 exceptions, 0 title-bar misses, largest 924x951 (= the no-file default). xcb (xvfb-run, 1920x1080): 1424/1424 ok, largest 920x826. Bit 470 and 0xFF at byte 54 open at the default on both.
+Mutations re-run by Grok Bot, each RED: each of x / y / width / height range, maximized-bool, bool-as-int, float, guard off (with the fitter keeping the size), old blob fed back to `restoreGeometry` (pytest dies), fitter off (with the guard off), scrub wordlist off, scrub dot boundary off.
 Fuzz, 1534 cases (old-blob bit flips plus record extremes), in subprocess chunks: offscreen 0 crashes, 0 title-bar misses, 0 larger than the no-file control (920×947), 0 sides ≥ 10000. xcb under `xvfb-run -a` at 1920×1080: 0 crashes, 0 title-bar misses, 0 larger than the screen union, 0 sides ≥ 10000.
 Last behavior commit: `747c824`. Head is the commit that last edits this file (`v0.1.6 fix3: handoff`).
 

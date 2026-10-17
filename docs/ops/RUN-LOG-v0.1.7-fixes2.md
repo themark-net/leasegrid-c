@@ -37,3 +37,9 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 561 passed, 5 xfailed, 4 warnings in 120.91s | files: src/leasegrid_sync/backend.py, tests/test_sync_process_group.py | err: none
   RED: drop the poll() liveness returns before the group signal → test_reaped_leader_does_not_signal_a_reused_pid (victim returncode -15).
+
+## 4 rotation wording
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 562 passed, 5 xfailed, 4 warnings in 118.49s | files: docs/release-notes/v0.1.7.md, README.md, docs/TESTERS.md, docs/TESTER-GUIDE.md, tests/test_release_notes.py | err: none
+  Size-based rotation while a daemon is running is not in this fix. It is a v0.1.8 candidate.
+  RED: restore "the same way sync-ui.log does" → test_daemon_logs_rotate_when_the_daemon_starts (AssertionError: notes).

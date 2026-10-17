@@ -30,7 +30,7 @@ Then: open **Join a friendnet**, paste the short code your friend copied with **
 
 - A second launch with an invite fills the open Join page. You still tick the box and click **Join friendnet**. It does not join by itself.
 - Settings, the bug report, and folder banners show `~/…` instead of your account name.
-- Stopping Sync also stops Tahoe and Magic Folder. `tahoe.log` and `magic-folder.log` rotate like `sync-ui.log`.
+- Stopping Sync also stops Tahoe and Magic Folder. `tahoe.log` and `magic-folder.log` rotate when the daemon starts.
 - Reliability and tests: a half-written lock no longer blocks the next launch for about 30 seconds, and the window stays put across maximize cycles.
 - From v0.1.5, correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
 - Details: [v0.1.7 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.7.md) (and [v0.1.6](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.6.md) before it).

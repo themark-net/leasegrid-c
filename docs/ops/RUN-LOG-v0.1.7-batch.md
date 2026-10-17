@@ -59,6 +59,7 @@ Item 8 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.13s.
 Item 9 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.35s.
 Item 10 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 77.46s.
 Item 11 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 77.13s. Docs only.
+Item 12 ci-local: PASS, 542 passed, 5 xfailed, 4 warnings in 76.71s. Docs only. Design doc is 54 lines.
 Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_restores_the_normal_size and test_three_maximize_cycles_keep_the_normal_position (2 passed in 0.17s). The normal position did not drift.
 
 ## Items
@@ -75,5 +76,5 @@ Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_rest
 | 8 | DONE | caae73d | test_scrub_bug_report_code_boundaries | RED: any() → test_scrub_bug_report_code_boundaries[7-guitarist-side-True] at tests/test_sync_settings_actions.py:143 |
 | 9 | DONE | 0aa58b3 | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED: change ALREADY_RUNNING → test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:39 |
 | 10 | DONE | 9e81896 | test_long_snake_case_name_survives_on_an_allowlisted_line, tests/test_tahoe_log_filter.py leak tests | RED: old `[A-Za-z0-9_-]{40,}` rule → test_long_snake_case_name_survives_on_an_allowlisted_line at tests/test_tahoe_log_filter.py:206 |
-| 11 | DONE | (this commit) | docs only | docs only; no behavior mutation |
-| 12 | pending | | | |
+| 11 | DONE | fcd3d87 | docs only | docs only; no behavior mutation |
+| 12 | DONE | (this commit) | docs/design/60-DESKTOP-UI-V016.md | docs only; no behavior mutation |

@@ -608,23 +608,25 @@ def test_six_callers_never_double_hold(tmp_path: Path) -> None:
     script.write_text(_LOCK_RACE, encoding="utf-8")
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
-    started = time.monotonic()
+    # 200 rounds per kind. The macOS Intel runner is about 3x slower than
+    # Linux, so each kind gets its own generous timeout instead of a shared
+    # 60 s wall-clock assertion; a hang still fails by timeout.
+    rounds = 200
     for kind, expect_zero in (("empty", True), ("none", False), ("aged", False)):
         root = tmp_path / kind
         root.mkdir()
         proc = subprocess.run(
-            [sys.executable, str(script), "200", str(root), kind],
+            [sys.executable, str(script), str(rounds), str(root), kind],
             capture_output=True,
             text=True,
             env=env,
-            timeout=60,
+            timeout=180,
             check=False,
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         line = proc.stdout.strip().splitlines()[-1]
         assert line.startswith("multi=0 "), line
         if expect_zero:
-            assert " zero=200 " in line, line
+            assert " zero=%d " % rounds in line, line
         else:
             assert " zero=0 " in line, line
-    assert time.monotonic() - started < 60

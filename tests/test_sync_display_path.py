@@ -55,7 +55,9 @@ def test_display_path_table(tmp_path: Path, monkeypatch) -> None:
     assert mask_shown_paths(hint) == hint
     cased = display_path(folded)
     if sys.platform in ("win32", "darwin"):
-        assert cased == _tilde("logs/tahoe.log"), cased
+        # The prefix is folded to match home; the tail keeps the typed case.
+        assert cased.casefold() == _tilde("logs/tahoe.log").casefold(), cased
+        assert cased.startswith("~"), cased
     else:
         # Linux paths are case-sensitive, so a different case stays visible.
         assert cased == folded

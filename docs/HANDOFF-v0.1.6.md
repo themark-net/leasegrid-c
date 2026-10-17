@@ -9,7 +9,7 @@ Rebase conflicts: TESTER-GUIDE bug-report list (kept both), version/asset links 
 
 Baseline: 406 passed, 1 xfailed, 4 warnings, 39.71s. Failing tests: none.
 Final ci-local before rebase: PASS, 433 passed, 1 xfailed.
-After rebase onto v0.1.5: ci-local PASS, 468 passed, 5 xfailed (all v0.1.5 log-filter strict xfails).
+After rebase onto v0.1.5: ci-local at bd7b09e was 469 passed, 5 xfailed (this line previously said 468). Fix round: 484 passed, 5 xfailed.
 
 ## Items
 

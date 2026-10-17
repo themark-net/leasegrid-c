@@ -112,13 +112,13 @@ If you see HTTP 500 on Add folder, and the row never says **Up to date**, say th
 
 ## If something goes wrong
 
-- A second launch on the same computer says **Leasegrid Sync is already running. Use the open window.** and does not start another copy.
-- Closing the window while an invite is open asks **An invite is still open. Quit and cancel it?** **Keep open** (the default) leaves the invite running.
+- A second launch while Sync is open says **Leasegrid Sync is already running. Use the open window.** and does not start another copy. After you quit, you can start it again, including when this Sync home was copied from another computer.
+- Closing the window, or choosing **Quit** from the tray menu, while an invite is open asks **An invite is still open. Quit and cancel it?** **Keep open** (the default) leaves the invite running.
 - **Open logs folder** (More → Settings) opens the logs folder.
 - **Copy bug-report details** (More → Settings) copies a short report you can paste. It leaves out invite codes and join links.
 - Linux with no FUSE: use the [fallback in the Linux section](#linux).
 - Windows 11 can block the app under Smart App Control: see [Windows (SmartScreen)](#windows-smartscreen).
-- Opening a folder that is gone shows **That folder is not on this computer any more:** and the path, with a Next line.
+- Opening a folder that is gone shows **That folder is not on this computer any more:** and the path, with a Next line. A path that is a file says **That path is not a folder:**.
 
 ## Report a bug
 

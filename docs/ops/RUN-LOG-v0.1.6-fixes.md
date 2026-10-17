@@ -72,3 +72,6 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
 8. bug-report scrub | DONE | ci-local: 484 passed, 5 xfailed, 4 warnings in 43.16s | files: app.py, tests/test_sync_settings_actions.py, AUTONOMOUS-DECISIONS, this log | err: none
    Tests: test_scrub_bug_report_removes_each_secret_shape, test_bug_report_omits_secrets_planted_in_logs_and_env
    RED without fix: test_scrub_bug_report_removes_each_secret_shape at tests/test_sync_settings_actions.py:93 and test_bug_report_omits_secrets_planted_in_logs_and_env at tests/test_sync_settings_actions.py:126 (scrub returns the text unchanged)
+
+9. docs | DONE | ci-local: 484 passed, 5 xfailed, 4 warnings in 43.38s | files: HANDOFF-v0.1.6.md, TESTER-GUIDE.md, AUTONOMOUS-DECISIONS, this log | err: none
+   No new behavior test. test_trouble_section_names_shipped_recovery_in_at_most_eight_lines still passes with the updated bullets. The 468 count was historical and wrong; bd7b09e was 469, and this round is 484.

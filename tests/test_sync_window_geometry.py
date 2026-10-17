@@ -194,6 +194,7 @@ def test_failed_geometry_replace_keeps_the_previous_file(tmp_path: Path, monkeyp
         window.win.resize(700, 500)
         window._save_window_geometry()
         assert path.read_bytes() == good
+        assert not (home / "window-geometry.json.tmp").exists()
     finally:
         _hide(window)
 

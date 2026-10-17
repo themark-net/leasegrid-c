@@ -77,7 +77,11 @@ RED: requesting 920 in the above-screen test → `test_title_bar_above_the_scree
 
 ### 5. Geometry tmp
 
-Pending.
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 490 passed, 5 xfailed, 4 warnings in 43.11s, ci-local PASS | files: app.py, test_sync_window_geometry.py, decisions | err: none
+
+A failed `os.replace` still keeps the previous `window-geometry.json`, and `window-geometry.json.tmp` is removed. An unlink error is ignored.
+
+RED: drop the `tmp.unlink()` → `test_failed_geometry_replace_keeps_the_previous_file` at tests/test_sync_window_geometry.py:197
 
 ### 6. Scrub precision
 

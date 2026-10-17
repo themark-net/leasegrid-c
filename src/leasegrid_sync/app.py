@@ -2378,7 +2378,14 @@ class MainWindow:
             path = self.home / WINDOW_GEOMETRY_FILE
             tmp = path.with_suffix(path.suffix + ".tmp")
             tmp.write_text(text, encoding="utf-8")
-            os.replace(tmp, path)
+            try:
+                os.replace(tmp, path)
+            except OSError:
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+                return
         except OSError:
             return
 

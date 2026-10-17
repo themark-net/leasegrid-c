@@ -12,4 +12,4 @@ Blocked: none.
 
 Next: v0.1.8 candidates in `docs/HANDOFF-v0.1.7.md`. Do not open or merge a PR from this batch.
 
-Decisions: `docs/ops/AUTONOMOUS-DECISIONS-v0.1.7.md` (16 lines).
+Decisions: `docs/ops/AUTONOMOUS-DECISIONS-v0.1.7.md` (22 lines).

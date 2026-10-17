@@ -32,3 +32,4 @@ One line per choice: `choice | alternatives | why`
 - The three title-bar tests request a width of 1000 | 1100, or the screen width | 1000 is already kept by the round-trip test on an 800px offscreen desktop, and it is above the 920 default and the 863 px windows minimum
 - Unlink `window-geometry.json.tmp` only when `os.replace` fails, and ignore an unlink error | also unlink after a failed `write_text` | the drop-in names the failed replace, and the cleanup must not raise
 - An invite code is exactly two letter-words, and a hyphen does not end it | two or more words, as the sentence "2+" can be read | `500-from-server-side` is three letter-words and must stay; a two-word prefix must not be cut out of it
+- Fix round 3 stays sequential in this worktree | one sub-agent per item, or another worktree | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit

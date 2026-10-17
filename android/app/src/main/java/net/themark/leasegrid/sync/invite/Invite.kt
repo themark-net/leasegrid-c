@@ -16,7 +16,7 @@ object Invite {
     const val WORMHOLE_MSG =
         "could not join this friendnet. This phone does not take a short code."
     const val WORMHOLE_NEXT =
-        "on desktop Sync, open the invite card, click Show full join link (advanced), and paste that link here; Retry."
+        "on desktop Sync, click Share invite, tick Show full join link (advanced), and paste that link here; Retry."
 
     fun parse(raw: String): ParsedInvite {
         val text = raw.trim()

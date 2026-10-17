@@ -161,6 +161,11 @@ class InviteTest {
             error("expected fail")
         } catch (exc: InviteFail) {
             assertTrue(exc.next.lowercase().contains("join link"))
+            // Real desktop labels (app.py): the Share invite button and the
+            // Show full join link (advanced) checkbox. There is no "invite card".
+            assertTrue(exc.next, exc.next.contains("click Share invite"))
+            assertTrue(exc.next, exc.next.contains("tick Show full join link (advanced)"))
+            assertFalse(exc.next, exc.next.lowercase().contains("invite card"))
             assertFalse(exc.next.lowercase().contains("pb://"))
             assertFalse(exc.next.lowercase().contains("furl"))
         }

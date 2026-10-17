@@ -252,32 +252,37 @@ def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
     SIGKILL, so a grandchild that ignores SIGTERM does not survive. A process
     we did not put in a new group is signalled alone, and this process's own
     group is never signalled. On Windows the group path is CTRL_BREAK_EVENT
-    and then ``taskkill /T /F``. Safe if the process has already exited.
-    Only ``TimeoutExpired`` and ``OSError`` are caught.
+    and then ``taskkill /T /F``. Once the leader has been reaped, its process
+    group id may belong to someone else, so this function does not signal it.
+    A zombie leader is still unreaped and still pins the group, so the group
+    is signalled only while ``poll`` is None. Only ``TimeoutExpired`` and
+    ``OSError`` are caught.
     """
+    if proc.poll() is not None:
+        return
     pgid = _foreign_pgid(proc)
     windows_tree = sys.platform == "win32" and _owns_process_group(proc)
-    if proc.poll() is not None:
-        if pgid is not None:
-            _signal_group(pgid, signal.SIGKILL)
-        elif windows_tree:
-            _taskkill_tree(proc.pid)
-        return
     _close_stdin(proc)
     if pgid is not None:
+        if proc.poll() is not None:
+            return
         _signal_group(pgid, signal.SIGTERM)
         _wait_proc(proc, terminate_timeout)
-        _signal_group(pgid, signal.SIGKILL)
-        _wait_proc(proc, terminate_timeout)
+        if proc.poll() is None:
+            _signal_group(pgid, signal.SIGKILL)
+            _wait_proc(proc, terminate_timeout)
         return
     if windows_tree:
+        if proc.poll() is not None:
+            return
         try:
             proc.send_signal(signal.CTRL_BREAK_EVENT)
         except OSError:
             pass
         _wait_proc(proc, terminate_timeout)
-        _taskkill_tree(proc.pid)
-        _wait_proc(proc, terminate_timeout)
+        if proc.poll() is None:
+            _taskkill_tree(proc.pid)
+            _wait_proc(proc, terminate_timeout)
         return
     try:
         proc.terminate()

@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-from leasegrid_sync.backend import TahoeClient
+from unittest.mock import patch
+
+import pytest
+
+from leasegrid_sync.backend import TahoeClient, popen_hidden, reap_child
 
 _STUB = r"""
 import json
@@ -184,3 +189,57 @@ def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
                     os.kill(pid, signal.SIGKILL)
                 except OSError:
                     pass
+
+
+def test_reap_of_an_exited_leader_sends_no_signal(tmp_path: Path) -> None:
+    """A leader that has already been reaped must not be signalled again."""
+    log = open(os.devnull, "wb")
+    proc = popen_hidden([sys.executable, "-c", "import os; os._exit(0)"], log)
+    try:
+        proc.wait(timeout=5)
+        assert proc.poll() is not None
+        if sys.platform == "win32":
+            with patch("leasegrid_sync.backend.subprocess.run") as run:
+                reap_child(proc, 0.2)
+            for call in run.call_args_list:
+                cmd = call.args[0] if call.args else call.kwargs.get("args")
+                assert not cmd or "taskkill" not in cmd[0]
+        else:
+            with patch("leasegrid_sync.backend.os.killpg") as killpg, patch(
+                "leasegrid_sync.backend.os.kill"
+            ) as kill:
+                reap_child(proc, 0.2)
+            assert killpg.call_count == 0
+            assert kill.call_count == 0
+    finally:
+        log.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX process-group ids are reused; Windows has no killpg",
+)
+def test_reaped_leader_does_not_signal_a_reused_pid() -> None:
+    """An unrelated session that now owns the old pid must survive stop()."""
+    log = open(os.devnull, "wb")
+    proc = popen_hidden([sys.executable, "-c", "import os; os._exit(0)"], log)
+    victim = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(600)"],
+        start_new_session=True,
+    )
+    try:
+        proc.wait(timeout=5)
+        assert proc.poll() is not None
+        proc.pid = victim.pid
+        reap_child(proc, 0.5)
+        # SIGKILL is visible to poll() only after the kernel has reaped it.
+        time.sleep(0.3)
+        assert victim.poll() is None
+    finally:
+        log.close()
+        if victim.poll() is None:
+            victim.kill()
+            victim.wait(timeout=5)

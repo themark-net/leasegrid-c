@@ -32,3 +32,8 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 559 passed, 5 xfailed, 4 warnings in 120.25s | files: src/leasegrid_sync/app.py, tests/test_sync_instance_lock.py | err: none
   1000 trials × 6 workers: empty >1 holder=0 (0 holders=1000); garbage >1=0 (0 holders=1000); none >1=0 (0 holders=0); aged (mtime now-5) >1=0 (0 holders=0). No "Could not remove our own lock file".
   RED: drop setStaleLockTime and the young-age return, then removeStaleLockFile → test_fresh_empty_lock_is_refused (AssertionError: window). Removing only the Python age return stays green, because staleLockTime 2000 ms already refuses a young file.
+
+## 3 reap stale pgid
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 561 passed, 5 xfailed, 4 warnings in 120.91s | files: src/leasegrid_sync/backend.py, tests/test_sync_process_group.py | err: none
+  RED: drop the poll() liveness returns before the group signal → test_reaped_leader_does_not_signal_a_reused_pid (victim returncode -15).

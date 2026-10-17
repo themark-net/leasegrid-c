@@ -42,6 +42,8 @@ Then: open **Join a friendnet**, paste the short code your friend copied with **
 
 Step-by-step install per OS, joining, adding a folder, and what the status chip means: [`docs/TESTER-GUIDE.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md).
 
+If a launch, invite, log, or folder step goes wrong: [If something goes wrong](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md#if-something-goes-wrong).
+
 ## Report a bug
 
 Open an issue: <https://github.com/themark-net/leasegrid-c/issues/new>. Include your OS, the About line from **More → Settings**, the clicks in order with the exact FAIL line, the chip text and folder Status, and the `logs` folder (`sync-ui.log`, `tahoe.log`, `magic-folder.log`):

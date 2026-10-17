@@ -9,3 +9,4 @@ One line per choice: `choice | alternatives | why`
 - Rotate `sync-ui.log` only when size is over 1 MiB | rotate at exactly 1 MiB | the prompt says over 1 MiB
 - QLockFile with staleLockTime 0 on the window launch only | fcntl.flock, or also blocking --join | kill -9 recovery worked in a probe; headless CLI stays unblocked
 - Allow `openUrl` only when the argument is `fromLocalFile` | keep the blanket ban and skip Open logs | the WUI ban stays, and a local folder is not the Tahoe web UI
+- Trouble-section checks live in `tests/test_tester_trouble.py` | add them to `tests/test_tester_pages.py` | v0.1.5 already edits that file; a new file keeps the rebase hunk local

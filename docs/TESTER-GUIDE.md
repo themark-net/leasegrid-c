@@ -110,6 +110,16 @@ On an AppImage built for glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 
 
 If you see HTTP 500 on Add folder, and the row never says **Up to date**, say that in the bug report and mention #30. A grid that charges for storage can also refuse an upload until **More → Credit** has a balance. That banner points at Credit. #30 was an unpaid join.
 
+## If something goes wrong
+
+- A second launch on the same computer says **Leasegrid Sync is already running. Use the open window.** and does not start another copy.
+- Closing the window while an invite is open asks **An invite is still open. Quit and cancel it?** **Keep open** (the default) leaves the invite running.
+- **Open logs folder** (More → Settings) opens the logs folder.
+- **Copy bug-report details** (More → Settings) copies a short report you can paste. It leaves out invite codes and join links.
+- Linux with no FUSE: use the [fallback in the Linux section](#linux).
+- Windows 11 can block the app under Smart App Control: see [Windows (SmartScreen)](#windows-smartscreen).
+- Opening a folder that is gone shows **That folder is not on this computer any more:** and the path, with a Next line.
+
 ## Report a bug
 
 Open an issue: <https://github.com/themark-net/leasegrid-c/issues/new>

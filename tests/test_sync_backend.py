@@ -1507,6 +1507,8 @@ def test_refresh_daemon_exit_does_not_say_folder_not_added(tmp_path: Path, monke
     _assert_log_not_pasted(blob, log, seeded)
 
     bare = MagicFolderCtl(config_dir=tmp_path / "mf", nodedir=tmp_path / "tahoe", mf_bin=None)
+    # mf_bin=None falls back to PATH; CI has magic-folder installed. Force "missing".
+    bare.mf_bin = None
     with pytest.raises(SyncError) as missing:
         bare.list_folders()
     missing_blob = missing.value.banner()
@@ -1531,6 +1533,8 @@ def test_add_folder_daemon_exit_still_says_folder_not_added(tmp_path: Path, monk
     _assert_log_not_pasted(blob, log, seeded)
 
     bare = MagicFolderCtl(config_dir=tmp_path / "mf-add", nodedir=tmp_path / "tahoe", mf_bin=None)
+    # mf_bin=None falls back to PATH; CI has magic-folder installed. Force "missing".
+    bare.mf_bin = None
     with pytest.raises(SyncError) as missing:
         bare.add_folder(str(folder))
     missing_blob = missing.value.banner()

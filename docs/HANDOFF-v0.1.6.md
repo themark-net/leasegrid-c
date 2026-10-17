@@ -46,3 +46,29 @@ Settings can open the logs folder and copy a bug report with no invite or join l
 Double-click a folder to open it. The window remembers its size and place.
 Quit reaps Tahoe and Magic Folder, and sync-ui.log rotates past 1 MiB.
 ci-local from a linked worktree no longer retargets another venv. Rebased onto v0.1.5.
+
+## Fix round after Tester FAIL @ bd7b09e
+
+Tester failed PR #73 at `bd7b09e`. Reviewer passed. Items 1–9 are DONE. None skipped.
+Final ci-local on this commit: 484 passed, 5 xfailed, 4 warnings in 42.77s.
+Head is this commit (`v0.1.6 fixes: handoff`), parent `1613d0d`.
+
+| # | Status | Commit | Tests | RED without fix |
+|---|--------|--------|-------|-----------------|
+| 1 | DONE | e6f6ec4 | test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered, test_live_app_refuses_a_second_launch_and_releases_on_quit | tests/test_sync_instance_lock.py:330 (drop `_INSTANCE_LOCK = lock`); :209 (`setStaleLockTime(0)` restored) |
+| 2 | DONE | a4f02ab | test_title_bar_above_the_screen_stays_on_screen, test_title_bar_left_of_the_screen_stays_on_screen | tests/test_sync_window_geometry.py:104 and :117 (unconditional `move()` restored) |
+| 3 | DONE | 295bd98 | test_quit_stops_tahoe_and_magic_folder | tests/test_sync_stop_reap.py:89 (`shutdown()` never calls `stop()`) |
+| 4 | DONE | 162f6ff | test_rotation_leaves_a_short_live_file_and_the_old_bytes_once | tests/test_sync_ui_log.py:64 (copy instead of `os.replace`) |
+| 5 | DONE | 09bac50 | test_tray_quit_keep_open_leaves_the_invite_running, test_tray_quit_with_no_invite_quits | tests/test_sync_close_invite.py:125 (tray Quit connected straight to `quit()`) |
+| 6 | DONE | f80cbd0 | test_a_file_path_never_reaches_open_url | tests/test_sync_open_folder.py:91 (`exists()` instead of `is_dir()`) |
+| 7 | DONE | 84975c9 | test_deeply_nested_geometry_file_uses_the_default_size, test_failed_geometry_replace_keeps_the_previous_file | tests/test_sync_window_geometry.py:127 (`RecursionError` escapes) and :154 (direct write) |
+| 8 | DONE | 4fac7da | test_scrub_bug_report_removes_each_secret_shape, test_bug_report_omits_secrets_planted_in_logs_and_env | tests/test_sync_settings_actions.py:93 and :126 (scrub returns the text unchanged) |
+| 9 | DONE | 1613d0d | docs only; test_trouble_section_names_shipped_recovery_in_at_most_eight_lines still passes | no behavior mutation |
+
+### v0.1.7 follow-ups
+
+- Signal handlers (SIGTERM, SIGINT, SIGHUP call quit) and a process-group kill of daemon grandchildren.
+- Rotate `tahoe.log` and `magic-folder.log`.
+- The `--join <invite>` second-launch case.
+- A design doc for the v0.1.6 UI additions.
+- Import `ALREADY_RUNNING` and `INVITE_CLOSE_QUESTION` into the tester-guide test (10c/10d).

@@ -75,3 +75,9 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
 
 9. docs | DONE | ci-local: 484 passed, 5 xfailed, 4 warnings in 43.38s | files: HANDOFF-v0.1.6.md, TESTER-GUIDE.md, AUTONOMOUS-DECISIONS, this log | err: none
    No new behavior test. test_trouble_section_names_shipped_recovery_in_at_most_eight_lines still passes with the updated bullets. The 468 count was historical and wrong; bd7b09e was 469, and this round is 484.
+
+## Finish
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 484 passed, 5 xfailed, 4 warnings in 42.77s, ci-local PASS | files: docs/HANDOFF-v0.1.6.md, this log | err: none
+
+Items 1–9 DONE. None skipped. v0.1.7 follow-ups are listed in the handoff and were not implemented. Head is this commit (`v0.1.6 fixes: handoff`), parent `1613d0d`.

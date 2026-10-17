@@ -78,6 +78,20 @@ Tester FAIL on PR #74 at `fbeb6f1`. Items 1–10 are DONE. None skipped. CI: see
 
 Fix round 2 counts: item 1 was 557 passed; item 2, 559; item 3, 561; item 4, 562; item 5, 563; item 6, 565; item 7, 566; items 8 and 9, 568 passed, 5 xfailed. Closing ci-local: 568 passed, 5 xfailed, 4 warnings in 119.32s. CI: see PR checks.
 
+## CI fixes (platform-only; no app behavior change)
+
+| Commit | OS | Cause | Fix |
+|---|---|---|---|
+| `c595ea5` | macOS | Stub daemons' `HTTPServer.server_bind` called `socket.getfqdn()`; the reverse lookup stalled past the 10 s start timeout | Stubs bind without the lookup |
+| `c595ea5` | Windows | `os.kill(pid, SIGBREAK)` is `TerminateProcess(pid, 21)` | Tests send `CTRL_BREAK_EVENT` |
+| `c595ea5` | macOS | Empty-lock test raced a helper process | Named `_lock_writer_grace` hook; the test writes inside the wait |
+| `6a3a207`^ | Windows | `banner()` masks home paths (item 8), and pytest tmp is under the home | 5 backend tests and the bug-report test assert `display_path(...)` |
+| `6a3a207`^ | macOS, Windows | The case test expected a lower-cased tail; only the home prefix is case-folded | The test compares case-folded |
+| `6a3a207`^ | macOS Intel | 3×200 lock-race rounds took 88 s against a 60 s wall-clock assert | 180 s timeout per kind; still 200 rounds, 0 double holders |
+| `6a3a207` | Windows | Test helpers used `os.kill(pid, 0)` (that is `TerminateProcess`) and `signal.SIGKILL` (missing) | `tests/proc_util.py`: `OpenProcess`/`GetExitCodeProcess` liveness and a single-pid kill |
+
+Final ci-local: 568 passed, 5 xfailed. CI: see PR checks.
+
 ## v0.1.8 candidates
 
 - Log-filter separators other than `-` or space at 4 characters, and any separator every 5–7.

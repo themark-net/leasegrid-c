@@ -67,6 +67,26 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
         _close(window)
 
 
+@pytest.mark.parametrize(
+    ("raw", "kept"),
+    [
+        ("(7-purple-sausage)", False),
+        ("code:7-purple-sausage", False),
+        ("7-purple-sausage.", False),
+        ("7-PURPLE-SAUSAGE", False),
+        ("see 12-03-2026 today", True),
+        ("500-from-server-side", True),
+    ],
+)
+def test_scrub_bug_report_code_boundaries(raw: str, kept: bool) -> None:
+    out = scrub_bug_report(raw)
+    if kept:
+        assert out == raw
+    else:
+        assert "7-purple-sausage" not in out.lower()
+        assert "[redacted]" in out
+
+
 def test_scrub_bug_report_removes_each_secret_shape() -> None:
     planted = "\n".join(
         [

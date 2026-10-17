@@ -192,15 +192,18 @@ def about_line() -> str:
 
 
 # Whole tokens only. redact_furl keeps a head and a tail, and an 8-character
-# fragment is still a leak. A platform string such as Linux-6.8.0-101-generic
-# must not match, so the code has to be a whitespace-delimited token.
+# fragment is still a leak. A code is 1–3 digits and exactly two hyphen-joined
+# words of letters. The boundary is the start, the end, or a character that is
+# not a letter, digit, or hyphen, so "(7-purple-sausage)" matches and
+# "500-from-server-side" does not. A platform string such as
+# Linux-6.8.0-101-generic has digits in the words and does not match.
 _BUG_JOIN_RE = re.compile(
     r"leasegrid:\S+|https?://\S+#\S*|(?:(?<=\s)|^)#[^\s]*i(?:=|%3[Dd])[^\s]*",
     re.IGNORECASE,
 )
 _BUG_PB_RE = re.compile(r"pb://\S+", re.IGNORECASE)
 _BUG_CODE_RE = re.compile(
-    r"(?<!\S)[0-9]{1,3}(?:-[a-z0-9]+){2,}(?!\S)",
+    r"(?<![a-z0-9-])[0-9]{1,3}(?:-[a-z]+){2}(?![a-z0-9-])",
     re.IGNORECASE,
 )
 

@@ -31,3 +31,4 @@ One line per choice: `choice | alternatives | why`
 - `bug_report_lines()` is the pre-scrub allowlist `bug_report_text()` joins and scrubs | keep one function and inspect the clipboard only | the four raw-dump mutants are masked once scrub runs, so the test has to see the lines first
 - The three title-bar tests request a width of 1000 | 1100, or the screen width | 1000 is already kept by the round-trip test on an 800px offscreen desktop, and it is above the 920 default and the 863 px windows minimum
 - Unlink `window-geometry.json.tmp` only when `os.replace` fails, and ignore an unlink error | also unlink after a failed `write_text` | the drop-in names the failed replace, and the cleanup must not raise
+- An invite code is exactly two letter-words, and a hyphen does not end it | two or more words, as the sentence "2+" can be read | `500-from-server-side` is three letter-words and must stay; a two-word prefix must not be cut out of it

@@ -85,4 +85,9 @@ RED: drop the `tmp.unlink()` → `test_failed_geometry_replace_keeps_the_previou
 
 ### 6. Scrub precision
 
-Pending.
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 496 passed, 5 xfailed, 4 warnings in 43.55s, ci-local PASS | files: app.py, test_sync_settings_actions.py, decisions | err: none
+
+A code is 1–3 digits and exactly two letter-words, case-insensitive, bounded by the start, the end, or a character that is not a letter, digit, or hyphen. Dates and `500-from-server-side` stay. Punctuation and caps are redacted.
+
+RED: restore the old whitespace regex → `test_scrub_bug_report_code_boundaries` at tests/test_sync_settings_actions.py:86 (three punctuation rows) and :84 (`12-03-2026`, `500-from-server-side`). The caps row stayed green; the old regex already matched it.
+RED: drop `re.IGNORECASE` → the caps row at tests/test_sync_settings_actions.py:86.

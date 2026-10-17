@@ -342,6 +342,22 @@ def test_oversized_height_uses_the_default_size(tmp_path: Path) -> None:
         _hide(window)
 
 
+def test_fitter_alone_rejects_an_oversized_record(tmp_path: Path, monkeypatch) -> None:
+    """The fitter pins the oversize check by itself, with the post-apply guard off."""
+    home = tmp_path / "home"
+    _write_record(home, _valid_record(width=_QWIDGETSIZE_MAX, height=_QWIDGETSIZE_MAX))
+    monkeypatch.setattr(MainWindow, "_guard_applied_size", lambda self: None)
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert window.win.width() != _QWIDGETSIZE_MAX
+        assert window.win.height() != _QWIDGETSIZE_MAX
+        assert window.win.width() == DEFAULT_WINDOW_SIZE[0]
+    finally:
+        _hide(window)
+
+
 def test_guard_resets_a_size_the_fitter_let_through(tmp_path: Path, monkeypatch) -> None:
     """The post-apply guard is the backstop when the fitter does not shrink."""
     home = tmp_path / "home"

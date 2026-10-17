@@ -7,3 +7,4 @@ One line per choice: `choice | alternatives | why`
 - ci-local tests arm a bash DEBUG trap that refuses `pip install` | run a reverted script with no guard | a red proof must not retarget the shared venv
 - One `reap_child` for Tahoe and Magic Folder `stop` | two copied wait-after-kill blocks | the bug is the same missing `wait` after `kill`
 - Rotate `sync-ui.log` only when size is over 1 MiB | rotate at exactly 1 MiB | the prompt says over 1 MiB
+- QLockFile with staleLockTime 0 on the window launch only | fcntl.flock, or also blocking --join | kill -9 recovery worked in a probe; headless CLI stays unblocked

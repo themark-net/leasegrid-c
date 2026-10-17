@@ -1,0 +1,82 @@
+# Leasegrid — project overview
+
+The full project introduction that used to be the top-level [README](https://github.com/themark-net/leasegrid-c/blob/main/README.md): what Leasegrid is, the build status by milestone, how to run it locally, the reading order, the two rails, non-goals, and terms.
+
+Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject.
+
+This repository is an **architecture specification**, not a token, not an L1, and not a Tahoe fork. Encoding stays stock Tahoe-LAFS (CHK, zfec, capability URIs, leases, GBS/HTTPS). Payment is XMR → issuer → Privacy Pass / ristretto ZKAPs. Liveness is client repair plus stopping payment to dead nodes.
+
+The GitHub slug is still `leasegrid-c`. The letter **C** was a cell in the comparison table (A/B/C/D). The product is **Leasegrid**. It implements corner C: paid friendnet, private everything, no slash.
+
+**Buyer UI:** native **Leasegrid Sync** (Gridsync-lineage PyQt wrap + Magic Folder). Tahoe WUI is not the product. See [`docs/09-ui-track.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/09-ui-track.md) and [`docs/design/14-U0-DEVBOT-HANDOFF.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/design/14-U0-DEVBOT-HANDOFF.md).
+
+> Leasegrid does not punish lying nodes with money. It stops feeding them and moves shares. Privacy is the reason slashing is absent. If you add a public proof and a public bond, you are no longer building this.
+
+**Option B** (federated market of bonded *known* nodes) stays on the roadmap as optional **B-lite**: a federated 2-of-3 escrow or a BTC Taproot/DLC lock advertised on the node certificate. It is not required to store a byte. See [`docs/05-bonds.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/05-bonds.md).
+
+## Status
+
+Architecture spec plus a **gate 0b lab** (ristretto issuer + lease gate) under [`src/leasegrid_zkap/`](https://github.com/themark-net/leasegrid-c/tree/main/src/leasegrid_zkap/) and [`deploy/zkap-lab/`](https://github.com/themark-net/leasegrid-c/tree/main/deploy/zkap-lab/). That lab is **not** PyPI ZKAPAuthorizer (Tahoe 1.20 pin; see [`docs/adr/0001-thin-lab-zkap-authorizer.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/adr/0001-thin-lab-zkap-authorizer.md)). Gates 0a and 0b have dated PASS rows in [`docs/08-lab.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/08-lab.md). Gates 0c–0d are not PASS until that log says so. No mainnet wallet.
+
+**U1 spike:** native Leasegrid Sync under [`src/leasegrid_sync/`](https://github.com/themark-net/leasegrid-c/tree/main/src/leasegrid_sync/). Dogfood on nimo: [`docs/ops/u1-dogfood.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/u1-dogfood.md).  
+**P1:** CrashPlan shell — folders first, Offer disk pie. Dogfood: [`docs/ops/p1-dogfood.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/p1-dogfood.md).  
+**U2:** Credit place ↔ lab issuer/faucet. Dogfood: [`docs/ops/u2-dogfood.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/u2-dogfood.md).  
+**U3:** Installers for Linux AppImage on glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+), macOS (.dmg), and Windows (setup.exe / zip), bundling Sync + Tahoe + Magic Folder, no Python needed; each is exit-tested in CI against a paid grid: [`docs/ops/installers.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/installers.md).  
+**Friends and family:** install the unsigned builds, join, add a folder, and report a bug — [`docs/TESTERS.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTERS.md). What changed in v0.1.2: [`docs/release-notes/v0.1.2.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.2.md).
+**U4:** Recovery key export / import (new device rejoins folders, files download). Dogfood: [`docs/ops/u4-recovery.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/u4-recovery.md).  
+**Paid path:** with `LEASEGRID_GATED=1` storage refuses unpaid leases and the client spends Credit per upload: [`docs/ops/paid-path.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/paid-path.md) (read the denomination finding). XMR quote → redeem runs against a FakeChain in CI ([`docs/07-payment.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/07-payment.md) S0–S2, S5); the U5 window and live stagenet (gate 0c) are still open.
+
+## Run it locally (client + server, one machine)
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -U pip && .venv/bin/pip install -e ".[sync,tahoe]"
+scripts/dev-grid.sh                      # shell 1: introducer + 3 storage + issuer; prints an invite furl
+LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 .venv/bin/leasegrid-sync   # shell 2: paste the furl → Join
+scripts/dev-grid.sh --invite             # optional shell 3: a short one-time code (7-word-word) instead of the furl
+```
+
+Join accepts a furl or a `tahoe invite` code and creates a Tahoe **node** (sync + storage by default; uncheck Offer disk or pass `--client-only` to skip). After join the window is the folder list plus an Offer pie (used / free / offered, as a percent of this disk). Credit → Top up is under More, and only when `LEASEGRID_GATED=1`; unpaid join and Add folder do not need it. Details: [`docs/ops/dev-grid.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/dev-grid.md) · [`docs/ops/p1-dogfood.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/p1-dogfood.md).
+
+**Product UX goal:** Magic Folder–class folder sync for a **normal person**. Tahoe’s native UI is not the product. Architecture-heavy items (abuse / free reads, issuer compromise, settlement, Tor vs sync performance, operator AUP) are flagged in the roadmap and need design docs before implementation.
+
+## Read in this order
+
+1. [`docs/00-decision.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/00-decision.md) — what this is and is not
+2. [`docs/03-roadmap.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/03-roadmap.md) — what we build for users and in what order
+3. [`docs/09-ui-track.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/09-ui-track.md) — native buyer UI sequencing (U0–U5)
+4. [`docs/design/`](https://github.com/themark-net/leasegrid-c/tree/main/docs/design/) — U0 wireframes (10–14) + U2 Credit handoff (15–19)
+5. [`docs/01-architecture.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/01-architecture.md) — roles and rails
+6. [`docs/02-objects.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/02-objects.md) — voucher id, ZKAP, request binding `R`, lease, cert
+7. [`docs/07-payment.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/07-payment.md) — XMR → `vid` → ZKAP → settlement (gate 0c / U5; FakeChain S0–S2, S5 in tree; live 0c not PASS)
+8. [`docs/05-bonds.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/05-bonds.md) — optional B-lite; why not swap-timeout, XMR clone, or `unlock_time`
+9. [`docs/08-lab.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/08-lab.md) — paid rails PASS/FAIL criterion
+10. [`deploy/zkap-lab/README.md`](https://github.com/themark-net/leasegrid-c/blob/main/deploy/zkap-lab/README.md) — how to run gate 0b on the LAN friendnet
+
+## Two rails
+
+```
+Leasegrid (always):  client --XMR--> issuer --ZKAP--> node lease
+B-lite (roadmap):    node posts a named lock; cert may carry bond_ref
+```
+
+Clients who ignore `bond_ref` are still on Leasegrid. Nodes who never post a bond can still be paid in tokens.
+
+## Non-goals
+
+- PoRep / PoSt / protocol-level slashing
+- A second Monero, or any new consensus
+- Caps, storage indexes, or spent tokens on any chain
+- Charging for reads in v0
+- Replacing Tahoe repair with an economic miracle
+- Shipping Tahoe WUI as the product UI
+
+## Terms (short)
+
+- **Cap** — Tahoe capability URI (`URI:CHK:…`). The URI *is* the key. Not a CephX ACL, not a market cap.
+- **Bond** — stake a *node* locks so it has something to lose. Leasegrid does not require one.
+- **ZKAP** — unlinkable store credit. ~64 bytes on disk, ~100 B + `|R|` at redeem. Not an 8-byte Monero memo.
+- **vid** — 8-byte voucher id. This is what fits in a Monero encrypted payment ID.
+
+## License
+
+Specification text: Apache-2.0. A future Tahoe plugin would follow Tahoe-LAFS license terms and is out of scope here.

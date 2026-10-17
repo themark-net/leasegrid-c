@@ -130,6 +130,10 @@ HANDED_INVITE_DROPPED = (
     "Leasegrid Sync is already on a friendnet. This invite was not opened."
 )
 _JOIN_HANDOFF_MAX = 4096
+# A burst of a few hundred handoff sockets segfaulted the process. Extra
+# connections are aborted, and an idle socket is dropped after this long.
+_JOIN_PENDING_MAX = 8
+_JOIN_READ_TIMEOUT_MS = 2000
 _INSTANCE_LOCK = None
 # Test drivers in tests/ set this before main(). An env var alone does nothing.
 _TEST_HOOKS = False
@@ -508,6 +512,7 @@ def hand_join_invite(invite: str) -> str:
 def _start_join_server(ui) -> None:
     """Listen for a second launch's invite. Failures are logged without the text."""
     try:
+        from PyQt5.QtCore import QTimer
         from PyQt5.QtNetwork import QLocalServer
     except ImportError:
         return
@@ -526,39 +531,71 @@ def _start_join_server(ui) -> None:
     server = QLocalServer(ui.app)
     # User-only pipe ACL on Windows, and owner-only socket mode on POSIX.
     server.setSocketOptions(QLocalServer.UserAccessOption)
+    server.setMaxPendingConnections(_JOIN_PENDING_MAX)
     if sys.platform == "win32":
         QLocalServer.removeServer(endpoint)
     if not server.listen(endpoint):
         _log_handoff_note(ui.home, "could not listen for a second launch")
         return
 
-    def on_new() -> None:
-        sock = server.nextPendingConnection()
-        if sock is None:
+    pending: list = []
+
+    def drop(sock) -> None:
+        """Abort one handoff socket and release it. Safe to call twice."""
+        if getattr(sock, "_leasegrid_dropped", False):
             return
-        buf = bytearray()
+        sock._leasegrid_dropped = True
+        try:
+            pending.remove(sock)
+        except ValueError:
+            pass
+        timer = getattr(sock, "_leasegrid_read_timer", None)
+        if timer is not None:
+            timer.stop()
+        try:
+            sock.abort()
+        except Exception:
+            pass
+        sock.deleteLater()
 
-        def take(*_args) -> None:
-            if sock.bytesAvailable():
-                chunk = bytes(sock.readAll())
-                if chunk:
-                    buf.extend(chunk)
-            if len(buf) > _JOIN_HANDOFF_MAX:
+    def on_new() -> None:
+        while True:
+            sock = server.nextPendingConnection()
+            if sock is None:
+                return
+            if len(pending) >= _JOIN_PENDING_MAX:
+                drop(sock)
+                continue
+            pending.append(sock)
+            buf = bytearray()
+            timer = QTimer(sock)
+            timer.setSingleShot(True)
+            sock._leasegrid_read_timer = timer  # type: ignore[attr-defined]
+
+            def take(sock=sock, buf=buf) -> None:
+                if getattr(sock, "_leasegrid_dropped", False):
+                    return
+                if sock.bytesAvailable():
+                    chunk = bytes(sock.readAll())
+                    if chunk:
+                        buf.extend(chunk)
+                over = len(buf) > _JOIN_HANDOFF_MAX
+                complete = over or b"\n" in buf or sock.state() == sock.UnconnectedState
+                if not complete:
+                    return
+                raw = bytes(buf).split(b"\n", 1)[0]
                 del buf[:]
-                sock.abort()
-                return
-            if b"\n" not in buf and sock.state() != sock.UnconnectedState:
-                return
-            raw = bytes(buf).split(b"\n", 1)[0]
-            del buf[:]
-            text = raw.decode("utf-8", "replace").strip()
-            if text:
-                ui.receive_handed_invite(text)
+                text = "" if over else raw.decode("utf-8", "replace").strip()
+                if text and len(text) <= _JOIN_HANDOFF_MAX:
+                    ui.receive_handed_invite(text)
+                drop(sock)
 
-        sock.readyRead.connect(take)
-        sock.disconnected.connect(take)
-        if sock.bytesAvailable():
-            take()
+            timer.timeout.connect(lambda sock=sock: drop(sock))
+            timer.start(_JOIN_READ_TIMEOUT_MS)
+            sock.readyRead.connect(take)
+            sock.disconnected.connect(take)
+            if sock.bytesAvailable():
+                take()
 
     server.newConnection.connect(on_new)
     ui._join_server = server

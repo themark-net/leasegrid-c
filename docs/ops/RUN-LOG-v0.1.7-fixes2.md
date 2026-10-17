@@ -43,3 +43,8 @@ Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without 
 - state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 562 passed, 5 xfailed, 4 warnings in 118.49s | files: docs/release-notes/v0.1.7.md, README.md, docs/TESTERS.md, docs/TESTER-GUIDE.md, tests/test_release_notes.py | err: none
   Size-based rotation while a daemon is running is not in this fix. It is a v0.1.8 candidate.
   RED: restore "the same way sync-ui.log does" → test_daemon_logs_rotate_when_the_daemon_starts (AssertionError: notes).
+
+## 5 join flood
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 563 passed, 5 xfailed, 4 warnings in 119.77s | files: src/leasegrid_sync/app.py, tests/test_sync_join_flood.py | err: none
+  RED: no cap and no cleanup → test_join_flood_leaves_the_app_alive_for_a_later_handoff (AssertionError: 109 <= 8). A sequential connect-and-close did not crash, so the test holds the sockets open and counts how many stay connected.

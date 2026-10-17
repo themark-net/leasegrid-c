@@ -20,9 +20,14 @@
 # is not redacted; it is indistinguishable from an ordinary word or path part.
 # v0.1.7: a 40+ [A-Za-z0-9_-] token is redacted only when it has a digit, or
 # both an uppercase and a lowercase letter. A long snake_case or UPPER_SNAKE
-# name stays. The check is the same pipeline slot as the old blanket rule.
+# name stays. Pure [a-z_] and [A-Z_] runs are broken with a SOH byte around
+# that one rule, then restored. A SOH byte does not occur in a tahoe log line.
+# sed -E only: mawk treats {40,} as a literal or ignores the lower bound.
 set -euo pipefail
 LC_ALL=C
+# A tahoe log line is text. SOH cannot appear in it, and it is outside every
+# redaction class, so it splits a protected identifier for the one {40,} rule.
+BRK=$'\001'
 TS='^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.]+[^ ]* '
 KEY='(start|Start|listen|Listen|port|Port|lock|Lock|pid|twistd|Traceback|Error|error|Exception|exit|Exit|stop|Stop|Unhandled|Failure|in use|denied|version)'
 grep -E "(${TS}.*${KEY})|^Traceback|^[[:space:]]+File \"|^[A-Za-z_.]*(Error|Exception)(:|$)" \
@@ -33,21 +38,18 @@ grep -E "(${TS}.*${KEY})|^Traceback|^[[:space:]]+File \"|^[A-Za-z_.]*(Error|Exce
       -e 's#[A-Za-z0-9]*[0-9a-fA-F]{32,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{16,}={1,2}#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{40,}#REDACTED#g' \
-  | awk '
-{
-  line = $0
-  out = ""
-  while (match(line, /[A-Za-z0-9_-]{40,}/)) {
-    token = substr(line, RSTART, RLENGTH)
-    if (token ~ /[0-9]/ || (token ~ /[A-Z]/ && token ~ /[a-z]/))
-      token = "REDACTED"
-    out = out substr(line, 1, RSTART - 1) token
-    line = substr(line, RSTART + RLENGTH)
-  }
-  print out line
-}
-' \
-  | sed -E \
+      -e 't clr1' \
+      -e ':clr1' \
+      -e ':low' \
+      -e "s#(^|[^A-Za-z0-9_-])([a-z_]{39})([a-z_]+)([^A-Za-z0-9_-]|\$)#\1\2${BRK}\3\4#" \
+      -e 't low' \
+      -e 't clr2' \
+      -e ':clr2' \
+      -e ':up' \
+      -e "s#(^|[^A-Za-z0-9_-])([A-Z_]{39})([A-Z_]+)([^A-Za-z0-9_-]|\$)#\1\2${BRK}\3\4#" \
+      -e 't up' \
+      -e 's#[A-Za-z0-9_-]{40,}#REDACTED#g' \
+      -e "s#${BRK}##g" \
       -e 's#[A-Za-z0-9]*[A-Z2-7]{20,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#[A-Za-z0-9]*[A-Za-z2-7]{32,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#(^|[^A-Za-z0-9])[a-z2-7]{8}(-[a-z2-7]{8}){2,}([^A-Za-z0-9]|$)#\1REDACTED\3#g' \

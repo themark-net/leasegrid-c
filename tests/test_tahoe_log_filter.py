@@ -11,6 +11,7 @@ chars stays a strict xfail as a written design limit.
 from __future__ import annotations
 
 import base64
+import os
 import subprocess
 from pathlib import Path
 
@@ -198,13 +199,25 @@ _SNAKE40 = "_get_magic_folder_participants_for_collective"
 def test_long_snake_case_name_survives_on_an_allowlisted_line():
     """A 40+ identifier with no digit and one letter case is not a secret."""
     assert len(_SNAKE40) >= 40
+    upper = "GET_MAGIC_FOLDER_PARTICIPANTS_FOR_COLLECTIVE"
+    assert len(upper) >= 40
     line = (
         "2026-10-15T21:40:11.000Z [-] Exception in "
-        f"{_SNAKE40} (pid 77)"
+        f"{_SNAKE40} {upper} (pid 77)"
     )
     out = _filter_stdout(line + "\n")
     assert _SNAKE40 in out
+    assert upper in out
     assert "REDACTED" not in out
+
+
+def test_long_mixed_token_is_still_redacted():
+    """A 40+ token with both letter cases is a secret shape, not a name."""
+    token = "Abcdefghij_" * 4
+    assert len(token) >= 40
+    out = _filter_stdout(_allowlisted(token))
+    assert token not in out
+    assert "REDACTED" in out
 
 
 # --- v0.1.5: glued hex + base32 (Tester, PR #71 review) ---------------------
@@ -417,3 +430,47 @@ _ACCEPTED = [
 def test_accepted_over_redaction_is_documented(line: str) -> None:
     out = _filter_stdout(line + "\n")
     assert out.strip() == line.strip()
+
+
+def test_filter_output_does_not_depend_on_awk(tmp_path: Path) -> None:
+    """mawk and gawk on PATH must not change the filter. Skip only if absent."""
+    found = [p for p in ("/usr/bin/mawk", "/usr/bin/gawk") if os.access(p, os.X_OK)]
+    if not found:
+        pytest.skip("neither mawk nor gawk is installed")
+    bash = require_bash()
+    planted = (
+        _allowlisted(B64_UNPADDED_40)
+        + "2026-10-15T21:40:11.000Z [-] Exception in "
+        + _SNAKE40
+        + " (pid 77)\n"
+    ).encode("utf-8")
+    outputs: list[str] = []
+    for awk in found:
+        bindir = tmp_path / Path(awk).name
+        bindir.mkdir()
+        shim = bindir / "awk"
+        shim.write_text('#!/bin/sh\nexec %s "$@"\n' % awk, encoding="utf-8")
+        shim.chmod(0o755)
+        env = os.environ.copy()
+        env["PATH"] = str(bindir) + os.pathsep + env.get("PATH", "")
+        which = subprocess.run(
+            [bash, "-c", "command -v awk"],
+            capture_output=True,
+            check=False,
+            env=env,
+            text=True,
+        )
+        assert which.stdout.strip() == str(shim)
+        proc = subprocess.run(
+            [bash, str(FILTER)],
+            input=planted,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+        assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+        out = proc.stdout.decode("utf-8", "replace")
+        assert B64_UNPADDED_40 not in out
+        assert _SNAKE40 in out
+        outputs.append(out)
+    assert len(set(outputs)) == 1

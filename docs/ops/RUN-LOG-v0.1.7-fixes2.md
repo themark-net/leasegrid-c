@@ -1,0 +1,28 @@
+# Run log — v0.1.7 fix round 2
+
+Slug: v0.1.7-fixes2. Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v017-fixes`. Branch: `build/v0.1.7-batch`. Started at `9c099d5` (drop-in on `c595ea5`). Tester FAIL on PR #74 at `fbeb6f1`.
+
+Overview: Fix Tester blockers T2–T5 and the listed follow-ups. Each item is fix, tests, mutation, ci-local, one commit, then a fast-forward push. The lead does the items in order in this worktree.
+
+Phases:
+- 1 log-filter | packaging/tahoe-log-filter.sh, tests/test_tahoe_log_filter.py | full filter tests pass under mawk and gawk shims; diff vs b4e9b70 is sed-only | none | general
+- 2 empty-lock age | src/leasegrid_sync/app.py, tests/test_sync_instance_lock.py | 0 double holders in a ≥200-round race and in 1000 local trials | 1 | general
+- 3 reap stale pgid | src/leasegrid_sync/backend.py, tests/test_sync_stop_reap.py, tests/test_sync_process_group.py | no signal after the leader is reaped; unrelated pgid survives | 1 | general
+- 4 rotation wording | docs/release-notes/v0.1.7.md, README.md, docs/TESTERS.md, docs/TESTER-GUIDE.md, tests | notes say rotate when the daemon starts, not the same way as sync-ui.log | none | general
+- 5 join flood | src/leasegrid_sync/app.py, tests/test_sync_join_handoff.py | 400 connections, process stays alive, a later handoff works | 2 | general
+- 6 oversized join | src/leasegrid_sync/app.py, tests | held lock shows already-running; free lock rejects without joining | 5 | general
+- 7 invite overwrite | src/leasegrid_sync/app.py, tests | default keeps typed text; Yes uses the handed invite | 6 | general
+- 8 path masking | src/leasegrid_sync/app.py, tests | banner, symlink, case, escape, empty path | 7 | general
+- 9 stub reap | tests/test_sync_signal_quit.py | recorded stub PIDs are dead after the module | none | general
+- 10 handoff | docs/HANDOFF-v0.1.7.md, docs/ops/RUN-LOG-v0.1.7-fixes2.md | v0.1.8 candidates listed; final ci-local; push | 1–9 | general
+
+Risks:
+- Shared app.py and one fast-forward branch. Mitigation: one item at a time in this worktree, no sibling worktree.
+- mawk `{40,}` is not portable. Mitigation: no awk left in the filter; prove it with PATH shims.
+- A young empty lock used to relaunch at once. Mitigation: refuse under 2s, and say the crash-mid-write wait is that threshold instead of 30s.
+- ci-local is about 80s. Mitigation: run the item's tests first, then one ci-local per item.
+
+Exits: goal, 6 attempts or 3 identical failures, ~3 hours or 40 minutes without a commit, STOP file, or under 2 GB free. Resume at the first item that is not DONE or SKIPPED.
+
+- state: DONE | tests: PYTHON=.venv/bin/python bash scripts/ci-local.sh → 557 passed, 5 xfailed, 4 warnings in 81.14s | files: packaging/tahoe-log-filter.sh, tests/test_tahoe_log_filter.py | err: none
+  RED: awk `{40,}` under mawk 1.3.4 20200120 → test_v015_shapes_never_leak[base64url-unpadded] (181/200). Local /usr/bin/mawk is 1.3.4 20260129, which honors intervals, so that binary stays green. Diff vs b4e9b70 is the sed-only snake_case keep. Full file also passed with PATH shims for /usr/bin/mawk and /usr/bin/gawk.

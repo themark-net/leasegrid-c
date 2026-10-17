@@ -38,4 +38,7 @@ Failing tests: none. Qt stale time probed at 30000 ms. An empty, garbage, or oth
 
 ## Items
 
-(none yet)
+1. B1 lock | DONE | ci-local: 473 passed, 5 xfailed, 4 warnings in 43.16s | files: app.py, tests/test_sync_instance_lock.py, AUTONOMOUS-DECISIONS, this log | err: none
+   Tests: test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered, test_live_app_refuses_a_second_launch_and_releases_on_quit
+   RED without fix: test_live_app_refuses_a_second_launch_and_releases_on_quit at tests/test_sync_instance_lock.py:330 (deleted `_INSTANCE_LOCK = lock`; the lock file was already gone while the first window was up)
+   RED without fix: test_empty_lock_older_than_stale_time_is_recovered, test_garbage_lock_older_than_stale_time_is_recovered, test_foreign_host_lock_older_than_stale_time_is_recovered at tests/test_sync_instance_lock.py:209 (`setStaleLockTime(0)` put back)

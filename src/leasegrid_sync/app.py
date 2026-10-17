@@ -122,10 +122,13 @@ def instance_lock_path(home: Path) -> Path:
 
 
 def acquire_instance_lock(home: Path) -> bool:
-    """Lock this Sync home. A dead holder's lock is taken over.
+    """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
 
-    The QLockFile object is kept for the process lifetime. Returns False when
-    another live process holds the lock.
+    Qt's default stale time (30s) is what makes an empty file, a garbage file,
+    or a lock from another machine recoverable. Stale time 0 never recovers
+    those. A live same-host holder is still refused. The QLockFile object stays
+    referenced until a clean quit, or the destructor would unlock it early.
+    Returns False when another live process holds the lock.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -136,11 +139,23 @@ def acquire_instance_lock(home: Path) -> bool:
     except OSError:
         return True
     lock = QLockFile(str(path))
-    lock.setStaleLockTime(0)
     if not lock.tryLock(0):
         return False
     _INSTANCE_LOCK = lock
     return True
+
+
+def release_instance_lock() -> None:
+    """Unlock and remove the Sync-home lock. Safe when no lock is held."""
+    global _INSTANCE_LOCK
+    lock = _INSTANCE_LOCK
+    _INSTANCE_LOCK = None
+    if lock is None:
+        return
+    try:
+        lock.unlock()
+    except Exception:
+        return
 
 
 def _show_already_running() -> None:
@@ -2197,6 +2212,7 @@ class MainWindow:
                 ctl.stop()
             except Exception:
                 pass
+        release_instance_lock()
 
     def _rect_on_a_screen(self, rect) -> bool:
         screens = self.QtGui.QGuiApplication.screens()

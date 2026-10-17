@@ -13,3 +13,7 @@ One line per choice: `choice | alternatives | why`
 - Saved frame is checked before restoreGeometry; file is `window-geometry.json` | restore first, or an ini file | Qt's restoreGeometry moved an off-screen window back on screen and kept the old size
 - README and TESTERS "What's new" describe 0.1.6 only | leave the v0.1.4 #30 bullets under the new heading | those sentences stay word for word in Known issues and in `v0.1.4.md`
 - Fix round stays sequential in this worktree | one sub-agent per item, or extra git worktrees | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
+- Keep Qt's default stale lock time by deleting setStaleLockTime(0) | pass 30000 explicitly | the default is already 30000 ms; the bug is that 0 turns staleness off
+- Age empty, garbage, and foreign locks by 120s with os.utime | sleep 30s in the test | the file only has to be older than Qt's 30s stale time
+- Foreign lock is three lines (pid, app name, other hostname) | rewrite a live lock's hostname and boot id | a probed 3-line other-host file older than 30s is taken; a fresh one is not
+- Live-holder refusal is checked as soon as the first process prints WINDOW_SHOWN | wait 35s past the stale time | the holder is alive and the lock is younger than 30s; a probe also kept an aged live lock refused

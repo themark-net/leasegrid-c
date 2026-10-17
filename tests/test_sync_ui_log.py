@@ -48,6 +48,26 @@ def test_log_rotates_when_over_one_mebibyte_and_keeps_one_backup(tmp_path: Path)
     assert "second-rotate" in path.read_text(encoding="utf-8")
 
 
+def test_rotation_leaves_a_short_live_file_and_the_old_bytes_once(tmp_path: Path) -> None:
+    """After the move, the live file is only the new entry and .1 has the old bytes once."""
+    home = tmp_path / "home"
+    path = _log(home)
+    path.parent.mkdir(parents=True)
+    marker = b"OLD-BYTES-0123456789\n"
+    repeats = (_LIMIT // len(marker)) + 3
+    payload = marker * repeats
+    assert len(payload) > _LIMIT
+    path.write_bytes(payload)
+    log_exception(home, "after-rotate", RuntimeError("fresh-entry"))
+    live = path.read_bytes()
+    backup = _backup(home).read_bytes()
+    assert len(live) < _LIMIT
+    assert marker not in live
+    assert b"after-rotate" in live
+    assert b"fresh-entry" in live
+    assert backup.count(marker) == repeats
+
+
 def _assert_entry_appended(home: Path, path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert "rotate-failed" in text

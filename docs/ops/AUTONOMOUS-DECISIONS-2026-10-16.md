@@ -2,3 +2,4 @@
 
 v0.1.2 bump PR on Mark approval (notes via body_path, SHA256SUMS for checksums); tag/release only after merge | hand-edit v0.1.1 release body | v0.1.1 stays as cut; next tag gets the tester notes
 Docs tighten (release notes, TESTERS, README): short pages + long content moved to docs/TESTER-GUIDE.md and docs/OVERVIEW.md; add docs/release-notes/TEMPLATE.md (no workflow change; body_path still reads <tag>.md) | delete detail or edit the v0.1.2 release body by hand | no facts lost; published v0.1.2 body stays as cut until the next tag
+xfail(strict) allowlisted contrived leaks (uppercase, short, dashed, spaced, base64, partial hex) and leave tahoe-log-filter.sh alone | edit the filter in this tests-only PR | #56 item 2 and #54/#60 follow-ups are coverage; a filter fix turns each xfail into a failure

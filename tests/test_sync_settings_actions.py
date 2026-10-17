@@ -120,6 +120,10 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
         ("7-guitarist-gazelle-passenger", False),
         ("7-guitarist-revenge.", False),
         ("code:7-guitarist-revenge", False),
+        ("7-guitarist-revenge2", False),
+        ("sentence.7-guitarist-revenge", False),
+        # redacted by design: both words are PGP words, so a leading number is a code
+        ("2-adult-tiger", False),
         ("see 12-03-2026 today", True),
         ("500-from-server-side", True),
         ("404-not-found", True),
@@ -127,6 +131,9 @@ def test_open_logs_failure_shows_the_path_without_exception_text(tmp_path: Path)
         ("3-day-trip", True),
         ("v0.1.6-rc-final", True),
         ("v0.1.6-guitarist-revenge", True),
+        ("v1.2.7-guitarist-revenge", True),
+        # any() would redact this: guitarist is a PGP word and side is not
+        ("7-guitarist-side", True),
         ("Logs: /home/u/3-day-trip/logs", True),
     ],
 )

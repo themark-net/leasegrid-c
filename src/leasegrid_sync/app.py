@@ -33,6 +33,7 @@ from .backend import (
     default_home,
     format_bytes,
     format_hosted_strip,
+    WORMHOLE_CODE_RE,
     is_wormhole_code,
     join_filesystem_failure,
     rotate_log,
@@ -414,27 +415,40 @@ def about_line() -> str:
 
 
 # Whole tokens only. redact_furl keeps a head and a tail, and an 8-character
-# fragment is still a leak. A Tahoe invite code is a magic-wormhole code:
-# 1–3 digits and two or more hyphen-joined words, and every word is in the
-# PGP word list. The boundary is the start, the end, or a character that is
-# not a letter, digit, hyphen, or dot, so "(7-guitarist-revenge)" matches,
-# "500-from-server-side" does not, and "v0.1.6-rc-final" does not.
+# fragment is still a leak. A candidate invite is exactly the shape
+# WORMHOLE_CODE_RE accepts: 1–3 digits and two or more hyphen segments of
+# letters or digits. The boundary is not a letter, digit, or hyphen. A dot
+# is a boundary unless a digit sits in front of it, so
+# "sentence.7-guitarist-revenge" matches and "v1.2.7-guitarist-revenge" does
+# not. A segment counts when its letter prefix is a PGP word and any extra
+# characters are trailing digits, and every segment must count (all, not any).
+_CODE_BODY = WORMHOLE_CODE_RE.pattern[1:-1] if WORMHOLE_CODE_RE.pattern.startswith("^") else WORMHOLE_CODE_RE.pattern
 _BUG_JOIN_RE = re.compile(
     r"leasegrid:\S+|https?://\S+#\S*|(?:(?<=\s)|^)#[^\s]*i(?:=|%3[Dd])[^\s]*",
     re.IGNORECASE,
 )
 _BUG_PB_RE = re.compile(r"pb://\S+", re.IGNORECASE)
 _BUG_CODE_RE = re.compile(
-    r"(?<![a-z0-9.-])[0-9]{1,3}(?:-[a-z]+){2,}(?![a-z0-9-])",
+    r"(?<![A-Za-z0-9-])(?<!\d\.)(?:" + _CODE_BODY + r")(?![A-Za-z0-9-])",
     re.IGNORECASE,
 )
+_SEGMENT_PREFIX_RE = re.compile(r"^([a-z]+)(\d*)$")
+
+
+def _pgp_segment(segment: str) -> bool:
+    match = _SEGMENT_PREFIX_RE.match(segment.lower())
+    return bool(match) and match.group(1) in WORMHOLE_WORDS
 
 
 def _redact_wormhole_code(match: re.Match) -> str:
-    words = match.group(0).split("-")[1:]
-    if words and all(word.lower() in WORMHOLE_WORDS for word in words):
+    token = match.group(0)
+    if not is_wormhole_code(token):
+        return token
+    parts = token.split("-")[1:]
+    # all(), not any(): one real PGP word does not redact a mixed token.
+    if parts and all(_pgp_segment(part) for part in parts):
         return "[redacted]"
-    return match.group(0)
+    return token
 
 
 def scrub_bug_report(text: str) -> str:

@@ -130,6 +130,11 @@ def format_status_chip(status: ConnectionStatus) -> str:
     return status.state
 
 
+def about_line() -> str:
+    """More → Settings. Buyer-visible version line."""
+    return "%s (buyer) · version %s" % (APP_NAME, __version__)
+
+
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     """Append a traceback to <home>/logs/sync-ui.log; never raises."""
     path = Path(home) / "logs" / UI_LOG_NAME
@@ -1827,9 +1832,9 @@ class MainWindow:
             "is how much of this disk that is. Reachable from other machines only if "
             "LEASEGRID_STORAGE_HOSTNAME is a LAN name or IP (lab default is 127.0.0.1).\n\n"
             "About\n"
-            "%s (buyer) · version %s\n"
+            "%s\n"
             "Grid: lab-friendnet"
-            % (APP_NAME, __version__)
+            % about_line()
         )
         note.setWordWrap(True)
         note.setObjectName("settingsNote")

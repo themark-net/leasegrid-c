@@ -45,7 +45,7 @@ Failing tests: none
 
 | # | Status | Commit | Tests | RED without fix |
 |---|--------|--------|-------|-----------------|
-| 1 | pending | | | |
+| 1 | DONE | (this commit) | test_linked_worktree_uses_its_own_venv, test_explicit_python_is_honored_in_a_worktree, test_main_checkout_still_prefers_shared_venv | RED without fix: test_linked_worktree_uses_its_own_venv at tests/test_ci_local_worktree.py:79 (old script selected /home/mark/tahoe-venv and reached pip install) |
 | 2 | pending | | | |
 | 3 | pending | | | |
 | 4 | pending | | | |

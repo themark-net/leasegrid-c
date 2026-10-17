@@ -56,6 +56,7 @@ Item 5 ci-local: PASS, 531 passed, 5 xfailed, 4 warnings in 77.11s.
 Item 6 ci-local: PASS, 532 passed, 5 xfailed, 4 warnings in 77.57s.
 Item 7 ci-local: PASS, 536 passed, 5 xfailed, 4 warnings in 77.19s.
 Item 8 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.13s.
+Item 9 ci-local: PASS, 541 passed, 5 xfailed, 4 warnings in 77.35s.
 Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_restores_the_normal_size and test_three_maximize_cycles_keep_the_normal_position (2 passed in 0.17s). The normal position did not drift.
 
 ## Items
@@ -69,8 +70,8 @@ Item 7 xcb: `xvfb-run -a` with `QT_QPA_PLATFORM=xcb` passed test_unmaximize_rest
 | 5 | DONE | fa6b8f2 | test_fresh_empty_lock_relaunches_at_once, test_fresh_garbage_lock_relaunches_at_once, test_six_concurrent_starts_open_one_window, test_second_instance_on_the_same_home_starts_no_window | RED: no removal → test_fresh_empty_lock_relaunches_at_once at tests/test_sync_instance_lock.py:209 |
 | 6 | DONE | 24783e4 | test_shown_paths_hide_the_account_name | RED: helper returns the path unchanged → test_shown_paths_hide_the_account_name at tests/test_sync_settings_actions.py:64 |
 | 7 | DONE | ca070ce | test_other_geometry_version_opens_at_the_default, test_unmaximize_restores_the_normal_size, test_three_maximize_cycles_keep_the_normal_position, test_fitter_alone_rejects_an_oversized_record, test_guard_resets_a_size_the_fitter_let_through | RED: drop version check → test_other_geometry_version_opens_at_the_default at tests/test_sync_window_geometry.py:98; save geometry() → test_unmaximize_restores_the_normal_size at :144; fitter off → test_fitter_alone_rejects_an_oversized_record at :489; guard off → test_guard_resets_a_size_the_fitter_let_through at :520 |
-| 8 | DONE | (this commit) | test_scrub_bug_report_code_boundaries | RED: any() → test_scrub_bug_report_code_boundaries[7-guitarist-side-True] at tests/test_sync_settings_actions.py:143 |
-| 9 | pending | | | |
+| 8 | DONE | caae73d | test_scrub_bug_report_code_boundaries | RED: any() → test_scrub_bug_report_code_boundaries[7-guitarist-side-True] at tests/test_sync_settings_actions.py:143 |
+| 9 | DONE | (this commit) | test_trouble_section_names_shipped_recovery_in_at_most_eight_lines | RED: change ALREADY_RUNNING → test_trouble_section_names_shipped_recovery_in_at_most_eight_lines at tests/test_tester_trouble.py:39 |
 | 10 | pending | | | |
 | 11 | pending | | | |
 | 12 | pending | | | |

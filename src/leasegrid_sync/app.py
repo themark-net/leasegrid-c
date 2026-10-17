@@ -119,6 +119,12 @@ UI_LOG_NAME = "sync-ui.log"
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
 ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
 INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
+INVITE_KEEP_OPEN = "Keep open"
+INVITE_QUIT_BUTTON = "Quit"
+OPEN_LOGS_BUTTON = "Open logs folder"
+COPY_BUG_BUTTON = "Copy bug-report details"
+FOLDER_MISSING_BANNER = "That folder is not on this computer any more: %s"
+FOLDER_FILE_BANNER = "That path is not a folder: %s"
 HANDED_INVITE_DROPPED = (
     "Leasegrid Sync is already on a friendnet. This invite was not opened."
 )
@@ -2279,12 +2285,12 @@ class MainWindow:
         self.payment_lecture.setObjectName("paymentLecture")
         self.payment_lecture.hide()
         sl.addWidget(self.payment_lecture)
-        self.open_logs_btn = QtWidgets.QPushButton("Open logs folder")
+        self.open_logs_btn = QtWidgets.QPushButton(OPEN_LOGS_BUTTON)
         self.open_logs_btn.setObjectName("openLogsButton")
         self.open_logs_btn.setAutoDefault(False)
         self.open_logs_btn.clicked.connect(self.on_open_logs)
         sl.addWidget(self.open_logs_btn)
-        self.copy_bug_btn = QtWidgets.QPushButton("Copy bug-report details")
+        self.copy_bug_btn = QtWidgets.QPushButton(COPY_BUG_BUTTON)
         self.copy_bug_btn.setObjectName("copyBugReport")
         self.copy_bug_btn.setAutoDefault(False)
         self.copy_bug_btn.clicked.connect(self.on_copy_bug_report)
@@ -2436,7 +2442,7 @@ class MainWindow:
         open_act.triggered.connect(self.show)
         self.tray_credit_action = menu.addAction("Credit")
         self.tray_credit_action.triggered.connect(self.open_credit_place)
-        quit_act = menu.addAction("Quit")
+        quit_act = menu.addAction(INVITE_QUIT_BUTTON)
         quit_act.triggered.connect(self._on_tray_quit)
         self.tray_menu = menu
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
@@ -2476,8 +2482,8 @@ class MainWindow:
         box.setObjectName("inviteClosePrompt")
         box.setWindowTitle(APP_NAME)
         box.setText(INVITE_CLOSE_QUESTION)
-        quit_btn = box.addButton("Quit", QtWidgets.QMessageBox.AcceptRole)
-        keep_btn = box.addButton("Keep open", QtWidgets.QMessageBox.RejectRole)
+        quit_btn = box.addButton(INVITE_QUIT_BUTTON, QtWidgets.QMessageBox.AcceptRole)
+        keep_btn = box.addButton(INVITE_KEEP_OPEN, QtWidgets.QMessageBox.RejectRole)
         box.setDefaultButton(keep_btn)
         box.exec_()
         return box.clickedButton() is quit_btn
@@ -3117,9 +3123,9 @@ class MainWindow:
         if not target.is_dir():
             shown = display_path(path)
             if target.is_file():
-                message = "That path is not a folder: %s" % shown
+                message = FOLDER_FILE_BANNER % shown
             else:
-                message = "That folder is not on this computer any more: %s" % shown
+                message = FOLDER_MISSING_BANNER % shown
             self.show_folder_error(
                 SyncError(message, "Add the folder again if you still want it.")
             )

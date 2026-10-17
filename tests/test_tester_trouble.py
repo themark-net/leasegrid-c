@@ -6,6 +6,15 @@ import re
 from pathlib import Path
 
 from leasegrid_sync import __version__
+from leasegrid_sync.app import (
+    ALREADY_RUNNING,
+    COPY_BUG_BUTTON,
+    FOLDER_FILE_BANNER,
+    FOLDER_MISSING_BANNER,
+    INVITE_CLOSE_QUESTION,
+    INVITE_KEEP_OPEN,
+    OPEN_LOGS_BUTTON,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 _SECTION = re.compile(
@@ -27,12 +36,13 @@ def test_trouble_section_names_shipped_recovery_in_at_most_eight_lines() -> None
     bullets = [line for line in body.splitlines() if line.startswith("- ")]
     assert 1 <= len(bullets) <= 8
     text = "\n".join(bullets)
-    assert "Leasegrid Sync is already running. Use the open window." in text
-    assert "An invite is still open. Quit and cancel it?" in text
-    assert "Keep open" in text
-    assert "Open logs folder" in text
-    assert "Copy bug-report details" in text
-    assert "That folder is not on this computer any more:" in text
+    assert ALREADY_RUNNING in text
+    assert INVITE_CLOSE_QUESTION in text
+    assert INVITE_KEEP_OPEN in text
+    assert OPEN_LOGS_BUTTON in text
+    assert COPY_BUG_BUTTON in text
+    assert FOLDER_MISSING_BANNER.split("%s", 1)[0].strip() in text
+    assert FOLDER_FILE_BANNER.split("%s", 1)[0].strip() in text
     assert "[fallback in the Linux section](#linux)" in text
     assert "--appimage-extract-and-run" not in text
     assert "Smart App Control" in text

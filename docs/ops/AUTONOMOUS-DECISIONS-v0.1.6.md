@@ -33,3 +33,9 @@ One line per choice: `choice | alternatives | why`
 - Unlink `window-geometry.json.tmp` only when `os.replace` fails, and ignore an unlink error | also unlink after a failed `write_text` | the drop-in names the failed replace, and the cleanup must not raise
 - An invite code is exactly two letter-words, and a hyphen does not end it | two or more words, as the sentence "2+" can be read | `500-from-server-side` is three letter-words and must stay; a two-word prefix must not be cut out of it
 - Fix round 3 stays sequential in this worktree | one sub-agent per item, or another worktree | items share app.py; the drop-in forbids any other worktree and requires a push of this branch after each commit
+- A saved size is oversized only when it exceeds the screen and the default and the layout hint; the default size is then used | clamp every side to the 800x600 union | the join page is about 947 px tall and the default is 920 wide, both bigger than the offscreen desktop
+- An old geometry blob is ignored and not logged | log it as corrupt, or still call restoreGeometry | it is the previous format, and the next quit rewrites a record
+- The post-apply size guard uses that same cap | reset whenever the size exceeds the 800x600 union | a literal reset would move every offscreen window to (0, 0)
+- Restore runs after the pages are built | restore before the central widget, as before | the empty shell's size hint is not the layout, so a normal height looked oversized
+- Title-bar tests request a width of 700 | keep 1000 | 1000 is past the 920 default on an 800 px offscreen desktop, so the cap would replace it and the width check would not prove a restore
+- The real-launch driver prints the size before show() | assert only the size after show() | show() runs the guard, which hides a restoreGeometry that already inflated the window

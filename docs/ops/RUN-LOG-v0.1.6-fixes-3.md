@@ -34,4 +34,26 @@ Failing tests: none. Head at the run was `29e9dee`. Started 2026-10-17T13:10:14Z
 
 ## Items
 
+### 1. B5 geometry record
+
+state: DONE | tests: PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh → 508 passed, 5 xfailed, 4 warnings in 43.25s, ci-local PASS | files: app.py, test_sync_window_geometry.py, decisions, this log | err: none
+
+`_save_window_geometry` writes `{"version": 2, "x", "y", "width", "height", "maximized"}`. `_restore_window_geometry` never calls `restoreGeometry`. An old `{"geometry": "<base64>"}` file is ignored and rewritten as a record on quit. A bad version-2 field is logged once and the default size is kept. A size past the screen, the default, and the layout hint is replaced with the default size before `resize`. The guard does the same after apply and after `show`.
+
+RED: drop the bool check in `_record_int` → `test_window_record_rejects_one_bad_field[bool-as-int]` (width `True` accepted). The other six field cases stayed green.
+RED: drop the `isinstance(..., int)` check → `[float]` (`x=12.0` accepted). The bool case stayed green.
+RED: drop the x range check → `[bad-x]`. RED: drop the y range check → `[bad-y]`. RED: drop the width check → `[bad-width]`. RED: drop the height check → `[bad-height]`. RED: drop the maximized bool check → `[maximized-int]`. Each of those left the other field cases green.
+RED: put `restoreGeometry` back for an old blob → `test_corrupt_old_blob_launches_the_real_app` (`BEFORE_SHOW` height 16777215). The in-process old-blob test segfaulted (`rc=-11`) on the same mutant.
+Drop the post-apply guard: `test_oversized_record_uses_the_default_size` and `test_oversized_height_uses_the_default_size` stayed green (the fitter already uses the default). `test_guard_resets_a_size_the_fitter_let_through` segfaulted (`rc=-11`) because `resize(16777215)` on the real window is what the guard was holding back.
+
+Fuzz (`/tmp/geo_fuzz3.py`, Tester's old-blob cases plus record bit-flips and extremes), 1534 cases, chunks of 400:
+- offscreen: 0 crashes, 0 title-bar misses, 0 windows larger than the no-file control (920×947), 0 sides ≥ 10000. 1533/1534 were larger than the 800×600 union because the join page itself is 920×947.
+- xcb under `xvfb-run -a -s '-screen 0 1920x1080x24'`: 0 crashes, 0 title-bar misses, 0 larger than the 1920×1080 union, 0 sides ≥ 10000. Control window 920×826.
+
+### 2. Scrub wordlist
+
+(pending)
+
+### 3. Handoff accuracy
+
 (pending)

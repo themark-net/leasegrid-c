@@ -5,12 +5,10 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import platform
 import re
-import struct
 import sys
 import time
 import traceback
@@ -1154,14 +1152,8 @@ class DisconnectServerDialog:
 
 WINDOW_GEOMETRY_FILE = "window-geometry.json"
 DEFAULT_WINDOW_SIZE = (920, 620)
-_GEOM_MAGIC = 0x1D9D0CB
-# QWidget.saveGeometry writes a big-endian QDataStream. The header is magic
-# (uint32), major (uint16), minor (uint16). The frame rect (left, top, right,
-# bottom as int32) starts immediately after that header.
-_GEOM_HEADER = struct.Struct(">IHH")
-_GEOM_RECT = struct.Struct(">iiii")
+_GEOMETRY_VERSION = 2
 # A coordinate past this, or a span past Qt's widget maximum, is not a window.
-# 2^31 does not fit in the signed int QRect takes.
 _COORD_LIMIT = 1 << 30
 _QWIDGETSIZE_MAX = 16777215
 # The part of the title bar a person drags. The whole frame can be wider than
@@ -1169,31 +1161,47 @@ _QWIDGETSIZE_MAX = 16777215
 _TITLE_GRAB = (80, 28)
 
 
-def _saved_frame(blob: bytes) -> Optional[tuple]:
-    """Return the frame saved by QWidget.saveGeometry, or None if it is not usable.
+def _record_int(value) -> bool:
+    """True for a JSON integer. A bool is an int in Python, and a float is not."""
+    if isinstance(value, bool):
+        return False
+    if not isinstance(value, int):
+        return False
+    return True
 
-    Qt's restoreGeometry pulls an off-screen window back onto the screen and
-    keeps the old size, so the frame has to be read before restore.
 
-    Coordinates must sit within ±2^30. Width and height must sit in
-    1..QWIDGETSIZE_MAX and also at most 2^30. Anything else returns None so
-    QRect is never handed a size that overflows.
+def _window_record(raw) -> Optional[tuple]:
+    """Return (x, y, width, height, maximized) or None when the record is not usable.
+
+    Each field is checked on its own. Version 2 is the plain record. An old
+    saveGeometry blob is not a record and returns None so the caller can ignore it.
     """
-    if len(blob) < _GEOM_HEADER.size + _GEOM_RECT.size:
+    if not isinstance(raw, dict) or raw.get("version") != _GEOMETRY_VERSION:
         return None
-    magic, major, _minor = _GEOM_HEADER.unpack_from(blob, 0)
-    if magic != _GEOM_MAGIC or major < 1:
+    x = raw.get("x")
+    y = raw.get("y")
+    width = raw.get("width")
+    height = raw.get("height")
+    maximized = raw.get("maximized")
+    if not _record_int(x):
         return None
-    left, top, right, bottom = _GEOM_RECT.unpack_from(blob, _GEOM_HEADER.size)
-    if any(value < -_COORD_LIMIT or value > _COORD_LIMIT for value in (left, top, right, bottom)):
+    if not _record_int(y):
         return None
-    width = right - left + 1
-    height = bottom - top + 1
-    if not (1 <= width <= _QWIDGETSIZE_MAX and width <= _COORD_LIMIT):
+    if not _record_int(width):
         return None
-    if not (1 <= height <= _QWIDGETSIZE_MAX and height <= _COORD_LIMIT):
+    if not _record_int(height):
         return None
-    return (left, top, width, height)
+    if not isinstance(maximized, bool):
+        return None
+    if x < -_COORD_LIMIT or x > _COORD_LIMIT:
+        return None
+    if y < -_COORD_LIMIT or y > _COORD_LIMIT:
+        return None
+    if width < 1 or width > _QWIDGETSIZE_MAX or width > _COORD_LIMIT:
+        return None
+    if height < 1 or height > _QWIDGETSIZE_MAX or height > _COORD_LIMIT:
+        return None
+    return (x, y, width, height, maximized)
 
 
 class MainWindow:
@@ -1229,7 +1237,6 @@ class MainWindow:
         self.win = QtWidgets.QMainWindow()
         self.win.setWindowTitle(APP_NAME)
         self.win.resize(*DEFAULT_WINDOW_SIZE)
-        self._restore_window_geometry()
         self.win.closeEvent = self._on_close  # type: ignore[method-assign]
 
         central = QtWidgets.QWidget()
@@ -1256,6 +1263,9 @@ class MainWindow:
         self.tray_credit_action = None
         self._init_tray()
         self._sync_gated_chrome()
+        # After the pages exist, so the layout hint is the real window, not an
+        # empty shell. An earlier restore treated that shell as the size cap.
+        self._restore_window_geometry()
 
         self.poll = QtCore.QTimer(self.win)
         self.poll.setInterval(3000)
@@ -2264,15 +2274,19 @@ class MainWindow:
         self.win.show()
         pending = getattr(self, "_pending_geometry_pos", None)
         on_screen = getattr(self, "_pending_title_on_screen", None)
+        maximized = getattr(self, "_pending_maximized", False)
         self._pending_geometry_pos = None
         self._pending_title_on_screen = None
-        # A saved title bar that is off a screen stays at Qt's clamp. Pull only
-        # when that clamp left the grab rect outside (the offscreen plugin does
-        # this for a window that starts left of the desktop).
-        if on_screen is False:
+        self._pending_maximized = False
+        if maximized:
+            self.win.showMaximized()
+        elif on_screen is False:
+            # The offscreen plugin leaves a window that starts above or left of
+            # the desktop there. Pull only the title-bar grab back on.
             self._pull_title_bar_on_screen()
-        if pending is not None and on_screen:
+        elif pending is not None and on_screen:
             self.win.move(*pending)
+        self._guard_applied_size()
         self.win.raise_()
         self.win.activateWindow()
 
@@ -2338,46 +2352,115 @@ class MainWindow:
         if dx or dy:
             self.win.move(self.win.x() + dx, self.win.y() + dy)
 
-    def _restore_window_geometry(self) -> None:
-        """Apply a saved frame when it is still on a screen. Otherwise keep the default.
+    def _screen_span(self):
+        """Bounding available area of every screen, or None when Qt has no screen."""
+        screens = self.QtGui.QGuiApplication.screens()
+        if not screens:
+            return None
+        union = screens[0].availableGeometry()
+        for screen in screens[1:]:
+            union = union.united(screen.availableGeometry())
+        return union
 
-        A missing file is a first launch and is not logged. A saved value that
-        cannot be decoded, is out of range, or raises while it is applied
-        (including QRect overflow) is logged once and the window is put back
-        on the default size.
+    def _oversized(self, width: int, height: int) -> bool:
+        """True when a side is past the screen, the default, and the layout hint.
+
+        The join page is taller than the offscreen desktop (about 800x600) and
+        the default width is 920, so a raw compare with the screen would treat
+        every normal window as untrusted. A size such as 16,777,215 still fails.
+        """
+        union = self._screen_span()
+        if union is None:
+            return False
+        hint = self.win.minimumSizeHint()
+        width_cap = max(union.width(), DEFAULT_WINDOW_SIZE[0], hint.width())
+        height_cap = max(union.height(), DEFAULT_WINDOW_SIZE[1], hint.height())
+        return width > width_cap or height > height_cap
+
+    def _fitted_size(self, width: int, height: int) -> tuple:
+        """Default size when the saved size is oversized. Otherwise keep it."""
+        if not self._oversized(width, height):
+            return (width, height)
+        log_exception(
+            self.home,
+            "window geometry",
+            ValueError("saved window is larger than the screen; using the default size"),
+        )
+        return DEFAULT_WINDOW_SIZE
+
+    def _reset_default_geometry(self) -> None:
+        self._pending_geometry_pos = None
+        self._pending_title_on_screen = None
+        self._pending_maximized = False
+        self.win.resize(*DEFAULT_WINDOW_SIZE)
+        self.win.move(0, 0)
+
+    def _guard_applied_size(self) -> None:
+        """Last check: a size Qt still left past the cap goes back to the default."""
+        if self._oversized(self.win.width(), self.win.height()):
+            self._reset_default_geometry()
+
+    def _apply_window_record(self, x: int, y: int, width: int, height: int, maximized: bool) -> None:
+        rect = self.QtCore.QRect(int(x), int(y), int(width), int(height))
+        if not self._rect_on_a_screen(rect):
+            return
+        width, height = self._fitted_size(width, height)
+        self.win.resize(width, height)
+        self.win.move(x, y)
+        frame = self.win.frameGeometry()
+        self._pending_geometry_pos = (x, y)
+        self._pending_title_on_screen = self._title_bar_on_a_screen(frame)
+        self._pending_maximized = maximized
+        self._guard_applied_size()
+
+    def _restore_window_geometry(self) -> None:
+        """Apply a saved record with resize and move. Never call restoreGeometry.
+
+        A missing file is a first launch and is not logged. An old
+        ``{"geometry": "<base64>"}`` blob is ignored. A version-2 field that
+        is the wrong type or out of range is logged once and the default
+        size is put back.
         """
         path = self.home / WINDOW_GEOMETRY_FILE
         if not path.is_file():
             return
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            blob = base64.b64decode(raw["geometry"], validate=True)
-            saved = _saved_frame(blob)
+            if (
+                isinstance(raw, dict)
+                and raw.get("version") != _GEOMETRY_VERSION
+                and "geometry" in raw
+            ):
+                return
+            saved = _window_record(raw)
             if saved is None:
-                return
-            rect = self.QtCore.QRect(*saved)
-            if not self._rect_on_a_screen(rect):
-                return
-            if not self.win.restoreGeometry(self.QtCore.QByteArray(blob)):
-                self.win.resize(*DEFAULT_WINDOW_SIZE)
-                self.win.move(0, 0)
-                return
-            # show() on the offscreen plugin nudges a restored frame. Put the
-            # saved top-left back on the first show only when that title bar is
-            # actually on a screen. An off-screen top-left would undo Qt's clamp.
-            self._pending_geometry_pos = (rect.x(), rect.y())
-            self._pending_title_on_screen = self._title_bar_on_a_screen(rect)
+                raise ValueError("saved window geometry is not usable")
+            self._apply_window_record(*saved)
         except Exception as exc:
             log_exception(self.home, "window geometry", exc)
-            self._pending_geometry_pos = None
-            self._pending_title_on_screen = None
-            self.win.resize(*DEFAULT_WINDOW_SIZE)
-            self.win.move(0, 0)
+            self._reset_default_geometry()
 
     def _save_window_geometry(self) -> None:
         try:
-            blob = bytes(self.win.saveGeometry())
-            text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")}) + "\n"
+            if self.win.isMaximized():
+                normal = self.win.normalGeometry()
+                x, y = normal.x(), normal.y()
+                width, height = normal.width(), normal.height()
+                maximized = True
+            else:
+                x, y = self.win.x(), self.win.y()
+                width, height = self.win.width(), self.win.height()
+                maximized = False
+            text = json.dumps(
+                {
+                    "version": _GEOMETRY_VERSION,
+                    "x": int(x),
+                    "y": int(y),
+                    "width": int(width),
+                    "height": int(height),
+                    "maximized": maximized,
+                }
+            ) + "\n"
             path = self.home / WINDOW_GEOMETRY_FILE
             tmp = path.with_suffix(path.suffix + ".tmp")
             tmp.write_text(text, encoding="utf-8")

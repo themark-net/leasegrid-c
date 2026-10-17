@@ -17,10 +17,11 @@ PyQt5 = pytest.importorskip("PyQt5")
 
 from leasegrid_sync.app import (  # noqa: E402
     DEFAULT_WINDOW_SIZE,
-    _GEOM_HEADER,
-    _GEOM_RECT,
+    WINDOW_GEOMETRY_FILE,
+    _GEOMETRY_VERSION,
+    _QWIDGETSIZE_MAX,
     MainWindow,
-    _saved_frame,
+    _window_record,
 )
 
 
@@ -31,26 +32,84 @@ def _hide(window: MainWindow) -> None:
         window.tray.hide()
 
 
+def _saved_record(home: Path) -> dict:
+    return json.loads((home / WINDOW_GEOMETRY_FILE).read_text(encoding="utf-8"))
+
+
+def _write_record(home: Path, payload: dict) -> None:
+    home.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload) + "\n"
+    (home / WINDOW_GEOMETRY_FILE).write_text(text, encoding="utf-8")
+
+
+def _valid_record(**overrides) -> dict:
+    record = {
+        "version": _GEOMETRY_VERSION,
+        "x": 10,
+        "y": 12,
+        "width": 640,
+        "height": 480,
+        "maximized": False,
+    }
+    record.update(overrides)
+    return record
+
+
 def test_geometry_round_trips_across_two_windows(tmp_path: Path) -> None:
     home = tmp_path / "home"
     first = MainWindow(home=home, autoload=False)
     try:
         first.win.show()
         first.QtWidgets.QApplication.processEvents()
-        # Taller than the layout's minimum, and still touching the offscreen desktop.
-        first.win.resize(1000, 980)
+        # Wider than the layout's narrow hint, still inside the offscreen desktop,
+        # and not the 920 default. Height follows the layout when 500 is too short.
+        first.win.resize(700, 500)
         first.win.move(15, 10)
         first.QtWidgets.QApplication.processEvents()
-        assert (first.win.width(), first.win.height(), first.win.x(), first.win.y()) == (1000, 980, 15, 10)
+        saved = (first.win.width(), first.win.height(), first.win.x(), first.win.y())
+        assert saved[0] != DEFAULT_WINDOW_SIZE[0]
         first.quit()
     finally:
         _hide(first)
+
+    record = _saved_record(home)
+    assert record["version"] == _GEOMETRY_VERSION
+    assert (record["width"], record["height"], record["x"], record["y"]) == saved
+    assert record["maximized"] is False
 
     second = MainWindow(home=home, autoload=False)
     try:
         second.show()
         second.QtWidgets.QApplication.processEvents()
-        assert (second.win.width(), second.win.height(), second.win.x(), second.win.y()) == (1000, 980, 15, 10)
+        assert (second.win.width(), second.win.height(), second.win.x(), second.win.y()) == saved
+    finally:
+        _hide(second)
+
+
+def test_maximized_record_round_trips(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    first = MainWindow(home=home, autoload=False)
+    try:
+        first.show()
+        first.QtWidgets.QApplication.processEvents()
+        first.win.resize(700, 500)
+        first.win.move(30, 20)
+        first.QtWidgets.QApplication.processEvents()
+        first.win.showMaximized()
+        first.QtWidgets.QApplication.processEvents()
+        if not first.win.isMaximized():
+            pytest.skip("offscreen does not report isMaximized()")
+        first.quit()
+    finally:
+        _hide(first)
+
+    record = _saved_record(home)
+    assert record["maximized"] is True
+    second = MainWindow(home=home, autoload=False)
+    try:
+        second.show()
+        second.QtWidgets.QApplication.processEvents()
+        assert second.win.isMaximized()
     finally:
         _hide(second)
 
@@ -116,8 +175,9 @@ def _save_moved(home: Path, x: int, y: int, width: int, height: int) -> int:
 
 def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    # 1000 is above the 920 default and the 863 px windows-2022 minimum.
-    saved_width = _save_moved(home, 40, -650, 1000, 700)
+    # 700 fits an 800 px offscreen desktop, is under the 920 default, and is
+    # still not that default when Windows clamps it up to 863.
+    saved_width = _save_moved(home, 40, -650, 700, 500)
     assert saved_width != DEFAULT_WINDOW_SIZE[0]
     second = MainWindow(home=home, autoload=False)
     try:
@@ -131,7 +191,7 @@ def test_title_bar_above_the_screen_stays_on_screen(tmp_path: Path) -> None:
 
 def test_title_bar_left_of_the_screen_stays_on_screen(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    saved_width = _save_moved(home, -200, 40, 1000, 400)
+    saved_width = _save_moved(home, -200, 40, 700, 500)
     assert saved_width != DEFAULT_WINDOW_SIZE[0]
     second = MainWindow(home=home, autoload=False)
     try:
@@ -150,7 +210,7 @@ def test_title_bar_partly_off_the_left_edge_stays_on_screen(tmp_path: Path) -> N
     to end fully inside availableGeometry.
     """
     home = tmp_path / "home"
-    saved_width = _save_moved(home, -40, 40, 1000, 500)
+    saved_width = _save_moved(home, -40, 40, 700, 500)
     assert saved_width != DEFAULT_WINDOW_SIZE[0]
     second = MainWindow(home=home, autoload=False)
     try:
@@ -165,7 +225,7 @@ def test_title_bar_partly_off_the_left_edge_stays_on_screen(tmp_path: Path) -> N
 def test_deeply_nested_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    (home / "window-geometry.json").write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
+    (home / WINDOW_GEOMETRY_FILE).write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
     window = MainWindow(home=home, autoload=False)
     try:
         window.win.show()
@@ -181,17 +241,17 @@ def test_failed_geometry_replace_keeps_the_previous_file(tmp_path: Path, monkeyp
     try:
         window.win.show()
         window.QtWidgets.QApplication.processEvents()
-        window.win.resize(1000, 980)
+        window.win.resize(700, 500)
         window.win.move(15, 10)
         window._save_window_geometry()
-        path = home / "window-geometry.json"
+        path = home / WINDOW_GEOMETRY_FILE
         good = path.read_bytes()
 
         def fail_replace(*_args, **_kwargs):
             raise OSError("replace failed")
 
         monkeypatch.setattr(os, "replace", fail_replace)
-        window.win.resize(700, 500)
+        window.win.resize(640, 480)
         window._save_window_geometry()
         assert path.read_bytes() == good
         assert not (home / "window-geometry.json.tmp").exists()
@@ -202,7 +262,7 @@ def test_failed_geometry_replace_keeps_the_previous_file(tmp_path: Path, monkeyp
 def test_corrupt_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    (home / "window-geometry.json").write_text("{", encoding="utf-8")
+    (home / WINDOW_GEOMETRY_FILE).write_text("{", encoding="utf-8")
     window = MainWindow(home=home, autoload=False)
     try:
         window.win.show()
@@ -212,65 +272,136 @@ def test_corrupt_geometry_file_uses_the_default_size(tmp_path: Path) -> None:
         _hide(window)
 
 
-def _read_geometry_blob(home: Path) -> bytes:
-    raw = json.loads((home / "window-geometry.json").read_text(encoding="utf-8"))
-    return base64.b64decode(raw["geometry"])
-
-
-def _write_geometry_blob(home: Path, blob: bytes) -> None:
-    text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")}) + "\n"
-    (home / "window-geometry.json").write_text(text, encoding="utf-8")
-
-
-def _save_live_geometry(home: Path) -> bytes:
-    """A real MainWindow writes the blob. The next launch is what we corrupt."""
-    window = MainWindow(home=home, autoload=False)
-    try:
-        window.win.show()
-        window.QtWidgets.QApplication.processEvents()
-        window.win.resize(1000, 700)
-        window.win.move(20, 16)
-        window.QtWidgets.QApplication.processEvents()
-        window._save_window_geometry()
-    finally:
-        _hide(window)
-    return _read_geometry_blob(home)
-
-
-def _flip_frame_left_sign(blob: bytes) -> bytes:
-    """Flip the sign bit of frame-left in the layout `_saved_frame` reads."""
-    data = bytearray(blob)
-    at = _GEOM_HEADER.size
-    left, top, right, bottom = _GEOM_RECT.unpack_from(data, at)
-    flipped = (left & 0xFFFFFFFF) ^ 0x80000000
-    if flipped >= 0x80000000:
-        flipped -= 0x100000000
-    _GEOM_RECT.pack_into(data, at, flipped, top, right, bottom)
-    return bytes(data)
-
-
-def _with_frame(blob: bytes, left: int, top: int, right: int, bottom: int) -> bytes:
-    data = bytearray(blob)
-    _GEOM_RECT.pack_into(data, _GEOM_HEADER.size, left, top, right, bottom)
-    return bytes(data)
-
-
 def _assert_default_size(window: MainWindow) -> None:
     window.win.show()
     window.QtWidgets.QApplication.processEvents()
     assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
 
 
-def test_saved_frame_rejects_a_sign_flipped_left(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    blob = _flip_frame_left_sign(_save_live_geometry(home))
-    assert _saved_frame(blob) is None
+@pytest.mark.parametrize(
+    ("field", "bad"),
+    [
+        ("x", (1 << 30) + 1),
+        ("y", -(1 << 30) - 1),
+        ("width", _QWIDGETSIZE_MAX + 1),
+        ("height", 0),
+        ("maximized", 1),
+        ("width", True),
+        ("x", 12.0),
+    ],
+    ids=["bad-x", "bad-y", "bad-width", "bad-height", "maximized-int", "bool-as-int", "float"],
+)
+def test_window_record_rejects_one_bad_field(field: str, bad) -> None:
+    raw = _valid_record()
+    raw[field] = bad
+    assert _window_record(raw) is None
 
 
-def test_sign_flipped_frame_opens_at_the_default_size(tmp_path: Path) -> None:
+def test_bad_record_opens_at_the_default_size(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    blob = _flip_frame_left_sign(_save_live_geometry(home))
-    _write_geometry_blob(home, blob)
+    _write_record(home, _valid_record(x=(1 << 30) + 1))
+    window = MainWindow(home=home, autoload=False)
+    try:
+        _assert_default_size(window)
+        log = (home / "logs" / "sync-ui.log").read_text(encoding="utf-8")
+        headers = [line for line in log.splitlines() if line.endswith(" window geometry")]
+        assert len(headers) == 1
+        assert "not usable" in log
+    finally:
+        _hide(window)
+
+
+def test_oversized_record_uses_the_default_size(tmp_path: Path) -> None:
+    """16777215 passes the range check and must still not be applied."""
+    home = tmp_path / "home"
+    _write_record(home, _valid_record(width=_QWIDGETSIZE_MAX, height=400))
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert window.win.width() != _QWIDGETSIZE_MAX
+        assert window.win.height() != _QWIDGETSIZE_MAX
+        assert (window.win.width(), window.win.height()) == (920, window.win.minimumHeight())
+        span = window._screen_span()
+        assert window.win.width() <= max(span.width(), 920)
+        assert window.win.height() <= max(span.height(), window.win.minimumHeight())
+    finally:
+        _hide(window)
+
+
+def test_oversized_height_uses_the_default_size(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    _write_record(home, _valid_record(width=640, height=_QWIDGETSIZE_MAX))
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert window.win.height() != _QWIDGETSIZE_MAX
+        assert window.win.width() == DEFAULT_WINDOW_SIZE[0]
+    finally:
+        _hide(window)
+
+
+def test_guard_resets_a_size_the_fitter_let_through(tmp_path: Path, monkeypatch) -> None:
+    """The post-apply guard is the backstop when the fitter does not shrink."""
+    home = tmp_path / "home"
+    _write_record(home, _valid_record(width=_QWIDGETSIZE_MAX, height=_QWIDGETSIZE_MAX))
+
+    def keep(self, width, height):
+        return (width, height)
+
+    monkeypatch.setattr(MainWindow, "_fitted_size", keep)
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.show()
+        window.QtWidgets.QApplication.processEvents()
+        assert window.win.width() != _QWIDGETSIZE_MAX
+        assert window.win.height() != _QWIDGETSIZE_MAX
+        assert window.win.x() == 0 and window.win.y() == 0
+        assert window.win.width() == DEFAULT_WINDOW_SIZE[0]
+    finally:
+        _hide(window)
+
+
+def _live_save_geometry_blob(home: Path) -> bytes:
+    """Bytes from QWidget.saveGeometry. The app no longer writes this format."""
+    window = MainWindow(home=home, autoload=False)
+    try:
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        window.win.resize(700, 500)
+        window.win.move(20, 16)
+        window.QtWidgets.QApplication.processEvents()
+        return bytes(window.win.saveGeometry())
+    finally:
+        _hide(window)
+
+
+def _write_old_blob(home: Path, blob: bytes) -> None:
+    text = json.dumps({"geometry": base64.b64encode(blob).decode("ascii")}) + "\n"
+    (home / WINDOW_GEOMETRY_FILE).write_text(text, encoding="utf-8")
+
+
+def _flip_old_blob(blob: bytes, *, byte: int | None = None, bit: int | None = None) -> bytes:
+    data = bytearray(blob)
+    if byte is not None:
+        assert len(data) > byte
+        data[byte] = 0xFF
+    if bit is not None:
+        assert len(data) * 8 > bit
+        data[bit // 8] ^= 0x80 >> (bit % 8)
+    return bytes(data)
+
+
+@pytest.mark.parametrize(
+    ("byte", "bit"),
+    [(54, None), (None, 470)],
+    ids=["byte-54", "bit-470"],
+)
+def test_corrupt_old_blob_opens_at_the_default_size(tmp_path: Path, byte, bit) -> None:
+    home = tmp_path / "home"
+    blob = _flip_old_blob(_live_save_geometry_blob(home), byte=byte, bit=bit)
+    _write_old_blob(home, blob)
     window = MainWindow(home=home, autoload=False)
     try:
         _assert_default_size(window)
@@ -278,29 +409,46 @@ def test_sign_flipped_frame_opens_at_the_default_size(tmp_path: Path) -> None:
         _hide(window)
 
 
-def test_max_int_frame_opens_at_the_default_size(tmp_path: Path) -> None:
+def test_old_blob_is_rewritten_as_a_record_on_quit(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    blob = _with_frame(_save_live_geometry(home), 0, 0, 2**31 - 1, 2**31 - 1)
-    assert _saved_frame(blob) is None
-    _write_geometry_blob(home, blob)
+    blob = _live_save_geometry_blob(home)
+    _write_old_blob(home, blob)
     window = MainWindow(home=home, autoload=False)
     try:
-        _assert_default_size(window)
+        window.win.show()
+        window.QtWidgets.QApplication.processEvents()
+        window.quit()
     finally:
         _hide(window)
+    record = _saved_record(home)
+    assert record["version"] == _GEOMETRY_VERSION
+    assert "geometry" not in record
+    assert _window_record(record) is not None
 
 
 def test_partial_geometry_restore_keeps_the_default_size(tmp_path: Path, monkeypatch) -> None:
     """A restore that resizes and then raises still leaves the default size."""
     home = tmp_path / "home"
-    _save_live_geometry(home)
+    first = MainWindow(home=home, autoload=False)
+    try:
+        first.win.show()
+        first.QtWidgets.QApplication.processEvents()
+        first.win.resize(700, 500)
+        first.win.move(20, 16)
+        first.QtWidgets.QApplication.processEvents()
+        first.quit()
+    finally:
+        _hide(first)
 
-    def boom(self, _blob):
-        self.resize(400, 300)
-        self.move(30, 30)
+    orig = MainWindow._apply_window_record
+
+    def boom(self, *args):
+        orig(self, *args)
+        self.win.resize(400, 300)
+        self.win.move(30, 30)
         raise RuntimeError("geometry apply stopped")
 
-    monkeypatch.setattr("PyQt5.QtWidgets.QMainWindow.restoreGeometry", boom)
+    monkeypatch.setattr(MainWindow, "_apply_window_record", boom)
     window = MainWindow(home=home, autoload=False)
     try:
         _assert_default_size(window)
@@ -324,6 +472,10 @@ _orig_show = appmod.MainWindow.show
 
 
 def show(self):
+    # Size before show() still has whatever restore did. The guard inside show()
+    # must not be the only thing hiding an old blob that restoreGeometry inflated.
+    sys.stdout.write("BEFORE_SHOW %d %d\n" % (self.win.width(), self.win.height()))
+    sys.stdout.flush()
     _orig_show(self)
     sys.stdout.write("WINDOW_SHOWN %d %d\n" % (self.win.width(), self.win.height()))
     sys.stdout.flush()
@@ -351,11 +503,7 @@ raise SystemExit(0 if rc is None else int(rc))
 '''
 
 
-def test_sign_flipped_geometry_launches_the_real_app(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    nodedir = tmp_path / "no-tahoe"
-    blob = _flip_frame_left_sign(_save_live_geometry(home))
-    _write_geometry_blob(home, blob)
+def _launch_real_app(tmp_path: Path, home: Path) -> tuple[int, str, str]:
     driver = tmp_path / "driver.py"
     driver.write_text(_GEOM_DRIVER, encoding="utf-8")
     close_file = tmp_path / "close-now"
@@ -363,6 +511,7 @@ def test_sign_flipped_geometry_launches_the_real_app(tmp_path: Path) -> None:
     env["LEASEGRID_SYNC_HOME"] = str(home)
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["LEASEGRID_TEST_CLOSE_FILE"] = str(close_file)
+    nodedir = tmp_path / "no-tahoe"
     proc = subprocess.Popen(
         [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir)],
         stdout=subprocess.PIPE,
@@ -397,14 +546,35 @@ def test_sign_flipped_geometry_launches_the_real_app(tmp_path: Path) -> None:
             time.sleep(0.05)
         shown = "".join(out_lines)
         errors = "".join(err_lines)
-        assert "WINDOW_SHOWN" in shown, "%s %s" % (shown, errors)
-        assert "OverflowError" not in errors
-        assert "Traceback" not in errors
-        width = int(shown.split("WINDOW_SHOWN", 1)[1].split()[0])
-        assert width == DEFAULT_WINDOW_SIZE[0]
-        close_file.write_text("quit", encoding="utf-8")
-        assert proc.wait(timeout=20) == 0
+        if "WINDOW_SHOWN" in shown:
+            close_file.write_text("quit", encoding="utf-8")
+            code = proc.wait(timeout=20)
+        else:
+            code = proc.wait(timeout=20) if proc.poll() is None else proc.returncode
+            if code is None:
+                code = proc.wait(timeout=5)
+        return code if code is not None else 1, shown, errors
     finally:
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=5)
+
+
+def test_corrupt_old_blob_launches_the_real_app(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    blob = _flip_old_blob(_live_save_geometry_blob(home), byte=54)
+    _write_old_blob(home, blob)
+    code, shown, errors = _launch_real_app(tmp_path, home)
+    assert "WINDOW_SHOWN" in shown, "%s %s" % (shown, errors)
+    assert "BEFORE_SHOW" in shown, "%s %s" % (shown, errors)
+    assert "Traceback" not in errors
+    assert "OverflowError" not in errors
+    before = shown.split("BEFORE_SHOW", 1)[1].split()
+    after = shown.split("WINDOW_SHOWN", 1)[1].split()
+    before_w, before_h = int(before[0]), int(before[1])
+    width, height = int(after[0]), int(after[1])
+    # A flipped v3 rect is 16,777,215 px. The default window is not.
+    assert before_w < 10000 and before_h < 10000
+    assert width == DEFAULT_WINDOW_SIZE[0]
+    assert height < 10000
+    assert code == 0

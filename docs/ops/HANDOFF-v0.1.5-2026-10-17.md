@@ -57,7 +57,7 @@ Still a design limit: `short-fragment` (<20). Tester's `short-16` still leaks 20
   - `404`
   - `not yet live/available/…`
 
-  `test_caveat_guard_catches_rewordings` has 7 rewordings, including Tester's T4.
+  `test_caveat_guard_catches_known_rewordings` covers 7 listed rewordings, including Tester's T4. It is a keyword guard: wordings without those keywords (for example "Coming soon") still pass.
 - **U7** (unshown-branch width), two tests:
   - `…_unshown_height_is_computed_at_branch_width` asserts the exact minimum height at `max(open, minimumWidth)`, and that it is smaller than at half the width.
   - `…_unshown_respects_larger_minimum_width` sets a minimumWidth above the open width. It kills "ignore minimumWidth", which Qt clamping had masked.
@@ -93,3 +93,32 @@ Still a design limit: `short-fragment` (<20). Tester's `short-16` still leaks 20
 | all | restored | green |
 
 Local CI: `PYTHON=/tmp/lg-ff-rawtext-venv/bin/python scripts/ci-local.sh` → PASS (count in the PR body).
+
+## PR #72 review fixes (Tester, pullrequestreview-5556979371)
+
+- **B1:** README.md:31 and docs/TESTERS.md:32 now say the **v0.1.4** notes made #30 sound user-visible. `test_tester_page_says_other_http_errors` pins the version. A grep found no other occurrence.
+- **Follow-up 1** (deleting the main base32 rule passed the suite):
+  - Seeded `test_short_lowercase_base32_never_leaks[20..31]`, 100 runs per length.
+  - `test_tahoe_cap_keys_never_leak[DIR2|CHK]` uses Tester's `URI:DIR2:{26}:{52}` and `URI:CHK:{26}:{52}:3:10:1234` shapes.
+- **Follow-up 2** (hex and uppercase expansion not pinned): `test_rule_redacts_the_whole_token[hex|uppercase]` checks 50 seeded tokens with short affixes outside each rule's alphabet. The full line must read `id=REDACTED end`.
+- **Overclaim:** the caveat-guard comment and test name no longer say "however worded"; they say "known rewordings" and state the guard's limit.
+
+| Mutation | Result |
+|---|---|
+| R4: delete `[A-Za-z0-9]*[a-z2-7]{20,}[A-Za-z0-9]*` | 14 failed (b32 20–31 ×12, DIR2, CHK) |
+| O3: hex rule without token expansion | 1 failed (`whole_token[hex]`) |
+| O4: uppercase rule without token expansion | 1 failed (`whole_token[uppercase]`) |
+| B1: "v0.1.5 notes made" put back in README | 1 failed |
+| restored | green |
+
+## Remaining follow-ups (not in v0.1.5)
+
+1. **snake_case 40+ over-redaction.** `[A-Za-z0-9_-]{40,}` blanks long identifiers such as `_get_magic_folder_participants_for_collective`, the one line on Tester's 38-line corpus newly blanked against v0.1.4. Options: accept it as a fifth strict xfail, or require at least one digit or uppercase character in the base64url run. The digit/uppercase option needs a leak measurement first.
+2. **`docs/release-notes/v0.1.4.md` differs from the published v0.1.4 release body** by its one correction line. Either edit the published release body to match (needs approval) or accept the drift; v0.1.5.md carries the correction.
+3. **v0.1.4 gaps, unchanged:**
+   - separators other than `-` or space at 4 chars, and any separator every 5–7 chars;
+   - percent-encoded base64 in URLs, and JSON-escaped `\/` base64;
+   - secrets split across a line wrap into pieces under 20 chars;
+   - lengths below each cutoff: b32 under 20 (the short-fragment xfail), hex under 32, mixed under 32, b64url under 40.
+4. **Caveat guard misses 6 of Tester's 10 rewordings.** Examples: "Coming soon", "available shortly after release", "may not work until CI publishes them". A positive check, that a page says nothing about link timing, would be stronger than more keywords.
+5. **Base32-last ordering is an equivalent mutant** (Tester confirmed: 0 leaks in every probe). The order is kept only as a backstop.

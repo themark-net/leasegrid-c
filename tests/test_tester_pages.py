@@ -16,8 +16,11 @@ _DOWNLOAD = re.compile(r"/releases/download/v(\d+\.\d+\.\d+)/")
 _TAG = re.compile(r"/releases/tag/v(\d+\.\d+\.\d+)")
 
 
-# Any "these links work only after the tag" caveat, however worded (PR #71
-# review T4: "These links work once v0.1.4 is tagged." passed the old guard).
+# Common "these links work only after the tag" caveat phrasings (PR #71 review
+# T4: "These links work once v0.1.4 is tagged." passed the old guard). This is
+# a keyword guard, not a proof: it catches the phrasings listed in
+# test_caveat_guard_catches_known_rewordings, and a caveat that avoids those
+# words (e.g. "Coming soon") still passes (PR #72 review follow-up 3).
 _LINK_TARGETS = re.compile(r"\]\([^)]*\)|<https?://[^>]*>|https?://\S+")
 _TAGWORD = r"(?:tag\w*|publish\w*|releas\w*|push\w*|cut)"
 # Up to 60 chars inside one sentence; a dot inside "v0.1.4" does not end it.
@@ -55,7 +58,7 @@ def test_tester_page_has_no_resolve_once_tagged_caveat(page: str) -> None:
         "They will start working after tagging.",
     ],
 )
-def test_caveat_guard_catches_rewordings(caveat: str) -> None:
+def test_caveat_guard_catches_known_rewordings(caveat: str) -> None:
     for page in PAGES:
         text = (ROOT / page).read_text(encoding="utf-8")
         assert caveat_hits(text + "\n" + caveat + "\n"), (page, caveat)
@@ -82,6 +85,9 @@ def test_tester_page_says_other_http_errors(page: str) -> None:
     assert "Other errors say" not in text
     assert "Other HTTP errors say *Magic Folder API error (NNN)*" in text
     assert "Magic Folder daemon is not reachable." in text
+    # PR #72 review B1: the overstated #30 claim was in the v0.1.4 notes.
+    assert "the v0.1.4 notes made the #30 change sound user-visible" in text
+    assert not re.search(r"v0\.1\.(?!4\b)\d+ notes made the #30", text)
 
 
 def test_release_notes_correct_the_v014_30_claim() -> None:

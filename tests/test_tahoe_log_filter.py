@@ -287,6 +287,75 @@ def test_v015_shapes_never_leak(shape: str) -> None:
     assert leaked == 0, f"{shape}: {leaked}/{len(toks)} leaked an 8-char window"
 
 
+# --- PR #72 review follow-ups 1 and 2 (seeded) -----------------------------
+# Follow-up 1: deleting the main [a-z2-7]{20,} rule left the suite green
+# (mixed-case 32 covered every 32-char plant), yet 20-31 char base32 and the
+# 26-char key in Tahoe caps leaked 300/300. Shapes follow Tester's
+# probe_adversarial.py ("len b32 N", "tahoe cap URI:DIR2", "tahoe cap URI:CHK").
+def _b32(rng, n: int) -> str:
+    return "".join(rng.choice(_B32) for _ in range(n))
+
+
+@pytest.mark.parametrize("length", range(20, 32))
+def test_short_lowercase_base32_never_leaks(length: int) -> None:
+    rng = _rng(f"b32-{length}")
+    toks = [_b32(rng, length) for _ in range(100)]
+    lines = [f"{_GLUE_TS}{tok} ok" for tok in toks]
+    outs = _filter_stdout("\n".join(lines) + "\n").splitlines()
+    assert len(outs) == len(toks)
+    leaked = sum(any(w in out for w in _windows8(t)) for t, out in zip(toks, outs))
+    assert leaked == 0, f"b32-{length}: {leaked}/{len(toks)} leaked an 8-char window"
+
+
+@pytest.mark.parametrize("kind", ["DIR2", "CHK"])
+def test_tahoe_cap_keys_never_leak(kind: str) -> None:
+    rng = _rng(f"cap-{kind}")
+    cases = []
+    for _ in range(100):
+        a, b = _b32(rng, 26), _b32(rng, 52)
+        tail = ":3:10:1234" if kind == "CHK" else ""
+        cases.append((a, b, f"{_GLUE_TS}URI:{kind}:{a}:{b}{tail} ok"))
+    outs = _filter_stdout("\n".join(c[2] for c in cases) + "\n").splitlines()
+    assert len(outs) == len(cases)
+    leaked = sum(
+        any(w in out for w in _windows8(a) + _windows8(b)) for (a, b, _), out in zip(cases, outs)
+    )
+    assert leaked == 0, f"URI:{kind}: {leaked}/{len(cases)} leaked an 8-char window"
+
+
+# Follow-up 2: the hex and uppercase rules redact the WHOLE alphanumeric token,
+# not just the run. Short glued affixes outside each rule's alphabet keep the
+# token under 32/40 chars, so no other rule reaches it; with the expansion
+# reverted the affixes survive next to REDACTED.
+def _whole_token_cases(kind: str) -> list[tuple[str, str]]:
+    import re
+
+    rng = _rng(f"whole-{kind}")
+    out = []
+    while len(out) < 50:
+        if kind == "hex":
+            run = "".join(rng.choice("0123456789abcdef") for _ in range(32))
+            pre = "".join(rng.choice("ghijkmnpqrstuvwxyz") for _ in range(2))
+            suf = "".join(rng.choice("GHJKMNPQRSTUVWXYZ") for _ in range(2))
+            if re.search(r"[a-z2-7]{20}", pre + run):  # base32 rule would eat it
+                continue
+        else:
+            run = "".join(rng.choice(_B32.upper()) for _ in range(20))
+            pre = "".join(rng.choice("abcdefghijklmnopqrstuvwxyz0189") for _ in range(2))
+            suf = "".join(rng.choice("0189") for _ in range(2))
+        out.append((pre + run + suf, f"{_GLUE_TS}id={pre}{run}{suf} end"))
+    return out
+
+
+@pytest.mark.parametrize("kind", ["hex", "uppercase"])
+def test_rule_redacts_the_whole_token(kind: str) -> None:
+    cases = _whole_token_cases(kind)
+    outs = _filter_stdout("\n".join(line for _, line in cases) + "\n").splitlines()
+    assert len(outs) == len(cases)
+    bad = [out for out in outs if not out.endswith("id=REDACTED end")]
+    assert not bad, f"{kind}: {len(bad)}/{len(cases)} kept part of the token: {bad[0]!r}"
+
+
 # Over-redaction we accept (PR #71 review follow-up 1). Each would need a rule
 # that lets some real secret shape through, so redact-more wins. strict=True:
 # if a future tuning un-blanks one, it XPASSes and turns red, forcing a fresh

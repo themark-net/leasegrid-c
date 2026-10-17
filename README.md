@@ -28,7 +28,7 @@ Tester page (join, add a folder, report a bug): [`docs/TESTERS.md`](https://gith
 ## What's new in v0.1.5
 
 - Nothing changes in the app window; this build hardens the CI log redaction.
-- Correction: the v0.1.5 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
+- Correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
 - Details: [v0.1.5 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.5.md) (and [v0.1.4](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.4.md) before it).
 
 ## Known issues

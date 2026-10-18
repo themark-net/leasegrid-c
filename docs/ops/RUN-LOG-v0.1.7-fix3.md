@@ -43,3 +43,7 @@ RED mutant: C2 remove timer.start(_JOIN_READ_TIMEOUT_MS) → idle test recv stil
 state: DONE | item 6 young lock | tests: test_fresh_empty_lock_is_refused, test_fresh_garbage_lock_is_refused, test_empty_lock_older_than_stale_time_is_recovered, test_empty_lock_past_the_age_threshold_relaunches_quickly, test_empty_lock_mid_write_is_not_taken, test_six_callers_never_double_hold 6 passed in 38.49s | ci-local: 580 passed, 5 xfailed, 4 warnings in 135.77s | err: none
 RED base: not applicable. _pidless_lock_is_young was dead at b267059. Qt stale time 2000 ms already refuses a young PID-less lock and takes an older one inside tryLock. Removing the helper does not change that.
 RED mutant: drop setStaleLockTime (L6) → test_empty_lock_past_the_age_threshold_relaunches_quickly did not open the window. test_fresh_empty_lock_is_refused stayed green.
+
+state: DONE | item 7 display_path | tests: tests/test_sync_display_path.py 3 passed in 0.11s | ci-local: 581 passed, 5 xfailed, 4 warnings in 133.72s | err: none
+RED base: test_display_path_collapses_dotdot_that_leaves_home → '/home/u/../other/x' == '/home/other/x' (the account name stayed in the path)
+RED mutant: return text instead of the collapsed path → the same assertion. test_display_path_table stayed green.

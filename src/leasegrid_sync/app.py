@@ -179,9 +179,10 @@ def display_path(path: object) -> str:
     """Home-relative form for a path a person sees or copies.
 
     ``~/…`` on POSIX and ``~\\…`` on Windows. Files on disk keep the real path.
-    A path outside the account home is unchanged. ``..`` is collapsed before
-    the home check, so a path that leaves home is not masked. The home symlink
-    and its target are both homes. Letter case is ignored on Windows and macOS.
+    A path outside the account home is returned with ``..`` collapsed, so the
+    account name on the way out is not shown. URLs and relative paths stay as
+    typed. The home symlink and its target are both homes. Letter case is
+    ignored on Windows and macOS.
     """
     text = str(path)
     if text == "":
@@ -213,7 +214,7 @@ def display_path(path: object) -> str:
             rel = _under_home(candidate, base, fold)
             if rel is not None:
                 return _tilde(rel)
-    return text
+    return str(collapsed)
 
 
 # An absolute path inside buyer text. The trailing punctuation stays put.

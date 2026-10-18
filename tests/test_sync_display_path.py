@@ -63,6 +63,23 @@ def test_display_path_table(tmp_path: Path, monkeypatch) -> None:
         assert cased == folded
 
 
+def test_display_path_collapses_dotdot_that_leaves_home(monkeypatch) -> None:
+    """A path that steps out of home does not keep the account name."""
+    if sys.platform == "win32":
+        home = Path("C:/Users/u")
+        raw = "C:/Users/u/../other/x"
+        expected = "C:\\Users\\other\\x"
+    else:
+        home = Path("/home/u")
+        raw = "/home/u/../other/x"
+        expected = "/home/other/x"
+    monkeypatch.setattr(Path, "home", lambda *_args, **_kwargs: home)
+    assert display_path(raw) == expected
+    assert "u" not in Path(display_path(raw)).parts
+    assert display_path("pb://user@host/code") == "pb://user@host/code"
+    assert display_path("other/../x") == "other/../x"
+
+
 def test_join_banner_hides_the_account_name(tmp_path: Path, monkeypatch) -> None:
     link, real = _home(tmp_path, monkeypatch)
     log = real / "logs" / "tahoe.log"

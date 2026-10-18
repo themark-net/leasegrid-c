@@ -17,7 +17,20 @@ Ruff in this venv: 0.17.1
 - A B1 signals: DONE | ci-local 597 passed, 5 xfailed, 4 warnings in 138.60s | files: src/leasegrid_sync/app.py, tests/test_sync_already_running.py
   RED: revert app.py signal change → `test_already_running_second_launch_exits_0_on_sigterm[SIGINT]` rc -6 with KeyboardInterrupt traceback; `[SIGHUP]` rc -1 (SIGTERM row still passed)
   GREEN: the same test, SIGTERM/SIGINT/SIGHUP, rc 0, no Traceback, first app alive, lock bytes unchanged
-- B B2 false RED: pending
+- B B2 false RED: DONE | ci-local 602 passed, 5 xfailed, 4 warnings in 140.34s | files: scripts/prove-red.py, tests/test_prove_red.py, AGENTS.md, .grok/skills/systems-safety/SKILL.md, .github/pull_request_template.md
+  RED: `_run_case` returned RED for any non-zero pytest exit and skipped the clean baseline → tests 1–5 failed (each printed RED and prove-red exited 0): typo node id, `-k zzz`, import break, missing fixture, always-failing baseline
+  GREEN: `test_typo_node_id_is_setup_error` (baseline rc=4), `test_no_tests_collected_is_setup_error` (baseline rc=5), `test_import_break_is_setup_error` (rc=2), `test_missing_fixture_is_setup_error` (baseline rc=1), `test_always_failing_baseline_is_setup_error` (baseline rc=1), `test_caught_mutant_is_red_and_restores` (RED, exit 0). Overall exit 2 on setup errors.
+  Receipt (`scripts/prove-red.py docs/ops/prove-red-dev-safety-rails.py`) exit 0, `git diff` clean on backend.py and app.py:
+
+```
+name                      result
+skill-ss3-section         RED
+r9n-zombie-as-running     RED
+n1i-yes-joins             RED
+l5n-drop-second-trylock   RED
+latest-wins-keep-pending  RED
+sigterm-no-handler        RED
+```
 - C reap assert: pending
 - D SS2 poll advice: pending
 - E ST3 box stays up: pending

@@ -67,7 +67,7 @@ Semgrep: `posix-only-process-api`.
 
 Every fix ships a test that fails when the fix is reverted. Paste the receipt.
 
-Do: run `scripts/prove-red.py` on a cases file and paste the table. Don't: write "CI green" from a Linux `ci-local` run. Test: the receipt shows RED for the reverted fix, and `git diff` on the target is empty afterwards.
+Do: run `scripts/prove-red.py` on a cases file and paste the table. Exit 0 means every case is RED. A baseline that is not green, or a pytest exit other than 1, is a setup error (exit 2), not RED. A survivor is exit 1. Don't: write "CI green" from a Linux `ci-local` run, or treat any non-zero pytest exit as RED. Test: the receipt shows RED for the reverted fix, and `git diff` on the target is empty afterwards.
 
 Semgrep: none. The proof is the receipt, not a pattern.
 

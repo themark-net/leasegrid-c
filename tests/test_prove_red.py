@@ -6,7 +6,6 @@ import os
 import signal
 import subprocess
 import sys
-import textwrap
 import time
 from pathlib import Path
 
@@ -33,10 +32,19 @@ def _init_repo(repo: Path, module: str, test_body: str) -> Path:
     return repo / "mod.py"
 
 
-def _cases(repo: Path, name: str, old: str, new: str, node: str = "test_mod.py") -> Path:
+def _cases(
+    repo: Path,
+    name: str,
+    old: str,
+    new: str,
+    node: str = "test_mod.py",
+    target: str = "mod.py",
+    extra: list[str] | None = None,
+) -> Path:
     path = repo / "cases.py"
+    args = [node, *(extra or [])]
     path.write_text(
-        "CASES = [(%r, %r, %r, %r, [%r])]\n" % (name, "mod.py", old, new, node),
+        "CASES = [(%r, %r, %r, %r, %r)]\n" % (name, target, old, new, args),
         encoding="utf-8",
     )
     return path
@@ -66,6 +74,7 @@ def test_caught_mutant_is_red_and_restores(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "RED" in proc.stdout
     assert "SURVIVED" not in proc.stdout
+    assert "SETUP-ERROR" not in proc.stdout
 
 
 def test_crlf_working_tree_matches_lf_pattern(tmp_path: Path) -> None:
@@ -108,6 +117,76 @@ def test_missing_pattern_exits_2(tmp_path: Path) -> None:
     assert target.read_bytes() == original
 
 
+def test_typo_node_id_is_setup_error(tmp_path: Path) -> None:
+    """A missing node id is a usage error on the clean tree, not a RED mutant."""
+    repo = tmp_path / "repo"
+    target = _init_repo(repo, MODULE, TEST)
+    original = target.read_bytes()
+    cases = _cases(repo, "typo", "return 1\n", "return 2\n", node="test_mod.py::test_answr")
+    proc = _run(repo, cases)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "SETUP-ERROR (baseline rc=4)" in proc.stdout
+    assert target.read_bytes() == original
+
+
+def test_no_tests_collected_is_setup_error(tmp_path: Path) -> None:
+    """``-k zzz`` collects nothing. That is a setup error, not RED."""
+    repo = tmp_path / "repo"
+    target = _init_repo(repo, MODULE, TEST)
+    original = target.read_bytes()
+    cases = _cases(repo, "none", "return 1\n", "return 2\n", extra=["-k", "zzz"])
+    proc = _run(repo, cases)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "SETUP-ERROR (baseline rc=5)" in proc.stdout
+    assert target.read_bytes() == original
+
+
+def test_import_break_is_setup_error(tmp_path: Path) -> None:
+    """A mutant that breaks importing the test module is a setup error, not RED."""
+    repo = tmp_path / "repo"
+    _init_repo(repo, MODULE, TEST)
+    test_path = repo / "test_mod.py"
+    original = test_path.read_bytes()
+    cases = _cases(
+        repo,
+        "import-break",
+        "import mod\n",
+        "import mod_that_is_not_there\n",
+        target="test_mod.py",
+    )
+    proc = _run(repo, cases)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "SETUP-ERROR (rc=2)" in proc.stdout
+    assert "baseline" not in proc.stdout
+    assert test_path.read_bytes() == original
+
+
+def test_missing_fixture_is_setup_error(tmp_path: Path) -> None:
+    """A test that cannot even start on the clean tree is a setup error."""
+    repo = tmp_path / "repo"
+    test_body = "import mod\n\ndef test_answer(does_not_exist):\n    assert mod.answer() == 1\n"
+    target = _init_repo(repo, MODULE, test_body)
+    original = target.read_bytes()
+    cases = _cases(repo, "fixture", "return 1\n", "return 2\n")
+    proc = _run(repo, cases)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "SETUP-ERROR (baseline rc=1)" in proc.stdout
+    assert target.read_bytes() == original
+
+
+def test_always_failing_baseline_is_setup_error(tmp_path: Path) -> None:
+    """An already-failing test is not proof that the mutant was caught."""
+    repo = tmp_path / "repo"
+    test_body = "import mod\n\ndef test_answer():\n    assert False\n"
+    target = _init_repo(repo, MODULE, test_body)
+    original = target.read_bytes()
+    cases = _cases(repo, "always-fail", "return 1\n", "return 2\n")
+    proc = _run(repo, cases)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "SETUP-ERROR (baseline rc=1)" in proc.stdout
+    assert target.read_bytes() == original
+
+
 def test_dirty_target_exits_2_and_is_unchanged(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     target = _init_repo(repo, MODULE, TEST)
@@ -127,19 +206,17 @@ def test_dirty_target_exits_2_and_is_unchanged(tmp_path: Path) -> None:
 def test_sigint_restores_the_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     module = "def answer():\n    return 1\n"
-    test_body = textwrap.dedent(
-        """\
-        import time
-        import mod
-
-        def test_answer():
-            time.sleep(30)
-            assert mod.answer() == 1
-        """
-    )
+    test_body = "import mod\n\ndef test_answer():\n    assert mod.answer() == 1\n"
     target = _init_repo(repo, module, test_body)
     original = target.read_bytes()
-    cases = _cases(repo, "interrupt", "return 1\n", "return 2\n")
+    # The clean test returns at once, so the baseline is green. The mutant is
+    # what sleeps, which is the window where the file is dirty.
+    cases = _cases(
+        repo,
+        "interrupt",
+        "return 1\n",
+        "import time\n    time.sleep(30)\n    return 1\n",
+    )
     proc = subprocess.Popen(
         [sys.executable, str(SCRIPT), str(cases)],
         cwd=repo,

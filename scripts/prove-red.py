@@ -2,8 +2,16 @@
 """Run a mutation and require the named tests to fail, then restore the file.
 
 cases.py defines CASES = [(name, file, old, new, [pytest args])].
-Exit 0 when every case is RED, 1 when any test still passed, 2 on setup errors.
-A target with uncommitted changes is refused so a mutant cannot be committed.
+
+Each case runs on the clean tree first. A baseline that is not exit 0 is
+``SETUP-ERROR (baseline rc=N)`` and the file is not mutated. After a green
+baseline, pytest rc 1 is RED, rc 0 is SURVIVED, and any other rc (including
+2, 3, 4, and 5) is ``SETUP-ERROR (rc=N)``.
+
+Exit 0 when every case is RED. Exit 1 when any case SURVIVED and none is a
+setup error. Exit 2 when any case is a setup error (setup errors win), the
+pattern is missing, or a target is dirty or absent. A target with
+uncommitted changes is refused so a mutant cannot be committed.
 """
 
 from __future__ import annotations
@@ -80,22 +88,34 @@ def _mutant_bytes(original: bytes, old: str, new: str) -> bytes:
     return mutated.encode("utf-8")
 
 
+def _pytest(python: str, args: list[str]) -> int:
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    proc = subprocess.run(
+        [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *args],
+        env=env,
+        check=False,
+    )
+    return proc.returncode
+
+
 def _run_case(python: str, path: Path, old: str, new: str, args: list[str]) -> str:
     original = path.read_bytes()
+    baseline = _pytest(python, args)
+    if baseline != 0:
+        return "SETUP-ERROR (baseline rc=%s)" % baseline
     try:
         # Bytes, not write_text: write_text would turn ``\\n`` into CRLF again.
         path.write_bytes(_mutant_bytes(original, old, new))
-        env = os.environ.copy()
-        env["QT_QPA_PLATFORM"] = "offscreen"
-        env["PYTHONDONTWRITEBYTECODE"] = "1"
-        proc = subprocess.run(
-            [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *args],
-            env=env,
-            check=False,
-        )
-        return "RED" if proc.returncode != 0 else "SURVIVED"
+        rc = _pytest(python, args)
     finally:
         path.write_bytes(original)
+    if rc == 1:
+        return "RED"
+    if rc == 0:
+        return "SURVIVED"
+    return "SETUP-ERROR (rc=%s)" % rc
 
 
 def _table(rows: list[tuple[str, str]]) -> str:
@@ -139,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         args.receipt.write_text(table, encoding="utf-8")
     if leaked:
         print("git diff is not quiet: %s" % ", ".join(leaked), file=sys.stderr)
+        return 2
+    if any(result.startswith("SETUP-ERROR") for _name, result in rows):
         return 2
     if any(result == "SURVIVED" for _name, result in rows):
         return 1

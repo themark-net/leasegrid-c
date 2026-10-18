@@ -49,8 +49,10 @@ rules:
     severity: ERROR
     message: >-
       Signalling a PID or PGID held in a variable. If the child was already reaped, the number
-      can belong to an unrelated process (PR #74 T4). Signal only a Popen you still own, with
-      proc.poll() is None checked right before, or use a pidfd. CWE-367. Rule SS2.
+      can belong to an unrelated process (PR #74 T4 / N2). While the unreaped leader is still
+      yours, check exit with waitid(WEXITED|WNOHANG|WNOWAIT) (kqueue on macOS), then killpg,
+      then reap. Never signal a reaped or stored pid or pgid. poll() reaps and skips the
+      group kill. CWE-367. Rule SS2.
     pattern-either:
       - pattern: os.killpg($PGID, $SIG)
       - pattern: os.kill($PID, $SIG)

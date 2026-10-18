@@ -16,7 +16,7 @@ No tautological or implementation-detail unit sprawl as Done.
 
 Systems rules (Reviewer FAILs on violation; cite the id):
 SS1 Locks: never delete or "recover" a lock you don't hold. Use QLockFile defaults, flock or O_EXCL. Ship an N-proc x M-round test asserting exactly one holder.
-SS2 PIDs: signal only a child you still own (Popen.poll() is None right before), or use pidfd. Never kill a stored or reaped pid or pgid.
+SS2 PIDs: while you still own the unreaped leader, check exit with os.waitid(P_PID, pid, WEXITED|WNOHANG|WNOWAIT) (kqueue on macOS), then killpg the group, then reap. Never signal a reaped or stored pid or pgid. poll() reaps and is the wrong check.
 SS3 IPC: no endpoints in /tmp or gettempdir(). Use $XDG_RUNTIME_DIR or a 0700 dir whose owner you verify. Use QLocalServer UserAccessOption and check the peer uid. AF_UNIX path < 104 bytes.
 SS4 Untrusted state: never feed file bytes to restoreGeometry, restoreState or pickle. Parse into fields, clamp to the screen and int32, and default on any error. Add a property or fuzz test.
 SS5 Ints to C/Qt: clamp to [-2^31, 2^31-1] and to a sane domain before any Qt or ctypes call.

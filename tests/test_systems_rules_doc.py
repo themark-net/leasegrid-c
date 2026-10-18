@@ -64,6 +64,22 @@ def test_skill_frontmatter_matches_its_folder() -> None:
     assert len(description) < 1024
 
 
+def test_ss2_does_not_recommend_poll_before_the_signal() -> None:
+    """poll() reaps the leader. SS2 must say waitid, not signal when poll() is None."""
+    skill = SKILL.read_text(encoding="utf-8")
+    ss2 = skill.split("## SS3 IPC", 1)[0].split("## SS2 PIDs", 1)[1]
+    assert "immediately before" not in ss2
+    assert "waitid" in ss2
+    ss2_line = next(
+        line for line in AGENTS.read_text(encoding="utf-8").splitlines() if line.startswith("SS2 ")
+    )
+    assert "poll() is None" not in ss2_line
+    assert "waitid" in ss2_line
+    rules = (RULES / "leasegrid-systems.yml").read_text(encoding="utf-8")
+    assert "proc.poll() is None checked right before" not in rules
+    assert "WNOWAIT" in rules
+
+
 def test_agents_links_to_the_skill_file() -> None:
     """AGENTS.md points at the skill, and that file is in the tree."""
     rel = ".grok/skills/systems-safety/SKILL.md"

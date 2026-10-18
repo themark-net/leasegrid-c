@@ -17,9 +17,9 @@ CWE-367. Semgrep: `qlockfile-manual-stale-removal`.
 
 ## SS2 PIDs
 
-Signal only a child this process still owns (`Popen.poll()` is `None` immediately before the signal) or use a pidfd. Never signal a stored, reaped, or reused pid or pgid.
+While you still own the unreaped leader, check exit with `os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)` (kqueue `NOTE_EXIT` on macOS, where that waitid is unreliable). Then `killpg` the group, then reap. Never signal a reaped or stored pid or pgid. `Popen.poll()` reaps, so the group kill is skipped and a TERM-ignoring grandchild survives.
 
-Do: keep the leader unreaped until the group kill, then reap. Don't: `os.kill` or `os.killpg` a number read from a file. Test: a reaped leader's old pid, now reused, is still alive after stop.
+Do: keep the leader unreaped until after the group kill, then reap. Don't: `poll()` before the signal, or `os.kill` / `os.killpg` a number read from a file. Test: a TERM-ignoring grandchild is gone, and a reaped leader's reused pid is still alive.
 
 CWE-367. Semgrep: `signal-to-stored-pid`.
 

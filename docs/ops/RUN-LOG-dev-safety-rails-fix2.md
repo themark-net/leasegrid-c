@@ -34,7 +34,9 @@ sigterm-no-handler        RED
 - C reap assert: DONE | ci-local 602 passed, 5 xfailed, 4 warnings in 140.27s | files: tests/test_sync_backend.py
   RED: `start()` skipped `reap_child` on the non-running leader → `test_start_respawns_an_unreaped_exited_leader` (`start() left the old leader unreaped`, `returncode is None`)
   GREEN: `test_start_respawns_an_unreaped_exited_leader`
-- D SS2 poll advice: pending
+- D SS2 poll advice: DONE | ci-local 603 passed, 5 xfailed, 4 warnings in 144.24s | files: .grok/skills/systems-safety/SKILL.md, AGENTS.md, tools/semgrep/leasegrid-systems.yml, tests/test_systems_rules_doc.py. Left docs/build-dropins/dev-safety-rails.md historical.
+  RED: restored the old SS2 sentence (`Popen.poll()` is `None` immediately before the signal) → `test_ss2_does_not_recommend_poll_before_the_signal` (`immediately before` is back)
+  GREEN: `test_ss2_does_not_recommend_poll_before_the_signal` and the other systems-rules doc tests
 - E ST3 box stays up: pending
 - F prove-red signal restore: pending
 - G ruff pin: pending

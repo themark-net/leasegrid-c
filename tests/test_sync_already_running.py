@@ -9,7 +9,6 @@ text. The invite in the dump is a fake.
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 import time
@@ -37,27 +36,6 @@ rc = main(sys.argv[1:])
 raise SystemExit(0 if rc is None else int(rc))
 """
 
-# One helper sends the payload. A QCoreApplication in the test would stick.
-_WIN_SEND = r"""
-import sys
-from PyQt5.QtCore import QCoreApplication
-from PyQt5.QtNetwork import QLocalSocket
-
-app = QCoreApplication([])
-name = sys.argv[1]
-payload = sys.stdin.buffer.read()
-sock = QLocalSocket()
-sock.connectToServer(name)
-if not sock.waitForConnected(2000):
-    raise SystemExit(2)
-sock.write(payload)
-if not sock.waitForBytesWritten(2000):
-    raise SystemExit(2)
-sock.abort()
-raise SystemExit(0)
-"""
-
-
 def _wait_until(predicate, timeout: float) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -65,35 +43,6 @@ def _wait_until(predicate, timeout: float) -> bool:
             return True
         time.sleep(0.05)
     return False
-
-
-def _send_one(endpoint: str, payload: bytes) -> None:
-    if sys.platform == "win32":
-        proc = subprocess.run(
-            [sys.executable, "-c", _WIN_SEND, endpoint],
-            input=payload,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=30,
-            check=False,
-        )
-        assert proc.returncode == 0, proc.stderr
-        return
-    deadline = time.time() + 10
-    last: BaseException | None = None
-    while time.time() < deadline:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(2)
-        try:
-            sock.connect(endpoint)
-            sock.sendall(payload)
-            return
-        except (BlockingIOError, ConnectionRefusedError, TimeoutError, InterruptedError) as exc:
-            last = exc
-            time.sleep(0.01)
-        finally:
-            sock.close()
-    raise AssertionError("could not hand off: %s" % last)
 
 
 def _launch(tmp_path: Path, *args: str, text_file: Path | None = None, dismiss: bool = False):
@@ -117,11 +66,16 @@ def _launch(tmp_path: Path, *args: str, text_file: Path | None = None, dismiss: 
     err_f = err_path.open("w", encoding="utf-8")
     driver = tmp_path / "hooked_main.py"
     driver.write_text(_HOOKED_MAIN, encoding="utf-8")
+    kwargs: dict = {}
+    if sys.platform == "win32" and not dismiss:
+        # Own group, like the other handoff tests, so console events stay local.
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
         [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir), *args],
         stdout=subprocess.DEVNULL,
         stderr=err_f,
         env=env,
+        **kwargs,
     )
     return proc, err_path, err_f
 
@@ -148,7 +102,6 @@ def test_unmocked_second_launch_shows_already_running_and_stays_up(tmp_path: Pat
     Neither aborts, and the first window still accepts a later handoff.
     """
     ready = tmp_path / "join-ready"
-    signal_ready = tmp_path / "signal-ready"
     dump = tmp_path / "invite-dump"
     plain_text = tmp_path / "plain-text"
     held_text = tmp_path / "held-text"
@@ -156,10 +109,9 @@ def test_unmocked_second_launch_shows_already_running_and_stays_up(tmp_path: Pat
     second = None
     third = None
     try:
-        assert _wait_until(
-            lambda: (ready.is_file() and signal_ready.is_file()) or first.poll() is not None,
-            25,
-        ), _stderr(first_err)
+        assert _wait_until(lambda: ready.is_file() or first.poll() is not None, 25), (
+            "first app did not listen: rc %s %s" % (first.poll(), _stderr(first_err)[-800:])
+        )
         assert first.poll() is None, _stderr(first_err)
         home = tmp_path / "home"
         endpoint = join_endpoint(home)
@@ -181,6 +133,7 @@ def test_unmocked_second_launch_shows_already_running_and_stays_up(tmp_path: Pat
         assert second.returncode == 0, "rc %s stderr %s" % (second.returncode, plain_err[-500:])
         assert second.returncode not in (134, -6, -11)
         assert "Must construct a QApplication" not in plain_err
+        assert plain_text.is_file(), "no box text; stderr %s" % plain_err[-500:]
         assert plain_text.read_text(encoding="utf-8") == ALREADY_RUNNING
         assert first.poll() is None, _stderr(first_err)
 
@@ -204,7 +157,22 @@ def test_unmocked_second_launch_shows_already_running_and_stays_up(tmp_path: Pat
         assert OVERSIZE not in held_text.read_text(encoding="utf-8")
         assert first.poll() is None, _stderr(first_err)
 
-        _send_one(endpoint, (HANDOFF + "\n").encode("utf-8"))
+        # The real client path, as a user's second launch would hand it off.
+        sender, sender_err, sender_f = _launch(
+            tmp_path, "--join", HANDOFF, text_file=tmp_path / "sender-text", dismiss=True
+        )
+        try:
+            sender.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            _stop(sender)
+            pytest.fail("handoff launch still alive: %s" % _stderr(sender_err)[-500:])
+        finally:
+            if not sender_f.closed:
+                sender_f.close()
+        assert sender.returncode == 0, "rc %s stderr %s" % (
+            sender.returncode,
+            _stderr(sender_err)[-500:],
+        )
         assert _wait_until(
             lambda: ("field=%s\n" % HANDOFF) in dump.read_text(encoding="utf-8")
             if dump.is_file()

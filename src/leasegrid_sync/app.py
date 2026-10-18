@@ -2944,7 +2944,10 @@ class MainWindow:
         try:
             box.blockSignals(True)
             box.close()
-            box.setParent(None)
+            # Keep the Qt parent. setParent(None) hands the C++ box to Python,
+            # which frees it as soon as this local goes away, while Qt may
+            # still be using it. deleteLater frees it from the event loop.
+            box.setObjectName("")
             box.deleteLater()
         except Exception:
             pass
@@ -3008,7 +3011,10 @@ class MainWindow:
         self._handed_replace_pending = ""
         if box is not None:
             try:
-                box.setParent(None)
+                # This slot runs inside the box's own finished signal. Keep the
+                # Qt parent so Python never frees the box under QDialog::done();
+                # deleteLater frees it once control returns to the event loop.
+                box.setObjectName("")
                 box.deleteLater()
             except Exception:
                 pass

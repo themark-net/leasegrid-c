@@ -298,20 +298,34 @@ def _wait_for_file(path: Path, timeout: float = 5.0) -> bool:
 
 
 def _leader_is_unreaped_zombie(proc: subprocess.Popen, timeout: float = 5.0) -> bool:
-    """True when waitid sees the exit and nothing has collected it."""
-    if not hasattr(os, "waitid"):
-        return False
-    flags = os.WEXITED | os.WNOWAIT | os.WNOHANG
+    """True when the leader has exited and nothing has collected it.
+
+    Linux reads /proc state Z. Elsewhere (macOS) the leader must still be
+    in the process table (kill 0 succeeds) once its own exit marker is
+    written, and returncode stays None, so nobody has reaped it.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         if proc.returncode is not None:
             return False
-        try:
-            info = os.waitid(os.P_PID, proc.pid, flags)
-        except (ChildProcessError, OSError):
-            return False
-        if info is not None:
-            return True
+        stat = Path("/proc/%d/stat" % proc.pid)
+        if stat.exists():
+            try:
+                if stat.read_text().rsplit(")", 1)[-1].split()[0] == "Z":
+                    return True
+            except (OSError, IndexError):
+                pass
+        elif sys.platform == "darwin":
+            out = subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(proc.pid)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=10,
+                check=False,
+            ).stdout.strip()
+            if out.startswith("Z"):
+                return True
         time.sleep(0.05)
     return False
 

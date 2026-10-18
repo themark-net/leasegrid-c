@@ -258,6 +258,45 @@ def _waitid_flags() -> Optional[int]:
     return os.WEXITED | os.WNOWAIT | os.WNOHANG  # type: ignore[attr-defined]
 
 
+def _darwin_leader_state(pid: int) -> str:
+    """macOS: 'running' or 'exited', observed with kqueue and never reaped.
+
+    macOS waitid with WNOWAIT and WNOHANG is not reliable (it can collect the
+    child or report nothing), so it is not used there. EVFILT_PROC NOTE_EXIT
+    only watches. ESRCH on attach means the leader has already exited; the
+    caller has not reaped it (returncode is None), so it is still a zombie
+    that pins the group id.
+    """
+    import errno
+    import select
+
+    try:
+        kq = select.kqueue()
+    except OSError:
+        return "running"
+    try:
+        ev = select.kevent(
+            pid,
+            filter=select.KQ_FILTER_PROC,
+            flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+            fflags=select.KQ_NOTE_EXIT,
+        )
+        try:
+            events = kq.control([ev], 1, 0)
+        except ProcessLookupError:
+            return "exited"
+        except OSError as exc:
+            return "exited" if exc.errno == errno.ESRCH else "running"
+        for got in events:
+            if got.flags & select.KQ_EV_ERROR:
+                return "exited" if got.data == errno.ESRCH else "running"
+            if got.fflags & select.KQ_NOTE_EXIT:
+                return "exited"
+        return "running"
+    finally:
+        kq.close()
+
+
 def _leader_state(proc: subprocess.Popen) -> str:
     """'running', 'exited' (zombie, group id still pinned), or 'reaped'.
 
@@ -269,6 +308,8 @@ def _leader_state(proc: subprocess.Popen) -> str:
     """
     if proc.returncode is not None:
         return "reaped"
+    if sys.platform == "darwin":
+        return _darwin_leader_state(proc.pid)
     flags = _waitid_flags()
     if flags is None:
         return "running" if proc.poll() is None else "reaped"
@@ -307,7 +348,8 @@ def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
 
     A daemon this process started in its own session owns that process group.
     SIGTERM goes to the group, then the leader's exit is observed with
-    os.waitid(WNOWAIT) so the zombie still pins the group id. Members that
+    os.waitid(WNOWAIT) (kqueue NOTE_EXIT on macOS, where waitid WNOWAIT is
+    unreliable) so the zombie still pins the group id. Members that
     obey SIGTERM get a short grace, at most half a second. The group then
     gets SIGKILL, and only after that does proc.wait() reap the leader.
     A grandchild that ignores SIGTERM dies in that SIGKILL. If the leader

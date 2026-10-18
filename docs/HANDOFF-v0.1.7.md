@@ -110,6 +110,12 @@ Tester FAIL on PR #74 at `b267059`. Items 1–7 are DONE. None skipped. CI: see 
 
 Round 2's T4 line stands only after the leader is reaped. While the leader is an unreaped zombie, the group SIGKILL is intended. The pid-reuse test guards the reaped case. Round 2's "`..` stays unchanged" sentence is superseded by item 7.
 
+**Round 3 CI fix** (after `a11dcf4`: macOS and Windows tests failed):
+- macOS: `waitid(WNOWAIT|WNOHANG)` is unreliable there, so the leader was collected before the group kill. On darwin the exit is now watched with kqueue `NOTE_EXIT`, which never reaps. The test helper reads the zombie state from `ps`/`/proc`.
+- Windows: an access violation in `box.open()`. The replace box was `setParent(None)` and then freed by Python inside its own `finished` signal. It now keeps its Qt parent and is freed only by `deleteLater`.
+- The N3 unmocked test waits for the join listener only, gives the first app its own Windows process group, and hands off through a real `--join` launch. Every assert carries stderr.
+- ci-local: 581 passed, 5 xfailed. CI: see PR checks.
+
 **Deferred to v0.1.8:** Windows pipe-owner check (`GetNamedPipeServerProcessId`); a cross-host lock taken after 2 s instead of 30 s on a network home; underscore-joined lowercase+digit token fragments (about 10%; this seed 46/300, Tester 29/300); a signal in the first ~0.1 s; adopting an orphaned Tahoe; a lock path that is a directory or mode 000; the other log-filter gaps; size-based rotation of daemon logs while the daemon is running; the cross-user check.
 
 Fix round 3 counts: item 1 was 572 passed, 5 xfailed, in 124.53s; item 2, 574 in 132.33s; item 3, 575 in 135.77s; item 4, 577 in 135.09s; item 5, 580 in 136.50s; item 6, 580 in 135.77s; item 7, 581 in 133.72s. Closing ci-local: 581 passed, 5 xfailed, 4 warnings in 136.37s. CI: see PR checks.

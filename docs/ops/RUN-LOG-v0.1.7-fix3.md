@@ -31,3 +31,7 @@ RED mutant: skip the post-exit group SIGKILL in _finish_exited_group → grandch
 state: DONE | item 3 N3 | tests: tests/test_sync_already_running.py 1 passed in 0.63s | ci-local: 575 passed, 5 xfailed, 4 warnings in 135.77s | err: none
 RED base: test_unmocked_second_launch_shows_already_running_and_stays_up → rc -6, QWidget: Must construct a QApplication before a QWidget
 RED mutant: drop the QApplication reference in _show_already_running → same test rc -6, Must construct a QApplication before a QWidget
+
+state: DONE | item 4 F1 F3 | tests: test_forty_char_base64url_tokens_are_redacted (0/80), test_digit_underscore_tokens_leak_no_worse_than_base (46/300, bound 46) | ci-local: 577 passed, 5 xfailed, 4 warnings in 135.09s | err: none
+RED base: not applicable. packaging/tahoe-log-filter.sh is byte-identical to b267059, so both tests pass there. Filter behavior was not changed.
+RED mutant: F1 {40,}→{41,} → test_forty_char_base64url_tokens_are_redacted 79/80 leaked; F3 protector widened to [a-z0-9_] → test_digit_underscore_tokens_leak_no_worse_than_base 233/300.

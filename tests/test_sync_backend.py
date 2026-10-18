@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from leasegrid_sync import backend as backend_mod
+from leasegrid_sync.app import display_path
 from tests.buyer_text import POISON, assert_no_raw_user_text
 from leasegrid_sync.backend import (
     ConnectionStatus,
@@ -72,8 +73,13 @@ def test_popen_hidden_uses_create_no_window_on_windows(monkeypatch):
     monkeypatch.setattr("leasegrid_sync.backend.subprocess.Popen", FakePopen)
     monkeypatch.setattr("leasegrid_sync.backend.sys.platform", "win32")
     monkeypatch.setattr("leasegrid_sync.backend.subprocess.CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(
+        "leasegrid_sync.backend.subprocess.CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False
+    )
     popen_hidden(["tahoe", "run", "x"], log_f=None)
-    assert seen["kwargs"]["creationflags"] == 0x08000000
+    flags = seen["kwargs"]["creationflags"]
+    assert flags & 0x08000000
+    assert flags & 0x00000200
     assert seen["kwargs"]["stdin"] is not None
 
 
@@ -600,7 +606,7 @@ def test_magic_folder_exit_log_tail_is_not_shown(tmp_path: Path, monkeypatch):
         ctl.ensure_running()
     blob = exc.value.banner()
     assert "Magic Folder stopped while starting" in blob
-    assert str(log) in blob
+    assert display_path(log) in blob
     assert "#30" not in blob
     assert "known issue" not in blob.lower()
     assert "pb://" not in blob
@@ -1232,7 +1238,7 @@ def test_read_disk_offer_oserror_hides_exception_text(tmp_path: Path):
             read_disk_offer(nodedir, home)
     blob = exc.value.banner()
     assert "could not read this disk" in blob
-    assert str(offer_disk_path(home, nodedir)) in blob
+    assert display_path(offer_disk_path(home, nodedir)) in blob
     assert_no_raw_user_text(blob)
 
 
@@ -1249,7 +1255,7 @@ def test_apply_offer_percent_oserror_hides_exception_text(tmp_path: Path):
             apply_offer_percent(nodedir, home, 40)
     blob = exc.value.banner()
     assert "could not offer disk" in blob
-    assert str(offer_disk_path(home, nodedir)) in blob
+    assert display_path(offer_disk_path(home, nodedir)) in blob
     assert_no_raw_user_text(blob)
 
 
@@ -1367,7 +1373,7 @@ def test_magic_folder_readonly_log_dir_is_friendly(tmp_path: Path, monkeypatch):
             ctl.ensure_running()
         blob = exc.value.banner()
         assert "save its files" in blob
-        assert str(ctl.log_path.parent) in blob
+        assert display_path(ctl.log_path.parent) in blob
         assert "Permission denied" not in blob
         assert "Read-only" not in blob
         assert_no_raw_user_text(blob)
@@ -1383,7 +1389,7 @@ def test_magic_folder_readonly_log_dir_is_friendly(tmp_path: Path, monkeypatch):
             ctl.ensure_running()
         blob = exc.value.banner()
         assert "save its files" in blob
-        assert str(log_dir) in blob
+        assert display_path(log_dir) in blob
         assert "Permission denied" not in blob
         assert "Read-only" not in blob
         assert_no_raw_user_text(blob)
@@ -1486,7 +1492,7 @@ def _exiting_magic_folder(tmp_path: Path, monkeypatch) -> tuple[MagicFolderCtl, 
 
 
 def _assert_log_not_pasted(blob: str, log: Path, seeded: str) -> None:
-    assert str(log) in blob
+    assert display_path(log) in blob
     assert seeded not in blob
     assert "Traceback" not in blob
     assert "daemon failed" not in blob

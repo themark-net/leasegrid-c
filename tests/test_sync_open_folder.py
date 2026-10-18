@@ -9,7 +9,7 @@ import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import MainWindow  # noqa: E402
+from leasegrid_sync.app import MainWindow, display_path  # noqa: E402
 from leasegrid_sync.backend import FolderRow, SyncError  # noqa: E402
 from tests.buyer_text import assert_no_raw_user_text  # noqa: E402
 
@@ -90,7 +90,7 @@ def test_a_file_path_never_reaches_open_url(tmp_path: Path) -> None:
             window.table.itemDoubleClicked.emit(window.table.item(0, 0))
         assert open_url.call_count == 0
         text = window.folder_error.text()
-        assert "That path is not a folder: %s" % target in text
+        assert "That path is not a folder: %s" % display_path(target) in text
         assert "\nNext: " in text
         assert_no_raw_user_text(text)
     finally:
@@ -106,7 +106,7 @@ def test_missing_folder_shows_a_banner_and_does_not_crash(tmp_path: Path) -> Non
             window.table.itemDoubleClicked.emit(window.table.item(0, 0))
         assert open_url.call_count == 0
         text = window.folder_error.text()
-        assert "That folder is not on this computer any more: %s" % missing in text
+        assert "That folder is not on this computer any more: %s" % display_path(missing) in text
         assert "\nNext: " in text
         assert_no_raw_user_text(text)
     finally:

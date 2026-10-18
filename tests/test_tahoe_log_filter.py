@@ -11,6 +11,7 @@ chars stays a strict xfail as a written design limit.
 from __future__ import annotations
 
 import base64
+import os
 import subprocess
 from pathlib import Path
 
@@ -190,6 +191,33 @@ def test_legit_lines_survive_the_new_rules():
     assert "REDACTED" not in out, out
     for line in LEGIT_LINES:
         assert line in out, line
+
+
+_SNAKE40 = "_get_magic_folder_participants_for_collective"
+
+
+def test_long_snake_case_name_survives_on_an_allowlisted_line():
+    """A 40+ identifier with no digit and one letter case is not a secret."""
+    assert len(_SNAKE40) >= 40
+    upper = "GET_MAGIC_FOLDER_PARTICIPANTS_FOR_COLLECTIVE"
+    assert len(upper) >= 40
+    line = (
+        "2026-10-15T21:40:11.000Z [-] Exception in "
+        f"{_SNAKE40} {upper} (pid 77)"
+    )
+    out = _filter_stdout(line + "\n")
+    assert _SNAKE40 in out
+    assert upper in out
+    assert "REDACTED" not in out
+
+
+def test_long_mixed_token_is_still_redacted():
+    """A 40+ token with both letter cases is a secret shape, not a name."""
+    token = "Abcdefghij_" * 4
+    assert len(token) >= 40
+    out = _filter_stdout(_allowlisted(token))
+    assert token not in out
+    assert "REDACTED" in out
 
 
 # --- v0.1.5: glued hex + base32 (Tester, PR #71 review) ---------------------
@@ -402,3 +430,115 @@ _ACCEPTED = [
 def test_accepted_over_redaction_is_documented(line: str) -> None:
     out = _filter_stdout(line + "\n")
     assert out.strip() == line.strip()
+
+
+def test_filter_output_does_not_depend_on_awk(tmp_path: Path) -> None:
+    """mawk and gawk on PATH must not change the filter. Skip only if absent."""
+    found = [p for p in ("/usr/bin/mawk", "/usr/bin/gawk") if os.access(p, os.X_OK)]
+    if not found:
+        pytest.skip("neither mawk nor gawk is installed")
+    bash = require_bash()
+    planted = (
+        _allowlisted(B64_UNPADDED_40)
+        + "2026-10-15T21:40:11.000Z [-] Exception in "
+        + _SNAKE40
+        + " (pid 77)\n"
+    ).encode("utf-8")
+    outputs: list[str] = []
+    for awk in found:
+        bindir = tmp_path / Path(awk).name
+        bindir.mkdir()
+        shim = bindir / "awk"
+        shim.write_text('#!/bin/sh\nexec %s "$@"\n' % awk, encoding="utf-8")
+        shim.chmod(0o755)
+        env = os.environ.copy()
+        env["PATH"] = str(bindir) + os.pathsep + env.get("PATH", "")
+        which = subprocess.run(
+            [bash, "-c", "command -v awk"],
+            capture_output=True,
+            check=False,
+            env=env,
+            text=True,
+        )
+        assert which.stdout.strip() == str(shim)
+        proc = subprocess.run(
+            [bash, str(FILTER)],
+            input=planted,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+        assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+        out = proc.stdout.decode("utf-8", "replace")
+        assert B64_UNPADDED_40 not in out
+        assert _SNAKE40 in out
+        outputs.append(out)
+    assert len(set(outputs)) == 1
+
+
+# Fix round 3. The filter script is unchanged. These fakes pin two survivors:
+# a 40-character base64url token, and the fragment rate of a long
+# lowercase/digit/underscore token.
+def _seeded_tokens(tag: str, alphabet: str, length: int, count: int, accept) -> list[str]:
+    import random
+
+    rng = random.Random(tag)
+    out: list[str] = []
+    while len(out) < count:
+        tok = "".join(rng.choice(alphabet) for _ in range(length))
+        if accept(tok):
+            out.append(tok)
+    return out
+
+
+def _lines_leaking(tokens: list[str]) -> int:
+    lines = [f"{_GLUE_TS}{tok} ok" for tok in tokens]
+    outs = _filter_stdout("\n".join(lines) + "\n").splitlines()
+    assert len(outs) == len(lines)
+    leaked = 0
+    for tok, out in zip(tokens, outs):
+        if any(window in out for window in _windows8(tok)):
+            leaked += 1
+    return leaked
+
+
+_B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+_F3_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789_"
+# This seed on the unchanged filter. Seed v017-fix3-F3. Mutant F3, which
+# widens the snake_case protector to digits, leaks far more than this.
+_F3_BASE_LEAKS = 46
+
+
+def test_forty_char_base64url_tokens_are_redacted() -> None:
+    """Exactly 40 characters, and the token contains '-' or '_'."""
+    tokens = _seeded_tokens(
+        "v017-fix3-F1",
+        _B64URL,
+        40,
+        80,
+        lambda tok: "-" in tok or "_" in tok,
+    )
+    assert len(tokens) >= 50
+    assert all(len(tok) == 40 for tok in tokens)
+    leaked = _lines_leaking(tokens)
+    assert leaked == 0, "%d/%d 40-char base64url tokens leaked" % (leaked, len(tokens))
+
+
+def test_digit_underscore_tokens_leak_no_worse_than_base() -> None:
+    """48-character lowercase, digit and underscore tokens.
+
+    Some 8-character fragments survive on the current script, which is the
+    same script as b267059. The bound is this seed's count.
+    """
+    tokens = _seeded_tokens(
+        "v017-fix3-F3",
+        _F3_ALPHABET,
+        48,
+        300,
+        lambda tok: any(ch.isdigit() for ch in tok) and "_" in tok,
+    )
+    leaked = _lines_leaking(tokens)
+    assert leaked <= _F3_BASE_LEAKS, "%d/300 fragments survived; base count is %d" % (
+        leaked,
+        _F3_BASE_LEAKS,
+    )

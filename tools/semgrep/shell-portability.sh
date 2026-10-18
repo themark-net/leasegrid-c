@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture for `semgrep --test .semgrep`.
+# Fixture for `semgrep --test tools/semgrep`.
 awk '{
 # ruleid: awk-interval-expression
   while (match(line, /[A-Za-z0-9_-]{40,}/)) { line = substr(line, RSTART + RLENGTH) }

@@ -1,8 +1,8 @@
 # Project Semgrep rules: systems and security footguns that cost gate rounds.
 # Standing rule: every Tester or Reviewer blocker that a pattern could catch becomes a rule here,
 # with a ruleid/ok fixture in leasegrid-systems.py, in the same PR as the fix.
-# Run: semgrep scan --config .semgrep --metrics=off --error src scripts packaging
-# Test: semgrep --test .semgrep
+# Run: semgrep scan --config tools/semgrep --metrics=off --error src scripts packaging
+# Test: semgrep --test tools/semgrep
 rules:
   - id: ipc-endpoint-in-shared-tmp
     languages: [python]

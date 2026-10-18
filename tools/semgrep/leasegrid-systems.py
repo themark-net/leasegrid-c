@@ -1,4 +1,4 @@
-# Fixture for `semgrep --test .semgrep`. Each ruleid line must match; each ok line must not.
+# Fixture for `semgrep --test tools/semgrep`. Each ruleid line must match; each ok line must not.
 import os
 import pickle
 import signal

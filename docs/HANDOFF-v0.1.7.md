@@ -112,7 +112,7 @@ Round 2's T4 line stands only after the leader is reaped. While the leader is an
 
 **Round 3 CI fix** (after `a11dcf4`: macOS and Windows tests failed):
 - macOS: `waitid(WNOWAIT|WNOHANG)` is unreliable there, so the leader was collected before the group kill. On darwin the exit is now watched with kqueue `NOTE_EXIT`, which never reaps. macOS `getpgid` also fails on a zombie, so an unreaped leader's group id falls back to its pid (it was started with `start_new_session`). The test helper reads the zombie state from `ps`/`/proc`.
-- Windows: an access violation in `box.open()` (window-modal) on the offscreen platform. The box is now application-modal like the old `exec_()`, shown with `show()`, so it still returns at once and no nested loop runs. Teardown also no longer calls `setParent(None)` (that let Python free the box inside its own `finished` signal); it keeps its Qt parent and goes through `deleteLater`.
+- Windows: an access violation in `box.open()` (window-modal) on the offscreen platform. Application-modal `show()` crashed the same way. The box is now non-modal (`show()`, returns at once, no nested loop); the field still changes only on Yes, to the latest pending invite. macOS and Linux unchanged in behavior. Teardown also no longer calls `setParent(None)` (that let Python free the box inside its own `finished` signal); it keeps its Qt parent and goes through `deleteLater`.
 - The N3 unmocked test waits for the join listener only, gives the first app its own Windows process group, and hands off through a real `--join` launch. Every assert carries stderr.
 - ci-local: 581 passed, 5 xfailed. CI: see PR checks.
 

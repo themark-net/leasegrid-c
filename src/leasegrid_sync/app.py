@@ -3002,11 +3002,13 @@ class MainWindow:
         box.finished.connect(self._on_handed_replace_finished)
         self._handed_replace_box = box
         self._arm_replace_click_hook()
-        # Application-modal like the old exec_(), but show() returns at once,
-        # so no nested event loop runs inside a socket slot. open() (window
-        # modal) crashed the Windows offscreen platform in CI.
-        box.setWindowModality(self.QtCore.Qt.ApplicationModal)
+        # Non-modal, and show() returns at once, so no nested event loop runs
+        # inside a socket slot. Window- and application-modal shows both hit
+        # an access violation in Qt's modal blocking on Windows CI. The field
+        # changes only on Yes, to the latest pending invite.
+        box.setWindowModality(self.QtCore.Qt.NonModal)
         box.show()
+        box.raise_()
 
     def _on_handed_replace_finished(self, result: int) -> None:
         pending = getattr(self, "_handed_replace_pending", "") or ""

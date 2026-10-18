@@ -283,3 +283,40 @@ def test_already_running_second_launch_exits_0_on_sigterm(tmp_path: Path, sig: i
             _stop(second)
         if second_f is not None and not second_f.closed:
             second_f.close()
+
+
+def test_already_running_box_stays_up_without_a_signal(tmp_path: Path) -> None:
+    """No signal and no click: the second launch is still on the box after 1s.
+
+    The wakeup timer fires every 100 ms. It must not close the box by itself.
+    """
+    ready = tmp_path / "join-ready"
+    shown = tmp_path / "shown"
+    first, first_err, first_f = _launch(tmp_path)
+    second = None
+    second_f = None
+    try:
+        assert _wait_until(lambda: ready.is_file() or first.poll() is not None, 25), (
+            "first app did not listen: rc %s %s" % (first.poll(), _stderr(first_err)[-800:])
+        )
+        assert first.poll() is None, _stderr(first_err)
+        second, second_err, second_f = _launch(tmp_path, shown=shown)
+        assert _wait_until(lambda: shown.is_file() or second.poll() is not None, 20), (
+            "second launch did not show the box: rc %s %s"
+            % (second.poll(), _stderr(second_err)[-800:])
+        )
+        assert second.poll() is None, _stderr(second_err)
+        assert shown.read_text(encoding="utf-8") == ALREADY_RUNNING
+        time.sleep(1.2)
+        err = _stderr(second_err)
+        assert second.poll() is None, "box closed by itself: rc %s %s" % (second.poll(), err[-800:])
+        assert shown.read_text(encoding="utf-8") == ALREADY_RUNNING
+        assert first.poll() is None, _stderr(first_err)
+    finally:
+        if not first_f.closed:
+            first_f.close()
+        _stop(first)
+        if second is not None:
+            _stop(second)
+        if second_f is not None and not second_f.closed:
+            second_f.close()

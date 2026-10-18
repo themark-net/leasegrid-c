@@ -37,7 +37,9 @@ sigterm-no-handler        RED
 - D SS2 poll advice: DONE | ci-local 603 passed, 5 xfailed, 4 warnings in 144.24s | files: .grok/skills/systems-safety/SKILL.md, AGENTS.md, tools/semgrep/leasegrid-systems.yml, tests/test_systems_rules_doc.py. Left docs/build-dropins/dev-safety-rails.md historical.
   RED: restored the old SS2 sentence (`Popen.poll()` is `None` immediately before the signal) → `test_ss2_does_not_recommend_poll_before_the_signal` (`immediately before` is back)
   GREEN: `test_ss2_does_not_recommend_poll_before_the_signal` and the other systems-rules doc tests
-- E ST3 box stays up: pending
+- E ST3 box stays up: DONE | ci-local 604 passed, 5 xfailed, 4 warnings in 142.09s | files: tests/test_sync_already_running.py
+  RED: `_on` ignored the hit flag (dropped `if not hit["on"]: return`) → `test_already_running_box_stays_up_without_a_signal` (box closed by itself, rc 0)
+  GREEN: `test_already_running_box_stays_up_without_a_signal` (still alive after 1.2s, box text unchanged)
 - F prove-red signal restore: pending
 - G ruff pin: pending
 - H semgrep path comments: pending

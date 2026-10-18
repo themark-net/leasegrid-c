@@ -213,20 +213,35 @@ def test_unmocked_second_launch_shows_already_running_and_stays_up(tmp_path: Pat
             _stop(third)
 
 
+_BOX_QUIT_SIGNALS = [signal.SIGTERM, signal.SIGINT]
+if getattr(signal, "SIGHUP", None) is not None:
+    _BOX_QUIT_SIGNALS.append(signal.SIGHUP)
+
+
+def _signal_name(sig: int) -> str:
+    try:
+        return signal.Signals(sig).name
+    except ValueError:
+        return str(sig)
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason=(
         "TerminateProcess cannot be caught. The already-running box does not "
-        "install a SIGTERM handler on Windows."
+        "install SIGINT, SIGTERM, or SIGHUP handlers on Windows."
     ),
 )
-def test_already_running_second_launch_exits_0_on_sigterm(tmp_path: Path) -> None:
-    """A plain second launch showing the box exits 0 when it receives SIGTERM.
+@pytest.mark.parametrize("sig", _BOX_QUIT_SIGNALS, ids=_signal_name)
+def test_already_running_second_launch_exits_0_on_sigterm(tmp_path: Path, sig: int) -> None:
+    """A plain second launch on the box exits 0 for SIGTERM, SIGINT, and SIGHUP.
 
-    Without the box-path handler the process dies from SIGTERM and the code is not 0.
+    SIGINT used to raise KeyboardInterrupt inside the Qt slot and abort (rc -6).
+    SIGHUP used to kill the process (rc -1). The first app and its lock stay.
     """
     ready = tmp_path / "join-ready"
     shown = tmp_path / "shown"
+    name = _signal_name(sig)
     first, first_err, first_f = _launch(tmp_path)
     second = None
     second_f = None
@@ -242,17 +257,24 @@ def test_already_running_second_launch_exits_0_on_sigterm(tmp_path: Path) -> Non
         )
         assert second.poll() is None, _stderr(second_err)
         assert shown.read_text(encoding="utf-8") == ALREADY_RUNNING
-        assert second.poll() is None
-        os.kill(second.pid, signal.SIGTERM)
+        lock_path = instance_lock_path(tmp_path / "home")
+        lock_before = lock_path.read_bytes()
+        os.kill(second.pid, sig)
         try:
             rc = second.wait(timeout=15)
         except subprocess.TimeoutExpired:
             _stop(second)
             pytest.fail(
-                "second launch still alive after SIGTERM: %s" % _stderr(second_err)[-800:]
+                "second launch still alive after %s: %s" % (name, _stderr(second_err)[-800:])
             )
-        assert rc == 0, "rc %s stderr %s" % (rc, _stderr(second_err)[-800:])
-        assert rc not in (134, -15, -6, -11)
+        err = _stderr(second_err)
+        assert rc == 0, "rc %s stderr %s" % (rc, err[-800:])
+        assert rc not in (-6, 134), "aborted on %s rc %s" % (name, rc)
+        assert "Traceback" not in err
+        assert "KeyboardInterrupt" not in err
+        assert first.poll() is None, _stderr(first_err)
+        assert lock_path.is_file()
+        assert lock_path.read_bytes() == lock_before
     finally:
         if not first_f.closed:
             first_f.close()

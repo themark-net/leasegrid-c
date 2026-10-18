@@ -14,7 +14,9 @@ Ruff in this venv: 0.17.1
 
 ## Items
 
-- A B1 signals: pending
+- A B1 signals: DONE | ci-local 597 passed, 5 xfailed, 4 warnings in 138.60s | files: src/leasegrid_sync/app.py, tests/test_sync_already_running.py
+  RED: revert app.py signal change → `test_already_running_second_launch_exits_0_on_sigterm[SIGINT]` rc -6 with KeyboardInterrupt traceback; `[SIGHUP]` rc -1 (SIGTERM row still passed)
+  GREEN: the same test, SIGTERM/SIGINT/SIGHUP, rc 0, no Traceback, first app alive, lock bytes unchanged
 - B B2 false RED: pending
 - C reap assert: pending
 - D SS2 poll advice: pending

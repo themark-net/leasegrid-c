@@ -785,12 +785,12 @@ def _arm_already_running_shown(QtCore, QtWidgets) -> None:
 
 
 def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
-    """SIGTERM during the already-running box closes it so the process exits 0.
+    """SIGINT, SIGTERM, and SIGHUP during the already-running box exit 0.
 
     This path never reaches the main-window quit hook. ``information`` runs a
     nested loop, so the handler clicks Ok the same way the test dismiss hook
     does. Windows cannot catch the outside terminate, so it is not installed
-    there.
+    there. SIGHUP is installed only when the platform defines it.
     """
     if sys.platform == "win32" or getattr(app, "_already_running_signal", None) is not None:
         return
@@ -803,17 +803,14 @@ def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
     def _handler(signum, frame) -> None:
         hit["on"] = True
 
-    previous = signal.signal(signal.SIGTERM, _handler)
+    armed = [signal.SIGTERM, signal.SIGINT]
+    sighup = getattr(signal, "SIGHUP", None)
+    if sighup is not None:
+        armed.append(sighup)
+    previous = {sig: signal.signal(sig, _handler) for sig in armed}
     notifier = QtCore.QSocketNotifier(read_s.fileno(), QtCore.QSocketNotifier.Read, app)
 
-    def _on(*_args) -> None:
-        try:
-            while read_s.recv(256):
-                pass
-        except (BlockingIOError, InterruptedError, OSError):
-            pass
-        if not hit["on"]:
-            return
+    def _close_box() -> None:
         box = QtWidgets.QApplication.activeModalWidget()
         if box is not None and hasattr(box, "button"):
             try:
@@ -828,6 +825,25 @@ def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
                 except Exception:
                     pass
         app.quit()
+
+    def _on(*_args) -> None:
+        try:
+            try:
+                while read_s.recv(256):
+                    pass
+            except (BlockingIOError, InterruptedError, OSError):
+                pass
+            if not hit["on"]:
+                return
+            _close_box()
+        except KeyboardInterrupt:
+            # A SIGINT that still raises inside this slot aborts the process
+            # (rc -6) if it escapes. Treat it as a hit and close the box.
+            hit["on"] = True
+            try:
+                _close_box()
+            except KeyboardInterrupt:
+                app.quit()
 
     notifier.activated.connect(_on)
     timer = QtCore.QTimer(app)
@@ -851,10 +867,11 @@ def _disarm_already_running_signal_quit(app) -> None:
         notifier.setEnabled(False)
     except Exception:
         pass
-    try:
-        signal.signal(signal.SIGTERM, previous)
-    except OSError:
-        pass
+    for sig, prev in previous.items():
+        try:
+            signal.signal(sig, prev)
+        except OSError:
+            pass
     try:
         signal.set_wakeup_fd(prev_fd)
     except (OSError, ValueError):

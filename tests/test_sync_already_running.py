@@ -36,6 +36,13 @@ rc = main(sys.argv[1:])
 raise SystemExit(0 if rc is None else int(rc))
 """
 
+# Windows CI: the offscreen plugin access-violates in any QMessageBox show
+# (rc 3221225477), a harness-only crash. These real-process tests show a real
+# box, so on Windows they use the native platform the shipped app uses.
+_QPA = "windows" if sys.platform == "win32" else "offscreen"
+_QPA_ARGS = [] if sys.platform == "win32" else ["--offscreen"]
+
+
 def _wait_until(predicate, timeout: float) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -51,7 +58,7 @@ def _launch(tmp_path: Path, *args: str, text_file: Path | None = None, dismiss: 
     err_path = tmp_path / ("second-%s.err" % (text_file.name if text_file else "first"))
     env = os.environ.copy()
     env["LEASEGRID_SYNC_HOME"] = str(home)
-    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["QT_QPA_PLATFORM"] = _QPA
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.pop("LEASEGRID_TAHOE_BIN", None)
     env.pop("LEASEGRID_MAGIC_FOLDER_BIN", None)
@@ -71,7 +78,7 @@ def _launch(tmp_path: Path, *args: str, text_file: Path | None = None, dismiss: 
         # Own group, like the other handoff tests, so console events stay local.
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
-        [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir), *args],
+        [sys.executable, str(driver), *_QPA_ARGS, "--nodedir", str(nodedir), *args],
         stdout=subprocess.DEVNULL,
         stderr=err_f,
         env=env,

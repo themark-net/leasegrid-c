@@ -67,3 +67,16 @@ RED:
 - RED: rule message gains `SS9` → same id test, AGENTS.md missing SS9
 
 Grok skill list: this session listed `systems-safety` after `SKILL.md` was written (description matches, path `.grok/skills/systems-safety/SKILL.md`). A second process was not started.
+
+- item 3: DONE | tests: ci-local → 589 passed, 5 xfailed, 4 warnings in 139.02s; prove-red tests 5 passed | files: scripts/prove-red.py, tests/test_prove_red.py, PR template, AGENTS sentence, cases file | err: none
+
+```
+name               result
+skill-ss3-section  RED
+```
+
+RED:
+
+- RED: drop `path.write_bytes(original)` from the `finally` → `test_caught_mutant_is_red_and_restores` bytes differ (`return 2` left in the file)
+- RED: survivor branch `return 0` → `test_surviving_mutant_exits_1` sees exit 0
+- RED: `if False and _uncommitted` → `test_dirty_target_exits_2_and_is_unchanged` stderr is `git diff is not quiet`, not `uncommitted`

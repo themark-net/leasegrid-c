@@ -27,6 +27,8 @@ Standing rule: every Tester/Reviewer blocker a pattern could catch becomes a too
 
 Skill: [.grok/skills/systems-safety/SKILL.md](.grok/skills/systems-safety/SKILL.md)
 
+Before claiming done: run `scripts/prove-red.py` on a cases file for your fixes and paste the table into the PR body. Never write 'CI green' without `gh pr checks` output or a run URL listing all jobs.
+
 ## Verify / dogfood
 
 ```bash

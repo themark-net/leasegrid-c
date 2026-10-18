@@ -94,3 +94,7 @@ RED (hand-applied, then restored; official `prove-red.py` receipt is in the hand
 - RED: drop the second `lock.tryLock(0)` → `test_second_trylock_takes_the_lock_after_the_writer_grace` (`took` is False)
 - RED: drop `_dismiss_handed_replace_box()` on a same-text re-hand → `test_rehanding_the_current_invite_drops_the_older_pending` (pending stays `8-pianist-kindness`)
 - RED: drop `_arm_already_running_signal_quit` → `test_already_running_second_launch_exits_0_on_sigterm` (rc -15)
+
+Official prove-red receipt (exit 0, tree clean after) is in `docs/ops/HANDOFF-dev-safety-rails.md`. All six cases RED.
+
+- finish: DONE | tests: ci-local → ruff clean, semgrep 8/8 and 0 findings, pytest 594 passed, 5 xfailed, 4 warnings in 143.32s | files: handoff | err: none

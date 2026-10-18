@@ -261,3 +261,127 @@ def test_reaped_leader_does_not_signal_a_reused_pid() -> None:
         if victim.poll() is None:
             victim.kill()
             victim.wait(timeout=5)
+
+
+# Leader uses the default SIGTERM action. The grandchild ignores SIGTERM and
+# stays in the leader's process group. A foreign-uid socket is not involved.
+_OBEY_LEADER = r"""
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+grandchild = (
+    "import os, signal, sys, time\n"
+    "from pathlib import Path\n"
+    "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+    "Path(sys.argv[1]).write_text(str(os.getpid()), encoding='utf-8')\n"
+    "time.sleep(600)\n"
+)
+subprocess.Popen([sys.executable, "-c", grandchild, sys.argv[1]])
+if sys.argv[2] == "exit":
+    deadline = time.time() + 5
+    while time.time() < deadline and not Path(sys.argv[1]).is_file():
+        time.sleep(0.02)
+    raise SystemExit(0)
+time.sleep(600)
+"""
+
+
+def _wait_for_file(path: Path, timeout: float = 5.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if path.is_file() and path.read_text(encoding="utf-8").strip().isdigit():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def _leader_is_unreaped_zombie(proc: subprocess.Popen, timeout: float = 5.0) -> bool:
+    """True when waitid sees the exit and nothing has collected it."""
+    if not hasattr(os, "waitid"):
+        return False
+    flags = os.WEXITED | os.WNOWAIT | os.WNOHANG
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if proc.returncode is not None:
+            return False
+        try:
+            info = os.waitid(os.P_PID, proc.pid, flags)
+        except (ChildProcessError, OSError):
+            return False
+        if info is not None:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX process groups; Windows stop is CTRL_BREAK then taskkill /T",
+)
+def test_reap_kills_grandchild_when_the_leader_obeys_term(tmp_path: Path) -> None:
+    """SIGTERM reaps an obedient leader. The grandchild must still die."""
+    child_file = tmp_path / "child.pid"
+    log = open(os.devnull, "wb")
+    proc = popen_hidden(
+        [sys.executable, "-c", _OBEY_LEADER, str(child_file), "stay"],
+        log,
+    )
+    child = 0
+    try:
+        _remember(proc.pid)
+        assert _wait_for_file(child_file), "grandchild did not start"
+        child = int(child_file.read_text(encoding="utf-8").strip())
+        _remember(child)
+        assert child != proc.pid
+        reap_child(proc, 2.0)
+        assert proc.returncode is not None
+        assert _wait_reaped(child), "grandchild survived reap_child"
+        assert _reaped(child)
+    finally:
+        log.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        if child and not _reaped(child):
+            kill_pid(child)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX process groups; Windows stop is CTRL_BREAK then taskkill /T",
+)
+def test_stop_kills_grandchild_after_the_leader_exits_on_its_own(tmp_path: Path) -> None:
+    """An unreaped leader still pins the group. stop() must kill the grandchild."""
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    nodedir.mkdir(parents=True)
+    child_file = tmp_path / "child.pid"
+    log = open(os.devnull, "wb")
+    proc = popen_hidden(
+        [sys.executable, "-c", _OBEY_LEADER, str(child_file), "exit"],
+        log,
+    )
+    child = 0
+    client = TahoeClient(nodedir=nodedir, home=home)
+    try:
+        _remember(proc.pid)
+        assert _wait_for_file(child_file), "grandchild did not start"
+        child = int(child_file.read_text(encoding="utf-8").strip())
+        _remember(child)
+        assert _leader_is_unreaped_zombie(proc), "leader was reaped before stop()"
+        assert not _reaped(child)
+        client._proc = proc
+        client.stop(terminate_timeout=1.0)
+        assert client._proc is None
+        assert proc.returncode is not None
+        assert _wait_reaped(child), "grandchild survived stop()"
+        assert _reaped(child)
+    finally:
+        log.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        if child and not _reaped(child):
+            kill_pid(child)

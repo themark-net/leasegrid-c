@@ -249,32 +249,110 @@ def _wait_proc(proc: subprocess.Popen, timeout: float) -> None:
         pass
 
 
-def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
-    """Terminate a child and wait so it cannot stay a zombie.
+def _waitid_flags() -> Optional[int]:
+    """waitid flags that observe an exit without reaping, or None when absent."""
+    if sys.platform == "win32" or not hasattr(os, "waitid"):
+        return None
+    if not all(hasattr(os, name) for name in ("WEXITED", "WNOWAIT", "WNOHANG")):
+        return None
+    return os.WEXITED | os.WNOWAIT | os.WNOHANG  # type: ignore[attr-defined]
 
-    A daemon started in its own session gets the whole group: SIGTERM, then
-    SIGKILL, so a grandchild that ignores SIGTERM does not survive. A process
-    we did not put in a new group is signalled alone, and this process's own
-    group is never signalled. On Windows the group path is CTRL_BREAK_EVENT
-    and then ``taskkill /T /F``. Once the leader has been reaped, its process
-    group id may belong to someone else, so this function does not signal it.
-    A zombie leader is still unreaped and still pins the group, so the group
-    is signalled only while ``poll`` is None. Only ``TimeoutExpired`` and
-    ``OSError`` are caught.
+
+def _leader_state(proc: subprocess.Popen) -> str:
+    """'running', 'exited' (zombie, group id still pinned), or 'reaped'.
+
+    waitid with WNOWAIT does not collect the zombie. poll() would, and the
+    process-group id could then be reused before the group is killed.
+    ChildProcessError and OSError mean the leader is already gone. Windows
+    has no waitid; poll() there observes and reaps, which the Windows
+    tree-kill path already does.
     """
-    if proc.poll() is not None:
+    if proc.returncode is not None:
+        return "reaped"
+    flags = _waitid_flags()
+    if flags is None:
+        return "running" if proc.poll() is None else "reaped"
+    try:
+        info = os.waitid(os.P_PID, proc.pid, flags)
+    except (ChildProcessError, OSError):
+        return "reaped"
+    if info is None:
+        return "running"
+    return "exited"
+
+
+def _wait_leader_state(proc: subprocess.Popen, timeout: float) -> str:
+    """Poll without reaping until the leader has left or the timeout is up."""
+    deadline = time.time() + max(0.0, timeout)
+    while True:
+        state = _leader_state(proc)
+        if state != "running":
+            return state
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return "running"
+        time.sleep(min(0.05, remaining))
+
+
+def _finish_exited_group(proc: subprocess.Popen, pgid: int, terminate_timeout: float) -> None:
+    """SIGKILL a group whose leader is an unreaped zombie, then reap the leader."""
+    if _leader_state(proc) == "reaped":
+        return
+    _signal_group(pgid, signal.SIGKILL)
+    _wait_proc(proc, terminate_timeout)
+
+
+def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
+    """Stop a child and reap it so it cannot stay a zombie.
+
+    A daemon this process started in its own session owns that process group.
+    SIGTERM goes to the group, then the leader's exit is observed with
+    os.waitid(WNOWAIT) so the zombie still pins the group id. Members that
+    obey SIGTERM get a short grace, at most half a second. The group then
+    gets SIGKILL, and only after that does proc.wait() reap the leader.
+    A grandchild that ignores SIGTERM dies in that SIGKILL. If the leader
+    had already exited and is still unreaped, the group is still SIGKILLed
+    before the reap.
+
+    poll() is the wrong check here: it reaps the leader, so the SIGKILL was
+    skipped and a TERM-ignoring grandchild survived. Once the leader is
+    already reaped (returncode is set, or waitid raises ChildProcessError
+    or OSError), the group is not signalled, because that id may have been
+    reused.
+
+    A process we did not put in a new group is signalled alone. This
+    process's own group is never signalled. On Windows the group path is
+    CTRL_BREAK_EVENT and then ``taskkill /T /F``. Only ``TimeoutExpired``
+    and ``OSError`` are caught on the lone-process path.
+    """
+    # returncode is set only after a reap. Do this before any use of the pid.
+    if proc.returncode is not None:
         return
     pgid = _foreign_pgid(proc)
     windows_tree = sys.platform == "win32" and _owns_process_group(proc)
     _close_stdin(proc)
     if pgid is not None:
-        if proc.poll() is not None:
+        state = _leader_state(proc)
+        if state == "reaped":
             return
-        _signal_group(pgid, signal.SIGTERM)
-        _wait_proc(proc, terminate_timeout)
-        if proc.poll() is None:
-            _signal_group(pgid, signal.SIGKILL)
-            _wait_proc(proc, terminate_timeout)
+        if state == "running":
+            _signal_group(pgid, signal.SIGTERM)
+            state = _wait_leader_state(proc, terminate_timeout)
+            if state == "reaped":
+                return
+            if state == "running":
+                _signal_group(pgid, signal.SIGKILL)
+                _wait_proc(proc, terminate_timeout)
+                return
+            # The leader is already a zombie. TERM-obeying members get a
+            # short grace; a member that ignores SIGTERM still needs SIGKILL.
+            grace = min(0.5, max(0.0, terminate_timeout))
+            deadline = time.time() + grace
+            while time.time() < deadline:
+                if _leader_state(proc) == "reaped":
+                    return
+                time.sleep(min(0.05, max(0.0, deadline - time.time())))
+        _finish_exited_group(proc, pgid, terminate_timeout)
         return
     if windows_tree:
         if proc.poll() is not None:
@@ -1151,8 +1229,13 @@ class TahoeClient:
                 "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
                 "paste an introducer furl to create one; Retry.",
             )
-        if self._proc is not None and self._proc.poll() is None:
-            return
+        if self._proc is not None:
+            if _leader_state(self._proc) == "running":
+                return
+            # Exited but unreaped: the zombie still pins the group. Kill the
+            # group before starting another daemon.
+            reap_child(self._proc, TAHOE_STOP_WAIT)
+            self._proc = None
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             rotate_log(self.log_path)
@@ -1169,8 +1252,10 @@ class TahoeClient:
             raise join_spawn_failure(exc, invite="", code=False, timeout=0) from exc
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self._proc.poll() is not None:
+            if _leader_state(self._proc) != "running":
+                proc = self._proc
                 self._proc = None
+                reap_child(proc, TAHOE_STOP_WAIT)
                 # The log can hold a traceback and a furl. The window names the
                 # file (operators asked to keep paths) and does not paste it.
                 raise SyncError(
@@ -1194,7 +1279,16 @@ class TahoeClient:
         self._proc = None
 
     def owns_process(self) -> bool:
-        return self._proc is not None and self._proc.poll() is None
+        """True while this process still has to reap the daemon it started.
+
+        An unreaped zombie counts: its process-group id is still the one
+        stop() must signal. poll() is not used, because that would reap the
+        leader and skip the group kill.
+        """
+        proc = self._proc
+        if proc is None:
+            return False
+        return _leader_state(proc) != "reaped"
 
     def reload_static_servers(self) -> None:
         """Restart a node this process started so ``servers.yaml`` is picked up.
@@ -1551,7 +1645,10 @@ class MagicFolderCtl:
             ) from exc
         deadline = time.time() + 20
         while time.time() < deadline:
-            if self._proc.poll() is not None:
+            if _leader_state(self._proc) != "running":
+                proc = self._proc
+                self._proc = None
+                reap_child(proc, MF_STOP_WAIT)
                 # magic-folder.log can hold a traceback and a furl. A process
                 # exit is not an HTTP 500. Name the log. Do not paste it.
                 raise SyncError(

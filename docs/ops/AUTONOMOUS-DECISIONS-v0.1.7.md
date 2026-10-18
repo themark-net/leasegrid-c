@@ -24,3 +24,4 @@ Format: choice | alternatives | why
 - A different handed invite asks with QMessageBox Yes/No, default No | an inline notice, or overwrite | No keeps the text the user already typed, and the question does not contain either invite
 - Home masking runs inside SyncError.banner, which every window banner renders | mask only show_join_error and show_folder_error | server, offer, and credit banners also call banner(), and the stored message stays absolute until then
 - Signal and process-group tests record stub pids from the pid files and SIGKILL only those pids, including the grandchild | killpg in the test finally | a reused process group must not be signalled
+- Fix round 3: the lead implements items 1–7 in order on this worktree | one sub-agent per item in a sibling worktree | the drop-in allows only this worktree, the detached base worktree, and /tmp; items 1, 3, 5, 6, and 7 edit app.py; each item is one commit on build/v0.1.7-batch

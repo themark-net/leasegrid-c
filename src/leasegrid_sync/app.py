@@ -660,9 +660,15 @@ def _start_join_server(ui) -> None:
                 raw = bytes(buf).split(b"\n", 1)[0]
                 del buf[:]
                 text = "" if over else raw.decode("utf-8", "replace").strip()
-                if text and len(text) <= _JOIN_HANDOFF_MAX:
-                    ui.receive_handed_invite(text)
+                # Drop before any UI. exec_() in this slot nested one loop per
+                # invite, and SIGTERM then never reached the quit handler.
                 drop(sock)
+                if (
+                    text
+                    and len(text) <= _JOIN_HANDOFF_MAX
+                    and not getattr(ui, "_quitting", False)
+                ):
+                    QTimer.singleShot(0, lambda text=text: ui.receive_handed_invite(text))
 
             timer.timeout.connect(lambda sock=sock: drop(sock))
             timer.start(_JOIN_READ_TIMEOUT_MS)
@@ -2844,6 +2850,7 @@ class MainWindow:
 
     def shutdown(self) -> None:
         """Stop the daemons this Sync process started (Magic Folder, then Tahoe)."""
+        self._dismiss_handed_replace_box()
         _close_join_server(self)
         session = getattr(self, "_invite_session", None)
         if session is not None:
@@ -2856,15 +2863,81 @@ class MainWindow:
                 pass
         release_instance_lock()
 
-    def _accept_handed_invite(self, text: str) -> bool:
-        """True when the Join field should become this invite.
+    def _handed_replace_open_count(self) -> int:
+        """How many replace questions are open. One is the cap."""
+        try:
+            boxes = self.win.findChildren(self.QtWidgets.QMessageBox)
+        except Exception:
+            return 1 if getattr(self, "_handed_replace_box", None) is not None else 0
+        count = 0
+        for box in boxes:
+            try:
+                if box.objectName() == "handedInviteReplace":
+                    count += 1
+            except RuntimeError:
+                continue
+        return count
 
-        A different non-empty field asks first. No is the default, including
-        Esc. The question names neither invite, and nothing here is logged.
-        """
-        current = self.invite_edit.text()
-        if not current.strip() or current == text:
-            return True
+    def _dismiss_handed_replace_box(self) -> None:
+        """Close the question without applying a pending invite. No nested loop."""
+        self._handed_replace_pending = ""
+        box = getattr(self, "_handed_replace_box", None)
+        self._handed_replace_box = None
+        timer = getattr(self, "_handed_replace_click_timer", None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        if box is None:
+            return
+        try:
+            box.blockSignals(True)
+            box.close()
+            box.setParent(None)
+            box.deleteLater()
+        except Exception:
+            pass
+
+    def _arm_replace_click_hook(self) -> None:
+        """Test-only. A file containing yes or no clicks the open question."""
+        if getattr(self, "_handed_replace_click_timer", None) is not None:
+            return
+        path = _test_env("LEASEGRID_TEST_REPLACE_CLICK_FILE")
+        if not path:
+            return
+        timer = self.QtCore.QTimer(self.win)
+        timer.setInterval(50)
+
+        def _poll() -> None:
+            box = getattr(self, "_handed_replace_box", None)
+            if box is None:
+                return
+            try:
+                choice = Path(path).read_text(encoding="utf-8").strip().lower()
+            except OSError:
+                return
+            if choice not in ("yes", "no"):
+                return
+            try:
+                Path(path).write_text("", encoding="utf-8")
+            except OSError:
+                return
+            standard = (
+                self.QtWidgets.QMessageBox.Yes
+                if choice == "yes"
+                else self.QtWidgets.QMessageBox.No
+            )
+            button = box.button(standard)
+            if button is not None:
+                button.click()
+
+        timer.timeout.connect(_poll)
+        timer.start()
+        self._handed_replace_click_timer = timer
+
+    def _open_handed_replace_box(self) -> None:
+        """Ask once, without exec_(). Esc and the default are No."""
         QtWidgets = self.QtWidgets
         box = QtWidgets.QMessageBox(self.win)
         box.setObjectName("handedInviteReplace")
@@ -2872,12 +2945,40 @@ class MainWindow:
         box.setText(HANDED_INVITE_REPLACE)
         box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         box.setDefaultButton(QtWidgets.QMessageBox.No)
-        return box.exec_() == QtWidgets.QMessageBox.Yes
+        box.setEscapeButton(QtWidgets.QMessageBox.No)
+        box.finished.connect(self._on_handed_replace_finished)
+        self._handed_replace_box = box
+        self._arm_replace_click_hook()
+        box.open()
+
+    def _on_handed_replace_finished(self, result: int) -> None:
+        pending = getattr(self, "_handed_replace_pending", "") or ""
+        box = getattr(self, "_handed_replace_box", None)
+        self._handed_replace_box = None
+        self._handed_replace_pending = ""
+        if box is not None:
+            try:
+                box.setParent(None)
+                box.deleteLater()
+            except Exception:
+                pass
+        if not getattr(self, "_quitting", False) and result == self.QtWidgets.QMessageBox.Yes:
+            if pending:
+                self.invite_edit.setText(pending)
+                self.invite_edit.setFocus()
+        self._dump_handed_invite()
 
     def receive_handed_invite(self, invite: str) -> None:
-        """Show a second launch's invite. The user still has to join it."""
+        """Show a second launch's invite. The user still has to join it.
+
+        A different non-empty field asks once. No is the default, including
+        Esc. The question names neither invite, and nothing here is logged.
+        A later invite while the question is open replaces the pending text.
+        """
         text = (invite or "").strip()
         if not text or len(text) > _JOIN_HANDOFF_MAX:
+            return
+        if getattr(self, "_quitting", False):
             return
         self.show()
         if self._joined:
@@ -2885,11 +2986,20 @@ class MainWindow:
             self.show_place(self.folders_tab)
             self.folder_error.setStyleSheet("")
             self.folder_error.setText(HANDED_INVITE_DROPPED)
-        else:
-            self.stack.setCurrentWidget(self.join_page)
-            if self._accept_handed_invite(text):
+            self._dump_handed_invite()
+            return
+        self.stack.setCurrentWidget(self.join_page)
+        current = self.invite_edit.text()
+        if not current.strip() or current == text:
+            if not current.strip():
                 self.invite_edit.setText(text)
                 self.invite_edit.setFocus()
+            self._dump_handed_invite()
+            return
+        # One open question. A later invite only replaces the pending text.
+        self._handed_replace_pending = text
+        if getattr(self, "_handed_replace_box", None) is None:
+            self._open_handed_replace_box()
         self._dump_handed_invite()
 
     def _dump_handed_invite(self) -> None:
@@ -2898,15 +3008,20 @@ class MainWindow:
         if not path:
             return
         try:
-            Path(path).write_text(
-                "joined=%s\nack=%s\nfield=%s\n"
+            text = (
+                "joined=%s\nack=%s\nfield=%s\nboxes=%d\npending=%s\n"
                 % (
                     "yes" if self._joined else "no",
                     "1" if self.threat_ack.isChecked() else "0",
                     self.invite_edit.text(),
-                ),
-                encoding="utf-8",
+                    self._handed_replace_open_count(),
+                    getattr(self, "_handed_replace_pending", "") or "",
+                )
             )
+            dest = Path(path)
+            tmp = Path(str(dest) + ".tmp")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, dest)
         except OSError:
             pass
 
@@ -3099,6 +3214,7 @@ class MainWindow:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
+        self._dismiss_handed_replace_box()
         self._save_window_geometry()
         self.poll.stop()
         self.shutdown()

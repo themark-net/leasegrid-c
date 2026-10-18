@@ -47,3 +47,5 @@ RED mutant: drop setStaleLockTime (L6) → test_empty_lock_past_the_age_threshol
 state: DONE | item 7 display_path | tests: tests/test_sync_display_path.py 3 passed in 0.11s | ci-local: 581 passed, 5 xfailed, 4 warnings in 133.72s | err: none
 RED base: test_display_path_collapses_dotdot_that_leaves_home → '/home/u/../other/x' == '/home/other/x' (the account name stayed in the path)
 RED mutant: return text instead of the collapsed path → the same assertion. test_display_path_table stayed green.
+
+state: DONE | handoff | tests: closing suite, no code change | ci-local: 581 passed, 5 xfailed, 4 warnings in 136.37s | err: none

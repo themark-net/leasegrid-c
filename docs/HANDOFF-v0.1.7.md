@@ -1,11 +1,11 @@
 # Handoff — Leasegrid Sync v0.1.7
 
 Branch: `build/v0.1.7-batch` (no upstream). Base: `b4e9b70` (`origin/main`, tag v0.1.6).
-Head: the commit that writes the fix round 2 section (`v0.1.7: handoff after fix round 2`). Round 1's handoff commit remains in the history below.
+Head: the commit that writes the fix round 3 section (`v0.1.7: handoff after fix round 3`). Round 1 and round 2 handoff commits remain in the history below.
 Batch head was `fbeb6f1` (`v0.1.7: handoff`), parent `f8a3271` (version bump). The drop-in on top of that was `3d64b06`.
 Batch baseline: 517 passed, 5 xfailed, 4 warnings in 44.34s. Batch final: 542 passed, 5 xfailed, 4 warnings in 77.59s.
 Fix round 1 final is in the section below.
-None skipped. Decisions: [`docs/ops/AUTONOMOUS-DECISIONS-v0.1.7.md`](ops/AUTONOMOUS-DECISIONS-v0.1.7.md). Run logs: [`docs/ops/RUN-LOG-v0.1.7-batch.md`](ops/RUN-LOG-v0.1.7-batch.md), [`docs/ops/RUN-LOG-v0.1.7-fixes.md`](ops/RUN-LOG-v0.1.7-fixes.md), [`docs/ops/RUN-LOG-v0.1.7-fixes2.md`](ops/RUN-LOG-v0.1.7-fixes2.md).
+None skipped. Decisions: [`docs/ops/AUTONOMOUS-DECISIONS-v0.1.7.md`](ops/AUTONOMOUS-DECISIONS-v0.1.7.md). Run logs: [`docs/ops/RUN-LOG-v0.1.7-batch.md`](ops/RUN-LOG-v0.1.7-batch.md), [`docs/ops/RUN-LOG-v0.1.7-fixes.md`](ops/RUN-LOG-v0.1.7-fixes.md), [`docs/ops/RUN-LOG-v0.1.7-fixes2.md`](ops/RUN-LOG-v0.1.7-fixes2.md), [`docs/ops/RUN-LOG-v0.1.7-fix3.md`](ops/RUN-LOG-v0.1.7-fix3.md).
 
 ## Fix round 1 after Reviewer FAIL @ fbeb6f1
 
@@ -55,13 +55,13 @@ Tester FAIL on PR #74 at `fbeb6f1`. Items 1–10 are DONE. None skipped. CI: see
 
 - **T1.** Already in `c595ea5`: Windows CTRL_BREAK (the old rc=21), the bug-report `~` assertion on Windows, the macOS stub `getfqdn` stall, and the `_lock_writer_grace` hook.
 - **T2.** The log filter is `sed -E` again. Long snake_case is kept by a SOH protect/restore around the v0.1.6 rule. No awk remains. `3de2c1e`.
-- **T3.** A PID-less lock younger than 2s is refused and is not unlinked. Qt takes an older one inside `tryLock` (`staleLockTime` 2000 ms). A crash mid-write blocks the next launch for that 2s threshold, not about 30s. 1000 local trials, 6 workers: 0 double holders on empty, garbage, none, and aged locks. `88012ca`.
-- **T4.** `reap_child` does not signal a process group after the leader has been reaped. `31f3689`.
+- **T3.** A PID-less lock younger than 2s is refused and is not unlinked. Qt takes an older one inside `tryLock` (`staleLockTime` 2000 ms). A crash mid-write blocks the next launch for that 2s threshold, not about 30s. 1000 local trials, 6 workers: 0 double holders on empty, garbage, none, and aged locks. `88012ca`. Fix round 3 removes the unused Python age check. Qt's stale time is the gate. The 2s behavior is unchanged.
+- **T4.** `reap_child` does not signal a process group after the leader has been reaped. `31f3689`. That sentence is the reaped case. The old docstring was wrong: `poll()` reaps, so a leader that obeyed SIGTERM skipped the group SIGKILL and a grandchild survived. Fix round 3 SIGKILLs the group while that leader is still an unreaped zombie.
 - **T5.** The notes say `tahoe.log` and `magic-folder.log` rotate when the daemon starts. They do not say those files rotate the same way as `sync-ui.log`. `7e54cd3`.
 - **Follow-up.** The join server keeps at most 8 pending sockets, aborts the rest, and drops an idle socket after 2s. `569a1db`.
 - **Follow-up.** An oversized `--join` is not sent. A held home shows already-running and exits 1. A free home prints "That invite is too long." and exits 1. `2d38c20`.
 - **Follow-up.** A handed invite does not replace typed text unless the user answers Yes. The default is No. Neither invite is logged. `97ee8c1`.
-- **Follow-up.** Banners mask the home path, including through a symlinked home. Windows and macOS ignore letter case. A path that leaves home with `..` stays unchanged. An empty path is `""`. `18daa94`.
+- **Follow-up.** Banners mask the home path, including through a symlinked home. Windows and macOS ignore letter case. A path that leaves home with `..` stayed unchanged in this round. Fix round 3 collapses it, so the account name is not shown. An empty path is `""`. `18daa94`.
 - **Follow-up.** Signal and process-group tests SIGKILL only the stub pids they recorded, including a grandchild. `fa36bb1`.
 
 | Mutant | Test | Result |
@@ -92,6 +92,28 @@ Fix round 2 counts: item 1 was 557 passed; item 2, 559; item 3, 561; item 4, 562
 
 Final ci-local: 568 passed, 5 xfailed. CI: see PR checks.
 
+## Fix round 3 after Tester FAIL @ b267059
+
+Tester FAIL on PR #74 at `b267059`. Items 1–7 are DONE. None skipped. CI: see PR checks.
+
+`_pidless_lock_is_young` was removed. Qt's `setStaleLockTime(2000)` already refuses a young PID-less lock and takes an older one inside `tryLock`. The second `tryLock(0)` stays.
+
+| # | Item | Status | Commit | Test | RED base | RED mutant |
+|---|------|--------|--------|------|----------|------------|
+| 1 | N1 nested invite question | DONE | `b36db4e` | flood, SIGTERM-with-dialog, latest-wins | flood still alive after TERM; SIGTERM rc -11 | drop the one-pending guard → boxes=400 |
+| 2 | N2 reap grandchild | DONE | `1f06dfb` | leader obeys TERM; leader already exited | grandchild survived `reap_child` and `stop()` | skip post-exit SIGKILL → survived; `poll()` instead of waitid → survived |
+| 3 | N3 second-launch abort | DONE | `69b16e0` | unmocked relaunch and held oversized `--join` | rc -6, Must construct a QApplication | drop the QApplication reference → rc -6 |
+| 4 | F1 F3 log filter | DONE | `201c391` | 40-char base64url; 48-char digit/underscore rate | n/a, script unchanged | `{41,}` 79/80 leaked; digit protector 233/300 |
+| 5 | C2 S1 S10 join | DONE | `fe1006a` | idle partial; foreign uid; planted file | n/a, the checks were already there (3 passed) | idle stays open; outcome sent; server listened |
+| 6 | young lock | DONE | `8ebe64d` | fresh empty, 5s empty, 6-way race | n/a, the helper was dead | drop `setStaleLockTime` → 5s lock not taken |
+| 7 | display_path | DONE | `a024016` | `..` that leaves home | `/home/u/../other/x` kept the account name | `return text` → the same failure |
+
+Round 2's T4 line stands only after the leader is reaped. While the leader is an unreaped zombie, the group SIGKILL is intended. The pid-reuse test guards the reaped case. Round 2's "`..` stays unchanged" sentence is superseded by item 7.
+
+**Deferred to v0.1.8:** Windows pipe-owner check (`GetNamedPipeServerProcessId`); a cross-host lock taken after 2 s instead of 30 s on a network home; underscore-joined lowercase+digit token fragments (about 10%; this seed 46/300, Tester 29/300); a signal in the first ~0.1 s; adopting an orphaned Tahoe; a lock path that is a directory or mode 000; the other log-filter gaps; size-based rotation of daemon logs while the daemon is running; the cross-user check.
+
+Fix round 3 counts: item 1 was 572 passed, 5 xfailed, in 124.53s; item 2, 574 in 132.33s; item 3, 575 in 135.77s; item 4, 577 in 135.09s; item 5, 580 in 136.50s; item 6, 580 in 135.77s; item 7, 581 in 133.72s. Closing ci-local: 581 passed, 5 xfailed, 4 warnings in 136.37s. CI: see PR checks.
+
 ## v0.1.8 candidates
 
 - Log-filter separators other than `-` or space at 4 characters, and any separator every 5–7.
@@ -106,12 +128,15 @@ Final ci-local: 568 passed, 5 xfailed. CI: see PR checks.
 - Size-based rotation of `tahoe.log` and `magic-folder.log` while the daemon is running.
 - A second `--join` that arrives while an invite is still being typed.
 - The cross-user check.
+- Windows pipe-owner check (`GetNamedPipeServerProcessId`) before a second launch sends an invite.
+- A cross-host lock taken after 2 s instead of 30 s on a network home.
+- Underscore-joined lowercase+digit token fragments (about 10% on the current filter).
 
 ## Suggested PR
 
 Title: `v0.1.7: quit cleanly, hand off a second invite, and tighten logs`
 
-Quit on SIGTERM, SIGINT, and SIGHUP, and stop a daemon's process group only while its leader is still unreaped.
+Quit on SIGTERM, SIGINT, and SIGHUP, and stop a daemon's process group while its leader is still unreaped, including a zombie leader. A reaped leader's group is not signalled.
 `tahoe.log` and `magic-folder.log` rotate when the daemon starts. A second `--join` fills the open window and does not auto-join. An oversized invite is not sent.
 A PID-less lock younger than 2s is refused. An older one is taken without waiting about 30 seconds. Shown paths hide the account name, including in banners.
 Geometry save and restore share one origin. The bug-report scrub matches the invite shape the app accepts.

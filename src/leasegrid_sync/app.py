@@ -491,6 +491,7 @@ def _send_invite_posix(home: Path, invite: str) -> bool:
         if state == "refused":
             _log_handoff_note(home, "refused the socket before connecting")
         return False
+    # nosemgrep: af-unix-path-length -- join_endpoint already refused any path of 100 bytes or more
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         sock.settimeout(0.5)

@@ -39,5 +39,21 @@ Risks:
 
 - merge: DONE | tests: not run yet | files: merge of origin/main | err: none
 - baseline: DONE | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → ruff all checks passed; pytest 581 passed, 5 xfailed, 4 warnings in 139.92s | files: run log + decisions | err: none
+- item 1: DONE | tests: same command → ruff clean, semgrep 8/8 and 0 findings, pytest 581 passed, 5 xfailed, 4 warnings in 135.35s | files: pyproject, ci-local, ci.yml, three B904 sites, six nosemgrep/noqa | err: none
 
-Baseline is the v0.1.7 suite plus the un-wired seed rules. Interpreter: CPython 3.14.4 in `.venv`. Sync and tahoe extras installed. No semgrep yet.
+Baseline is the v0.1.7 suite plus the un-wired seed rules. Interpreter: CPython 3.14.4 in `.venv`. Sync and tahoe extras installed.
+
+Item 1 triage (0 unsuppressed hits):
+
+- Ruff B904 ×3 fixed with `raise ... from err` (`check_0b.py` replay and R-reject, `topup.py` 402). B905 did not fire at `target-version = py39`.
+- Ruff SIM115 ×2 on daemon log handles and ×4 on devnull logs in `test_sync_process_group.py`: noqa, the handle has to stay open. Listed S rules: 0 hits in src/scripts/packaging. Test S hits ignored by `tests/**`.
+- Semgrep 7 hits, all suppressed, none left as open bugs: `af-unix-path-length` on the client socket (path already capped in `join_endpoint`); `getpgid` / `getpgrp` / `killpg` / two `SIGKILL` sites (Windows returns before these; `killpg` only gets a pgid `_foreign_pgid` still owns).
+
+RED:
+
+- RED: delete `pattern-not-inside` `setSocketOptions` → `semgrep --test` exit 1, `qlocalserver-listen-without-user-access-option` incorrect line 36
+- RED: `lock.setStaleLockTime(0)` in `acquire_instance_lock` → ci-local exit 1 at semgrep, `qlockfile-manual-stale-removal`
+- RED: `os.chmod(path, 0o777)` in `src/leasegrid_sync/app.py` → ci-local exit 1 at ruff, `bad-file-permissions` (S103)
+- RED: one `# ruleid: ipc-endpoint-in-shared-tmp` changed to `# ok:` → `semgrep --test` exit 1, incorrect line 16
+
+`CI_LOCAL_SKIP_SEMGREP` was not used.

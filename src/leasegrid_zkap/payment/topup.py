@@ -328,7 +328,7 @@ class TopUpClient:
             code = _http_status(exc)
             body = _http_body(exc)
             if code == 402:
-                raise _RedeemNotReady(body)
+                raise _RedeemNotReady(body) from exc
             if code == 409:
                 raise TopUpError(
                     "issuer already issued a different batch for %s; this seed cannot reproduce it" % vid

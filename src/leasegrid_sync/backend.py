@@ -203,6 +203,7 @@ def _foreign_pgid(proc: subprocess.Popen) -> Optional[int]:
     if sys.platform == "win32" or not _owns_process_group(proc):
         return None
     try:
+        # nosemgrep: posix-only-process-api -- win32 returned above; this pid is a child we started
         pgid = os.getpgid(proc.pid)
     except OSError:
         # macOS getpgid fails (ESRCH) on a zombie. popen_hidden used
@@ -212,6 +213,7 @@ def _foreign_pgid(proc: subprocess.Popen) -> Optional[int]:
             return None
         pgid = proc.pid
     try:
+        # nosemgrep: posix-only-process-api -- win32 returned above; used only to avoid signalling our own group
         own = os.getpgrp()
     except OSError:
         own = None
@@ -222,6 +224,7 @@ def _foreign_pgid(proc: subprocess.Popen) -> Optional[int]:
 
 def _signal_group(pgid: int, sig: int) -> None:
     try:
+        # nosemgrep: posix-only-process-api, signal-to-stored-pid -- caller passes a pgid from _foreign_pgid only while the leader we started is still unreaped; never our own group
         os.killpg(pgid, sig)
     except OSError:
         pass
@@ -344,6 +347,7 @@ def _finish_exited_group(proc: subprocess.Popen, pgid: int, terminate_timeout: f
     """SIGKILL a group whose leader is an unreaped zombie, then reap the leader."""
     if _leader_state(proc) == "reaped":
         return
+    # nosemgrep: posix-only-process-api -- pgid is None on Windows, so this SIGKILL is not reached there
     _signal_group(pgid, signal.SIGKILL)
     _wait_proc(proc, terminate_timeout)
 
@@ -388,6 +392,7 @@ def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
             if state == "reaped":
                 return
             if state == "running":
+                # nosemgrep: posix-only-process-api -- pgid is None on Windows, so this SIGKILL is not reached there
                 _signal_group(pgid, signal.SIGKILL)
                 _wait_proc(proc, terminate_timeout)
                 return
@@ -1286,7 +1291,7 @@ class TahoeClient:
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             rotate_log(self.log_path)
-            log_f = open(self.log_path, "ab")
+            log_f = open(self.log_path, "ab")  # noqa: SIM115  daemon keeps this handle for its lifetime
         except OSError as exc:
             raise join_filesystem_failure(exc) from exc
         try:
@@ -1673,7 +1678,7 @@ class MagicFolderCtl:
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             rotate_log(self.log_path)
-            log_f = open(self.log_path, "ab")
+            log_f = open(self.log_path, "ab")  # noqa: SIM115  daemon keeps this handle for its lifetime
         except OSError as exc:
             raise SyncError(
                 "folder not added. This computer would not let Leasegrid Sync save its files.",

@@ -211,7 +211,7 @@ def test_stop_kills_daemon_and_grandchild(tmp_path: Path) -> None:
 
 def test_reap_of_an_exited_leader_sends_no_signal(tmp_path: Path) -> None:
     """A leader that has already been reaped must not be signalled again."""
-    log = open(os.devnull, "wb")
+    log = open(os.devnull, "wb")  # noqa: SIM115  handle must stay open until the child is reaped
     proc = popen_hidden([sys.executable, "-c", "import os; os._exit(0)"], log)
     try:
         proc.wait(timeout=5)
@@ -242,7 +242,7 @@ def test_reap_of_an_exited_leader_sends_no_signal(tmp_path: Path) -> None:
 )
 def test_reaped_leader_does_not_signal_a_reused_pid() -> None:
     """An unrelated session that now owns the old pid must survive stop()."""
-    log = open(os.devnull, "wb")
+    log = open(os.devnull, "wb")  # noqa: SIM115  handle must stay open until the child is reaped
     proc = popen_hidden([sys.executable, "-c", "import os; os._exit(0)"], log)
     victim = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(600)"],
@@ -337,7 +337,7 @@ def _leader_is_unreaped_zombie(proc: subprocess.Popen, timeout: float = 5.0) -> 
 def test_reap_kills_grandchild_when_the_leader_obeys_term(tmp_path: Path) -> None:
     """SIGTERM reaps an obedient leader. The grandchild must still die."""
     child_file = tmp_path / "child.pid"
-    log = open(os.devnull, "wb")
+    log = open(os.devnull, "wb")  # noqa: SIM115  handle must stay open until the child is reaped
     proc = popen_hidden(
         [sys.executable, "-c", _OBEY_LEADER, str(child_file), "stay"],
         log,
@@ -372,7 +372,7 @@ def test_stop_kills_grandchild_after_the_leader_exits_on_its_own(tmp_path: Path)
     nodedir = home / "tahoe"
     nodedir.mkdir(parents=True)
     child_file = tmp_path / "child.pid"
-    log = open(os.devnull, "wb")
+    log = open(os.devnull, "wb")  # noqa: SIM115  handle must stay open until the child is reaped
     proc = popen_hidden(
         [sys.executable, "-c", _OBEY_LEADER, str(child_file), "exit"],
         log,

@@ -35,3 +35,5 @@ Risks:
 - prove-red crlf: DONE | tests: `tests/test_prove_red.py` 6 passed; CRLF pattern `return 1\n` was not a literal match (`old literal match False`) and `_mutant_bytes` rewrites to CRLF `return 2` | files: scripts/prove-red.py, tests/test_prove_red.py | err: none
 - win32 launcher pid: DONE | tests: `test_start_respawns_an_unreaped_exited_leader` passed on Linux; POSIX still asserts `client._proc.pid == new_pid` | files: tests/test_sync_backend.py | err: none
 - verify: DONE locally | tests: `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh` → ruff clean, semgrep 8/8 and 0 findings, pytest 595 passed, 5 xfailed, 4 warnings in 138.50s. prove-red exit 0, all six RED, `git diff` clean on targets | files: 0 product | err: none
+- push: DONE | tests: not re-run | files: commit `22879c0` `dev-safety-rails fix1: windows CI (crlf match, bat pid)` pushed to `origin/build/dev-safety-rails` | err: none
+- checks on `22879c0`: polling (20 min cap)

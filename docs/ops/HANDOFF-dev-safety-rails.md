@@ -28,3 +28,16 @@ sigterm-no-handler        RED
 ```
 
 Grok listed `systems-safety` in this session after the skill file existed (path `.grok/skills/systems-safety/SKILL.md`). A second process was not started. No PR opened. ci-local is Linux only and is not "CI green".
+
+## Fix round 1 (Windows CI on PR #75)
+
+PR #75 at `2f60f4a`: every check passed except `test (windows-2022)` (3 failed, 560 passed). Fix commit `22879c0`, no product code changed.
+
+| Failure | Cause | Fix |
+| --- | --- | --- |
+| `test_prove_red.py::test_caught_mutant_is_red_and_restores`, `::test_surviving_mutant_exits_1` (PATTERN MISSING) | Windows writes `\r\n`, so the `\n` pattern was not a literal match | `scripts/prove-red.py` normalizes newlines only while matching, writes the mutant as bytes, restores the original bytes; new CRLF test |
+| `test_sync_backend.py::test_start_respawns_an_unreaped_exited_leader` (pid mismatch) | CreateProcess can't exec a `.bat`, so `Popen.pid` is `cmd.exe`, not the worker | fake tahoe records worker pid and parent; win32 accepts either (still not the leader); POSIX keeps `client._proc.pid == new_pid` |
+
+ci-local at `22879c0`: ruff clean, semgrep 8/8 and 0 findings, pytest 595 passed, 5 xfailed, 4 warnings in 138.50s. prove-red after the fix: exit 0, all six cases RED, `git diff` clean on targets.
+
+GitHub checks on `22879c0`: `test (windows-2022)` success, and all other test jobs success. The `macos` packaging job failed in `hdiutil: create failed - Resource busy` (runner DMG step, not touched by this round; the same job passed at `2f60f4a`). The checks on this handoff commit are the fresh run.

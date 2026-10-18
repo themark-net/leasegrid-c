@@ -45,5 +45,5 @@ sigterm-no-handler        RED
   GREEN: SIGTERM exits 143 and SIGINT exits 130, target bytes match, `git diff --quiet` clean, no receipt. win32 skips both rows (os.kill does not run the handler).
 - G ruff pin: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 142.41s, ruff 0.17.1 | files: pyproject.toml. dev extra is `ruff==0.17.1`. ci-local and `.github/workflows/ci.yml` install `.[dev]` and do not pip-install an unpinned ruff. doc-only/config, no RED.
 - H semgrep path comments: DONE | `semgrep --test tools/semgrep` 8/8; ci-local 606 passed, 5 xfailed, 4 warnings in 142.19s | files: tools/semgrep/leasegrid-systems.yml, leasegrid-systems.py, shell-portability.sh. doc-only, no RED.
-- I changelog: pending
+- I changelog: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 143.53s | files: CHANGELOG.md. Release-note tests read `docs/release-notes/v<version>.md`, not a directory listing, so a top-level CHANGELOG.md does not change them. doc-only, no RED.
 - J handoff: pending

@@ -68,6 +68,24 @@ def test_caught_mutant_is_red_and_restores(tmp_path: Path) -> None:
     assert "SURVIVED" not in proc.stdout
 
 
+def test_crlf_working_tree_matches_lf_pattern(tmp_path: Path) -> None:
+    """A CRLF checkout still matches a pattern written with ``\\n``, then restores."""
+    repo = tmp_path / "repo"
+    target = _init_repo(repo, MODULE, TEST)
+    _git(repo, "config", "core.autocrlf", "false")
+    target.write_bytes(MODULE.replace("\n", "\r\n").encode("utf-8"))
+    _git(repo, "add", "mod.py")
+    _git(repo, "commit", "-q", "-m", "crlf")
+    original = target.read_bytes()
+    assert b"return 1\r\n" in original
+    cases = _cases(repo, "caught-crlf", "return 1\n", "return 2\n")
+    proc = _run(repo, cases)
+    assert target.read_bytes() == original
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "RED" in proc.stdout
+    assert "SURVIVED" not in proc.stdout
+
+
 def test_surviving_mutant_exits_1(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     target = _init_repo(repo, MODULE, TEST)

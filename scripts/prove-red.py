@@ -60,14 +60,31 @@ def _uncommitted(path: Path) -> bool:
     return bool(proc.stdout.strip())
 
 
+def _mutant_bytes(original: bytes, old: str, new: str) -> bytes:
+    """Apply one replacement. Patterns use ``\\n``; a Windows tree may be CRLF.
+
+    The match ignores the file's newline spelling. The bytes written back use
+    that same spelling. The caller still restores ``original`` exactly.
+    """
+    text = original.decode("utf-8")
+    crlf = b"\r\n" in original
+    folded = text.replace("\r\n", "\n")
+    old_n = old.replace("\r\n", "\n")
+    new_n = new.replace("\r\n", "\n")
+    if old_n not in folded:
+        print("PATTERN MISSING", file=sys.stderr)
+        raise SystemExit(2)
+    mutated = folded.replace(old_n, new_n, 1)
+    if crlf:
+        mutated = mutated.replace("\n", "\r\n")
+    return mutated.encode("utf-8")
+
+
 def _run_case(python: str, path: Path, old: str, new: str, args: list[str]) -> str:
     original = path.read_bytes()
     try:
-        text = original.decode("utf-8")
-        if old not in text:
-            print("PATTERN MISSING", file=sys.stderr)
-            raise SystemExit(2)
-        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        # Bytes, not write_text: write_text would turn ``\\n`` into CRLF again.
+        path.write_bytes(_mutant_bytes(original, old, new))
         env = os.environ.copy()
         env["QT_QPA_PLATFORM"] = "offscreen"
         env["PYTHONDONTWRITEBYTECODE"] = "1"

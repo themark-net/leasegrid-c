@@ -1726,7 +1726,8 @@ def _respawn_tahoe(tmp_path: Path) -> str:
         "if count == 0:\n"
         "    raise SystemExit(0)\n"
         "(nodedir / 'node.url').write_text('http://127.0.0.1:1/\\n', encoding='utf-8')\n"
-        "(nodedir / 'spawned.pid').write_text(str(os.getpid()) + '\\n', encoding='utf-8')\n"
+        "(nodedir / 'spawned.pid').write_text(\n"
+        "    str(os.getpid()) + '\\n' + str(os.getppid()) + '\\n', encoding='utf-8')\n"
         "while True:\n"
         "    time.sleep(0.2)\n",
         encoding="utf-8",
@@ -1781,11 +1782,23 @@ def test_start_respawns_an_unreaped_exited_leader(tmp_path: Path) -> None:
             client.start(timeout=5)
         spawned_path = nodedir / "spawned.pid"
         assert spawned_path.is_file(), "no new daemon was spawned"
-        new_pid = int(spawned_path.read_text(encoding="utf-8").strip())
+        spawned_ids = [
+            int(line)
+            for line in spawned_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        new_pid = spawned_ids[0]
         assert new_pid != leader.pid
         assert pid_alive(new_pid)
         assert client._proc is not None
-        assert client._proc.pid == new_pid
+        if sys.platform == "win32":
+            # CreateProcess cannot exec a .bat, so Popen.pid is cmd.exe.
+            # spawned.pid is the worker pid, then that worker's parent.
+            # start() holds one of those. POSIX keeps the equality below.
+            assert client._proc.pid in spawned_ids
+            assert client._proc.pid != leader.pid
+        else:
+            assert client._proc.pid == new_pid
         assert client.owns_process()
     finally:
         client.stop()

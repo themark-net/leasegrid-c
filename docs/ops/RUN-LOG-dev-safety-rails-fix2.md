@@ -31,7 +31,9 @@ l5n-drop-second-trylock   RED
 latest-wins-keep-pending  RED
 sigterm-no-handler        RED
 ```
-- C reap assert: pending
+- C reap assert: DONE | ci-local 602 passed, 5 xfailed, 4 warnings in 140.27s | files: tests/test_sync_backend.py
+  RED: `start()` skipped `reap_child` on the non-running leader → `test_start_respawns_an_unreaped_exited_leader` (`start() left the old leader unreaped`, `returncode is None`)
+  GREEN: `test_start_respawns_an_unreaped_exited_leader`
 - D SS2 poll advice: pending
 - E ST3 box stays up: pending
 - F prove-red signal restore: pending

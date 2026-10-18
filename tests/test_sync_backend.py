@@ -1780,6 +1780,7 @@ def test_start_respawns_an_unreaped_exited_leader(tmp_path: Path) -> None:
         client._proc = leader
         with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
             client.start(timeout=5)
+        assert leader.returncode is not None, "start() left the old leader unreaped"
         spawned_path = nodedir / "spawned.pid"
         assert spawned_path.is_file(), "no new daemon was spawned"
         spawned_ids = [

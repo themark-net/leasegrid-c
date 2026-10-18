@@ -23,6 +23,9 @@ _STALE_AGE_S = 120
 
 # The app process itself is the holder. The box is patched so a refusal can
 # print and exit, and a close sentinel asks the first window to quit cleanly.
+# Patching the box means this file does not catch a QApplication that is
+# discarded before the widget exists. The unmocked gate is
+# tests/test_sync_already_running.py.
 _APP_DRIVER = r'''
 import os
 import sys

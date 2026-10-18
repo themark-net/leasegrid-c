@@ -27,3 +27,7 @@ RED mutant: drop the one-pending guard → test_flood_of_different_invites_keeps
 state: DONE | item 2 N2 | tests: tests/test_sync_process_group.py 5 passed in 1.71s; live pg/reap_obey.py leader rc=-15 grandchild state=gone in 0.6s | ci-local: 574 passed, 5 xfailed, 4 warnings in 132.33s | err: none
 RED base: test_reap_kills_grandchild_when_the_leader_obeys_term → grandchild survived reap_child; test_stop_kills_grandchild_after_the_leader_exits_on_its_own → grandchild survived stop(); pid-reuse test stayed green
 RED mutant: skip the post-exit group SIGKILL in _finish_exited_group → grandchild survived reap_child; replace waitid WNOWAIT with proc.poll() in _leader_state → grandchild survived reap_child (pid-reuse stayed green). Tester R3 "always SIGKILL the group" is now intended while the leader is unreaped; the reaped/pid-reuse test guards the already-reaped case.
+
+state: DONE | item 3 N3 | tests: tests/test_sync_already_running.py 1 passed in 0.63s | ci-local: 575 passed, 5 xfailed, 4 warnings in 135.77s | err: none
+RED base: test_unmocked_second_launch_shows_already_running_and_stays_up → rc -6, QWidget: Must construct a QApplication before a QWidget
+RED mutant: drop the QApplication reference in _show_already_running → same test rc -6, Must construct a QApplication before a QWidget

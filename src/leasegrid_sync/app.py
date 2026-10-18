@@ -712,11 +712,71 @@ def _close_join_server(ui) -> None:
             pass
 
 
+def _arm_already_running_dismiss(QtCore, QtWidgets) -> None:
+    """Accept the already-running box from a test driver and record its text.
+
+    A driver sets ``_TEST_HOOKS`` and ``LEASEGRID_TEST_AUTODISMISS_MS``.
+    The timer runs inside the message box's own loop and clicks Ok. With the
+    hooks off, the env var does nothing. The text file receives only the box
+    text, which is the already-running sentence and never an invite.
+    """
+    raw = _test_env("LEASEGRID_TEST_AUTODISMISS_MS")
+    if not raw:
+        return
+    try:
+        delay = int(raw)
+    except ValueError:
+        return
+    if delay < 0:
+        return
+    path = _test_env("LEASEGRID_TEST_ALREADY_TEXT")
+    retry_ms = delay if delay >= 20 else 50
+
+    def dismiss() -> None:
+        box = QtWidgets.QApplication.activeModalWidget()
+        if box is None or not hasattr(box, "text"):
+            QtCore.QTimer.singleShot(retry_ms, dismiss)
+            return
+        try:
+            text = box.text()
+        except Exception:
+            text = ""
+        if path:
+            try:
+                dest = Path(path)
+                tmp = Path(str(dest) + ".tmp")
+                tmp.write_text(text, encoding="utf-8")
+                os.replace(tmp, dest)
+            except OSError:
+                pass
+        button = None
+        if hasattr(box, "button"):
+            try:
+                button = box.button(QtWidgets.QMessageBox.Ok)
+            except Exception:
+                button = None
+        if button is not None:
+            button.click()
+        elif hasattr(box, "accept"):
+            box.accept()
+
+    QtCore.QTimer.singleShot(delay, dismiss)
+
+
 def _show_already_running() -> None:
-    _QtCore, _QtGui, QtWidgets = _qt_api()
-    if QtWidgets.QApplication.instance() is None:
-        QtWidgets.QApplication(sys.argv)
+    """Say this Sync home is already open.
+
+    The application object stays referenced for the whole call. A temporary
+    that nobody keeps is destroyed at once, and the message box then aborts.
+    """
+    QtCore, _QtGui, QtWidgets = _qt_api()
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+    _arm_already_running_dismiss(QtCore, QtWidgets)
     QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
+    # The local has to stay alive across information(). Reading it here keeps
+    # that obvious; pumping events would deliver timers into a shared test app.
+    if app.closingDown():
+        return
 
 
 def format_status_chip(status: ConnectionStatus) -> str:

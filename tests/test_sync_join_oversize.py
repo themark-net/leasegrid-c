@@ -26,6 +26,9 @@ def _refuse_send(*_args, **_kwargs):
 
 
 def test_oversized_join_with_a_held_lock_says_already_running(tmp_path: Path, monkeypatch) -> None:
+    # The box is patched, so this checks the message and that join is not
+    # attempted. It does not catch a missing QApplication. The unmocked gate
+    # is tests/test_sync_already_running.py.
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))

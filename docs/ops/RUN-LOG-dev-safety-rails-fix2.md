@@ -40,7 +40,9 @@ sigterm-no-handler        RED
 - E ST3 box stays up: DONE | ci-local 604 passed, 5 xfailed, 4 warnings in 142.09s | files: tests/test_sync_already_running.py
   RED: `_on` ignored the hit flag (dropped `if not hit["on"]: return`) → `test_already_running_box_stays_up_without_a_signal` (box closed by itself, rc 0)
   GREEN: `test_already_running_box_stays_up_without_a_signal` (still alive after 1.2s, box text unchanged)
-- F prove-red signal restore: pending
+- F prove-red signal restore: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 144.30s | files: scripts/prove-red.py, tests/test_prove_red.py, docs/ops/AUTONOMOUS-DECISIONS-dev-safety-rails.md
+  RED: removed the SIGTERM/SIGINT handlers → `test_signal_restores_bytes_and_skips_the_receipt[SIGTERM]` (target left mutated)
+  GREEN: SIGTERM exits 143 and SIGINT exits 130, target bytes match, `git diff --quiet` clean, no receipt. win32 skips both rows (os.kill does not run the handler).
 - G ruff pin: pending
 - H semgrep path comments: pending
 - I changelog: pending

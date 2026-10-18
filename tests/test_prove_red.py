@@ -241,3 +241,76 @@ def test_sigint_restores_the_file(tmp_path: Path) -> None:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait(timeout=5)
     assert target.read_bytes() == original
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "os.kill(SIGTERM) and os.kill(SIGINT) terminate without running the "
+        "Python handler. CTRL_C_EVENT would hit this pytest process."
+    ),
+)
+@pytest.mark.parametrize(
+    ("sig", "code"),
+    [(signal.SIGTERM, 143), (signal.SIGINT, 130)],
+    ids=["SIGTERM", "SIGINT"],
+)
+def test_signal_restores_bytes_and_skips_the_receipt(
+    tmp_path: Path, sig: int, code: int
+) -> None:
+    """A signal mid-run restores the target, writes no receipt, and exits non-zero."""
+    repo = tmp_path / "repo"
+    module = "def answer():\n    return 1\n"
+    test_body = "import mod\n\ndef test_answer():\n    assert mod.answer() == 1\n"
+    target = _init_repo(repo, module, test_body)
+    original = target.read_bytes()
+    marker = tmp_path / "marker"
+    mutant = (
+        "    import pathlib\n"
+        "    import time\n"
+        "    pathlib.Path(%r).write_text('up', encoding='utf-8')\n"
+        "    time.sleep(30)\n"
+        "    return 1\n" % str(marker)
+    )
+    cases = _cases(repo, "hold", "    return 1\n", mutant)
+    receipt = repo / "receipt.txt"
+    proc = subprocess.Popen(
+        [sys.executable, str(SCRIPT), str(cases), "--receipt", str(receipt)],
+        cwd=repo,
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    pgid = os.getpgid(proc.pid)
+    try:
+        deadline = time.time() + 20
+        while time.time() < deadline and not marker.is_file():
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.is_file(), "sleeper did not start rc %s" % proc.returncode
+        os.kill(proc.pid, sig)
+        try:
+            # wait, not communicate: the sleeper still holds the stdout pipe.
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            pytest.fail("prove-red still alive after the signal")
+    finally:
+        if proc.poll() is None:
+            os.killpg(pgid, signal.SIGKILL)
+            proc.wait(timeout=5)
+        else:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                pass
+    assert target.read_bytes() == original, "target left mutated"
+    diff = subprocess.run(
+        ["git", "-C", str(repo), "diff", "--quiet", "--", "mod.py"],
+        check=False,
+    )
+    assert diff.returncode == 0
+    assert not receipt.is_file()
+    assert proc.returncode not in (0, None)
+    assert proc.returncode == code, proc.returncode

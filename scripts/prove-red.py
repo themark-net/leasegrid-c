@@ -12,6 +12,9 @@ Exit 0 when every case is RED. Exit 1 when any case SURVIVED and none is a
 setup error. Exit 2 when any case is a setup error (setup errors win), the
 pattern is missing, or a target is dirty or absent. A target with
 uncommitted changes is refused so a mutant cannot be committed.
+
+SIGINT, and SIGTERM on POSIX, restore the open target and exit 130 or 143.
+No receipt is written on that path.
 """
 
 from __future__ import annotations
@@ -19,9 +22,28 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
+
+
+class _Stopped(BaseException):
+    """SIGINT or SIGTERM. ``code`` is the process status after restore."""
+
+    def __init__(self, code: int) -> None:
+        self.code = code
+
+
+def _install_stop_handlers() -> None:
+    """Raise so ``finally`` restores the file. SIGTERM is POSIX-only."""
+
+    def _handler(signum, _frame) -> None:
+        raise _Stopped(130 if signum == signal.SIGINT else 143)
+
+    signal.signal(signal.SIGINT, _handler)
+    if sys.platform != "win32":
+        signal.signal(signal.SIGTERM, _handler)
 
 
 def _load_cases(path: Path) -> list:
@@ -126,7 +148,7 @@ def _table(rows: list[tuple[str, str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Prove a fix is RED when reverted.")
     parser.add_argument("cases", type=Path)
     parser.add_argument("--python", default=sys.executable)
@@ -165,6 +187,14 @@ def main(argv: list[str] | None = None) -> int:
     if any(result == "SURVIVED" for _name, result in rows):
         return 1
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    _install_stop_handlers()
+    try:
+        return _main(argv)
+    except _Stopped as stopped:
+        return stopped.code
 
 
 if __name__ == "__main__":

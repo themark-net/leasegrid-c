@@ -310,7 +310,11 @@ def test_fresh_garbage_lock_is_refused(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_empty_lock_past_the_age_threshold_relaunches_quickly(tmp_path: Path, monkeypatch) -> None:
-    """Past 2s, a PID-less lock is taken without waiting for Qt's 30s stale time."""
+    """Past 2s, a PID-less lock is taken without waiting for Qt's 30s stale time.
+
+    Qt's stale time is the gate. Dropping setStaleLockTime leaves the 30s
+    default, and this 5s-old file is refused.
+    """
     home = tmp_path / "home"
     home.mkdir()
     lock = instance_lock_path(home)

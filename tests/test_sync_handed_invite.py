@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -64,6 +65,15 @@ def _click(window: MainWindow, answer: int) -> None:
         fuse.stop()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "Showing a real QMessageBox inside the shared pytest QApplication "
+        "access-violates on Windows CI (window-, application- and non-modal "
+        "alike); the old version mocked exec_. The real-process tests in "
+        "test_sync_join_replace.py show the real box on Windows."
+    ),
+)
 def test_handed_invite_keeps_typed_text_unless_the_user_says_yes(tmp_path: Path) -> None:
     window = _window(tmp_path)
     QtWidgets = window.QtWidgets

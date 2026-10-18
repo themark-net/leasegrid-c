@@ -57,3 +57,13 @@ RED:
 - RED: one `# ruleid: ipc-endpoint-in-shared-tmp` changed to `# ok:` → `semgrep --test` exit 1, incorrect line 16
 
 `CI_LOCAL_SKIP_SEMGREP` was not used.
+
+- item 2: DONE | tests: ci-local → 584 passed, 5 xfailed, 4 warnings in 137.78s; `tests/test_systems_rules_doc.py` 3 passed | files: skill, AGENTS.md, CONTRIBUTING.md, doc test | err: none
+
+RED:
+
+- RED: delete the SS3 section from the skill → `test_semgrep_ids_are_in_agents_and_the_skill` skill missing SS3
+- RED: `name: systems-safety-renamed` → `test_skill_frontmatter_matches_its_folder`
+- RED: rule message gains `SS9` → same id test, AGENTS.md missing SS9
+
+Grok skill list: this session listed `systems-safety` after `SKILL.md` was written (description matches, path `.grok/skills/systems-safety/SKILL.md`). A second process was not started.

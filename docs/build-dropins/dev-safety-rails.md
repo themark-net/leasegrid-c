@@ -10,7 +10,7 @@
 
 You stop only on one of these. Before you stop for any reason, do **Finish** (§5).
 
-1. **Goal met.** Items 1–3 in §3 are DONE or SKIPPED (reason logged), and §5 is pushed.
+1. **Goal met.** Items 1–4 in §3 are DONE or SKIPPED (reason logged), and §5 is pushed.
 2. **Precondition.** v0.1.7 is not on `origin/main` (`pyproject.toml` version on origin/main is not `0.1.7` or later). Change nothing, write one line in the run log, stop.
 3. **Per-item cap.** At most 8 attempts per item. After that, revert that item's uncommitted changes, mark it SKIPPED, and go on.
 4. **Same failure 3 times** in a row on one item: SKIP it, revert its uncommitted changes, next item.
@@ -26,8 +26,7 @@ You stop only on one of these. Before you stop for any reason, do **Finish** (§
 
 - Repo themark-net/leasegrid-c (Leasegrid Sync, PyQt5). Read `AGENTS.md`; its testing rule applies.
 - **Branch:** `build/dev-safety-rails`. It already holds this file and the seed rules in `tools/semgrep/` (committed off main `b4e9b70`).
-- **Your only working tree:** `/home/mark/DEVELOP/leasegrid-c/tmp/dev-safety-rails`. Create it:
-  `cd ~/DEVELOP/leasegrid-c && git fetch origin && git worktree add tmp/dev-safety-rails build/dev-safety-rails` (if the local branch doesn't exist yet: `git worktree add -b build/dev-safety-rails tmp/dev-safety-rails origin/build/dev-safety-rails`).
+- **Your only working tree:** the standalone clone `/tmp/lg-dev-safety-rails` (already on `build/dev-safety-rails`, push URL is SSH). Do **not** create a worktree under `~/DEVELOP/leasegrid-c`. In the clone: `git fetch origin && git checkout build/dev-safety-rails && git merge --ff-only origin/build/dev-safety-rails`.
   Then bring in main **by merge, never rebase**: `git merge --no-edit origin/main`. Commit `dev-safety-rails: merge main (v0.1.7)`.
 - **Interpreter:** `python3 -m venv .venv` in the worktree, then `PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh`. Qt offscreen.
 - **Seed already on the branch** (verified on the Grok Bot box with semgrep 1.181.0):
@@ -42,7 +41,7 @@ You stop only on one of these. Before you stop for any reason, do **Finish** (§
 - Work only inside the worktree (and `/tmp`). **Never touch `/home/mark/DEVELOP/leasegrid-c` itself** (Mark's checkout) or other worktrees (`tmp/v017-*` included). Only this `.venv`. No sudo, no system packages, no services, no sign-ins, no spending money, no posting. Don't kill processes you didn't start.
 - Never print or commit secrets; fakes only.
 - No PR creation or edits, no merge to main, no tag, **no force-push, no rebase**. Push only `build/dev-safety-rails`, normally: `git push origin HEAD:refs/heads/build/dev-safety-rails`. Stage explicit paths only.
-- This run adds gates and docs. **Don't change app behavior.** If a new rule flags v0.1.7 code, either suppress it on that line with a reason (`# nosemgrep: <rule-id> -- <why it is safe>`, or `# noqa: S<nnn> <why>`) or, if it is a real bug, log it under "Found by the new gate" in the handoff and **don't fix it here**.
+- This run adds gates and docs. **Don't change app behavior** (sole exception: the bug fixes named in item 4). If a new rule flags v0.1.7 code, either suppress it on that line with a reason (`# nosemgrep: <rule-id> -- <why it is safe>`, or `# noqa: S<nnn> <why>`) or, if it is a real bug, log it under "Found by the new gate" in the handoff and **don't fix it here**.
 - **Tests:** prefer E2E/integration/operate-or-FAIL (Testing Trophy). No tautological or implementation-detail unit sprawl. Each new test must be able to fail with the bug present. All CI platforms stay green (Linux, macOS, Windows).
 - **Proof per item:** apply the named mutation, confirm RED, restore. Log `RED: <mutant> → <test or gate>`. Never commit a mutated state.
 - One commit per item (`dev-safety-rails N: <summary>`). ci-local must PASS before each commit. Push after each.
@@ -119,7 +118,16 @@ Standing rule: every Tester/Reviewer blocker a pattern could catch becomes a too
   - (b) Make the script exit 0 when a mutant survives: the survivor test goes RED.
   - (c) Drop the dirty-tree refusal: the dirty test goes RED.
 
-## 4. Out of scope (do NOT implement)
+**4. Tests for Tester's v0.1.7 mutation survivors (plus the R9n fix).**
+Each test must be behavioral (real subprocess / real QLockFile / real widget flow where practical, Qt offscreen) and must go RED on the named mutant via `scripts/prove-red.py` (item 3). Put the cases in `docs/ops/prove-red-dev-safety-rails.py` alongside item 2's, and paste the receipt into the handoff.
+- **R9n — `TahoeClient.start` treats a zombie as running** (`src/leasegrid_sync/backend.py`, `start()` / `_leader_state()`). A daemon that has exited but is unreaped must not count as "running", so a dead daemon gets restarted. **Fix it** (this is the one allowed app-behavior change besides follow-up 1 below): an exited-unreaped leader takes the reap-then-respawn path. Test: start a fake `tahoe` that exits immediately (leave it unreaped), call `start()` again, assert a new process was spawned and is alive. RED mutant: make `_leader_state` report a zombie as `"running"` (or restore the pre-fix check) → test RED. Do not regress the v0.1.7-fix3 group-kill / pid-reuse tests.
+- **N1i — "Yes" on the handed-invite replace box must not auto-join.** Test: with invite A in the join field and B pending, answer Yes; assert the field now holds B, no join was started (no join worker / tahoe spawn / `_joined` stays false), and the user must still press Join. RED mutant: call the join action from the Yes handler → RED.
+- **L5n — second lock try after the writer grace** (`src/leasegrid_sync/app.py`, `_lock_writer_grace` and the second `lock.tryLock(0)`). Test: an empty/mid-write lock file whose writer finishes during the grace; assert the second `tryLock` takes the lock (or correctly refuses a live holder), with exactly one holder. RED mutant: drop the second `tryLock(0)` (treat the first failure as final) → RED.
+- **Tester follow-up 1 — latest handed invite must win.** Today, if B is pending in the replace box and the user re-hands the invite that is already in the field (A), the `current == text` early return leaves B pending, so a later Yes applies the *older* B. Fix: re-handing A while B is pending clears the pending replacement and closes the box (latest wins); a subsequent Yes must not apply B. Test via the `LEASEGRID_TEST_INVITE_DUMP` hook or direct widget calls: hand B (pending), hand A again, assert `pending=` empty and `boxes=0`, field still A. RED mutant: restore the early return without clearing pending → RED.
+- **Tester follow-up 3 — "already running" second launch exits 0 on SIGTERM.** Unmocked: start a first instance (offscreen), start a plain second launch that shows the "already running" box (`ALREADY_RUNNING`), send it SIGTERM, assert exit code 0 (not 134/-15/abort) within a timeout. POSIX only; skip on Windows with a reason. If it fails today, fix only the second-launch SIGTERM handling and log it. RED mutant: remove the SIGTERM handler/quit hookup for the box path → RED.
+- One commit `dev-safety-rails 4: survivor tests + R9n/latest-wins fixes`. All three CI platforms must stay green. If any fix turns out to need more than a small change, log it under "Found by the new gate / open" in the handoff, keep the test as `xfail(strict=True)` with the reason, and move on.
+
+## 4b. Out of scope (do NOT implement)
 
 Hypothesis property tests (geometry, redaction, lock), the redaction rewrite in Python, betterleaks, mutmut, atheris. These are investigation items 4–5, a later drop-in. Any real bug the new gates find: log it only.
 

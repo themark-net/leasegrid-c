@@ -20,7 +20,12 @@ leasegrid-zkap = "leasegrid_zkap.cli:main"
 leasegrid-sync = "leasegrid_sync.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.6"]
+dev = [
+  "pytest>=7",
+  # 0.17.1 is the version this gate was verified with. S403 is preview-only
+  # there; a later ruff can move or drop it and change what CI rejects.
+  "ruff==0.17.1",
+]
 # Semgrep is large and has no Windows wheel. CI installs it only in the
 # ubuntu semgrep job; ci-local installs it unless CI_LOCAL_SKIP_SEMGREP=1.
 lint = ["semgrep==1.181.0"]

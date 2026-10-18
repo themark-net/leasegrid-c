@@ -43,7 +43,7 @@ sigterm-no-handler        RED
 - F prove-red signal restore: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 144.30s | files: scripts/prove-red.py, tests/test_prove_red.py, docs/ops/AUTONOMOUS-DECISIONS-dev-safety-rails.md
   RED: removed the SIGTERM/SIGINT handlers → `test_signal_restores_bytes_and_skips_the_receipt[SIGTERM]` (target left mutated)
   GREEN: SIGTERM exits 143 and SIGINT exits 130, target bytes match, `git diff --quiet` clean, no receipt. win32 skips both rows (os.kill does not run the handler).
-- G ruff pin: pending
+- G ruff pin: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 142.41s, ruff 0.17.1 | files: pyproject.toml. dev extra is `ruff==0.17.1`. ci-local and `.github/workflows/ci.yml` install `.[dev]` and do not pip-install an unpinned ruff. doc-only/config, no RED.
 - H semgrep path comments: pending
 - I changelog: pending
 - J handoff: pending

@@ -5,11 +5,17 @@ Leasegrid Sync does not use the Tahoe web UI as the buyer surface.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
 import re
+import signal
+import socket
+import stat
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -28,8 +34,10 @@ from .backend import (
     default_home,
     format_bytes,
     format_hosted_strip,
+    WORMHOLE_CODE_RE,
     is_wormhole_code,
     join_filesystem_failure,
+    rotate_log,
     read_disk_offer,
     read_hosted_shares,
     read_local_accepted,
@@ -109,25 +117,166 @@ def _style_primary(btn) -> None:
 
 
 UI_LOG_NAME = "sync-ui.log"
-UI_LOG_MAX_BYTES = 1024 * 1024
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
 ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
 INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
+INVITE_KEEP_OPEN = "Keep open"
+INVITE_QUIT_BUTTON = "Quit"
+OPEN_LOGS_BUTTON = "Open logs folder"
+COPY_BUG_BUTTON = "Copy bug-report details"
+FOLDER_MISSING_BANNER = "That folder is not on this computer any more: %s"
+FOLDER_FILE_BANNER = "That path is not a folder: %s"
+HANDED_INVITE_DROPPED = (
+    "Leasegrid Sync is already on a friendnet. This invite was not opened."
+)
+HANDED_INVITE_REPLACE = "Another invite arrived. Use it?"
+_JOIN_HANDOFF_MAX = 4096
+# A burst of a few hundred handoff sockets segfaulted the process. Extra
+# connections are aborted, and an idle socket is dropped after this long.
+_JOIN_PENDING_MAX = 8
+_JOIN_READ_TIMEOUT_MS = 2000
 _INSTANCE_LOCK = None
+# Test drivers in tests/ set this before main(). An env var alone does nothing.
+_TEST_HOOKS = False
+
+
+def _test_env(name: str) -> str:
+    """Read a LEASEGRID_TEST_* variable only when a test driver armed the hooks."""
+    if not _TEST_HOOKS:
+        return ""
+    return os.environ.get(name) or ""
+
+
+def _tilde(rel: str) -> str:
+    if rel in ("", "."):
+        return "~"
+    if sys.platform == "win32":
+        return "~\\" + rel.replace("/", "\\")
+    return "~/" + rel.replace("\\", "/")
+
+
+def _under_home(path: Path, home: Path, fold: bool) -> Optional[str]:
+    """Tail under ``home``, or None. A root home matches everything, so skip it."""
+    if len(home.parts) <= 1:
+        return None
+    parts = path.parts
+    base = home.parts
+    if len(parts) < len(base):
+        return None
+    left = parts[: len(base)]
+    if fold:
+        left = tuple(part.casefold() for part in left)
+        base = tuple(part.casefold() for part in base)
+    if left != base:
+        return None
+    tail = parts[len(home.parts) :]
+    if not tail:
+        return "."
+    return str(Path(*tail))
+
+
+def display_path(path: object) -> str:
+    """Home-relative form for a path a person sees or copies.
+
+    ``~/…`` on POSIX and ``~\\…`` on Windows. Files on disk keep the real path.
+    A path outside the account home is returned with ``..`` collapsed, so the
+    account name on the way out is not shown. URLs and relative paths stay as
+    typed. The home symlink and its target are both homes. Letter case is
+    ignored on Windows and macOS.
+    """
+    text = str(path)
+    if text == "":
+        return ""
+    # pb:// and other URLs are not filesystem paths. abspath() would join them
+    # onto the working directory and then hide that directory.
+    if "://" in text:
+        return text
+    try:
+        home = Path.home()
+        expanded = Path(text).expanduser()
+        if not expanded.is_absolute():
+            return text
+        try:
+            home_real = home.resolve()
+        except OSError:
+            home_real = home
+        absolute = Path(os.path.abspath(expanded))
+        collapsed = Path(os.path.normpath(str(absolute)))
+        try:
+            resolved = collapsed.resolve()
+        except OSError:
+            resolved = collapsed
+    except (OSError, ValueError, RuntimeError, TypeError):
+        return text
+    fold = sys.platform in ("win32", "darwin")
+    for candidate in (collapsed, resolved):
+        for base in (home, home_real):
+            rel = _under_home(candidate, base, fold)
+            if rel is not None:
+                return _tilde(rel)
+    return str(collapsed)
+
+
+# An absolute path inside buyer text. The trailing punctuation stays put.
+_SHOWN_PATH = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|/)[^\s\"'<>|]+")
+
+
+def mask_shown_paths(text: str) -> str:
+    """Replace home paths in a banner. Other words stay as they are."""
+    if not text:
+        return text
+
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        trimmed = token.rstrip(".,;:)")
+        shown = display_path(trimmed)
+        if shown == trimmed:
+            return token
+        return shown + token[len(trimmed) :]
+
+    return _SHOWN_PATH.sub(repl, text)
 
 
 def instance_lock_path(home: Path) -> Path:
     return Path(home) / ".leasegrid-sync.lock"
 
 
+def _lock_pid_readable(lock) -> bool:
+    """True when getLockInfo can read a PID. Empty and garbage files cannot.
+
+    PyQt5 returns (ok, pid, hostname, appname). The pid slot is uninitialized
+    when ok is false, so the flag is the check.
+    """
+    info = lock.getLockInfo()
+    if isinstance(info, tuple) and info and isinstance(info[0], bool):
+        return bool(info[0])
+    if isinstance(info, tuple) and info:
+        return bool(info[0])
+    return False
+
+
+def _lock_writer_grace() -> None:
+    """Give a starter that has created the lock time to write its PID."""
+    time.sleep(0.1)
+
+
+# Qt's setStaleLockTime is what gates a PID-less lock. Younger than this,
+# tryLock refuses it. Older than this, tryLock takes it. This code does not
+# unlink the file: a rename or removeStaleLockFile deletes a rival's new lock.
+_LOCK_PIDLESS_MAX_AGE_S = 2.0
+
+
 def acquire_instance_lock(home: Path) -> bool:
     """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
 
-    Qt's default stale time (30s) is what makes an empty file, a garbage file,
-    or a lock from another machine recoverable. Stale time 0 never recovers
-    those. A live same-host holder is still refused. The QLockFile object stays
-    referenced until a clean quit, or the destructor would unlock it early.
-    Returns False when another live process holds the lock.
+    Qt recovers a dead PID at once. A PID-less file (empty, garbage, or a
+    crash mid-write) is taken only once it is older than 2s. That gate is
+    QLockFile's stale time, inside tryLock, so two callers cannot both delete
+    it. A younger PID-less file is left in place and this call refuses. Wait
+    briefly first so a starter that is still writing its PID can finish. A
+    readable PID is refused. The QLockFile object stays referenced until a
+    clean quit, or the destructor would unlock it early. Returns False when
+    another live process holds the lock.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -138,8 +287,15 @@ def acquire_instance_lock(home: Path) -> bool:
     except OSError:
         return True
     lock = QLockFile(str(path))
+    lock.setStaleLockTime(int(_LOCK_PIDLESS_MAX_AGE_S * 1000))
     if not lock.tryLock(0):
-        return False
+        if not _lock_pid_readable(lock):
+            # The other starter may be between O_EXCL create and the PID write.
+            _lock_writer_grace()
+        if _lock_pid_readable(lock):
+            return False
+        if not lock.tryLock(0):
+            return False
     _INSTANCE_LOCK = lock
     return True
 
@@ -157,11 +313,460 @@ def release_instance_lock() -> None:
         return
 
 
+# Stay under the AF_UNIX cap (about 104 bytes on macOS, 108 on Linux).
+_JOIN_PATH_MAX = 100
+
+
+def _home_digest(home: Path) -> str:
+    raw = str(Path(home).resolve()).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def join_server_name(home: Path) -> str:
+    """Per-home local-server name. The invite is never part of the name."""
+    return "leasegrid-sync-" + _home_digest(home)[:32]
+
+
+def join_endpoint(home: Path) -> Optional[str]:
+    """Absolute socket path, or the Windows pipe name, shared by both sides.
+
+    POSIX prefers ``<Sync home>/run/<name>`` when that path is under 100 bytes,
+    then ``$XDG_RUNTIME_DIR/leasegrid-sync/<name>``, then a 0700 directory
+    ``leasegrid-sync-<uid>`` under ``$TMPDIR``. The Windows pipe name is the
+    hash. There is no portable way to read the pipe owner from the client.
+    """
+    name = join_server_name(home)
+    if sys.platform == "win32":
+        return name
+    primary = os.path.join(str(Path(home).resolve()), "run", name)
+    if len(os.fsencode(primary)) < _JOIN_PATH_MAX:
+        return primary
+    xdg = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+    if xdg:
+        secondary = os.path.join(xdg, "leasegrid-sync", name)
+        if len(os.fsencode(secondary)) < _JOIN_PATH_MAX:
+            return secondary
+    return _tmpdir_join_endpoint(home, name)
+
+
+def _tmpdir_join_endpoint(home: Path, name: str) -> Optional[str]:
+    tmp = os.environ.get("TMPDIR", "").strip() or tempfile.gettempdir()
+    directory = os.path.join(tmp, "leasegrid-sync-%d" % os.getuid())
+    full = os.path.join(directory, name)
+    if len(os.fsencode(full)) < _JOIN_PATH_MAX:
+        return full
+    digest = _home_digest(home)
+    for length in range(64, 15, -1):
+        candidate = os.path.join(directory, digest[:length])
+        if len(os.fsencode(candidate)) < _JOIN_PATH_MAX:
+            return candidate
+    return None
+
+
+def _lstat_path(path: str):
+    """lstat, so a symlink is not treated as the directory it points at."""
+    return os.lstat(path)
+
+
+def _uid_is_ours(st: os.stat_result) -> bool:
+    return st.st_uid == os.getuid()
+
+
+def _posix_dir_is_private(st: os.stat_result) -> bool:
+    """A real directory we own, with no group or other permissions."""
+    if not stat.S_ISDIR(st.st_mode):
+        return False
+    if not _uid_is_ours(st):
+        return False
+    if st.st_mode & 0o077:
+        return False
+    return True
+
+
+def _ensure_private_dir(path: str) -> bool:
+    """Create a 0700 directory, or accept one that already passes the checks.
+
+    An existing directory is never chmod'd. A symlink, the wrong owner, or a
+    mode that grants group or other access is refused.
+    """
+    try:
+        _lstat_path(path)
+    except FileNotFoundError:
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+        except OSError:
+            return False
+        else:
+            try:
+                # mkdir honors umask. This directory was just created by us.
+                os.chmod(path, 0o700)
+            except OSError:
+                return False
+            try:
+                return _posix_dir_is_private(_lstat_path(path))
+            except OSError:
+                return False
+    except OSError:
+        return False
+    try:
+        return _posix_dir_is_private(_lstat_path(path))
+    except OSError:
+        return False
+
+
+def _clear_owned_socket(path: str) -> bool:
+    """Unlink a stale socket we own. Anything else stays, and listening stops."""
+    try:
+        st = _lstat_path(path)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    if not stat.S_ISSOCK(st.st_mode) or not _uid_is_ours(st):
+        return False
+    try:
+        os.unlink(path)
+    except OSError:
+        return False
+    return True
+
+
+def _inspect_posix_endpoint(path: str) -> str:
+    """'ok' to connect, 'absent' when nothing is there, 'refused' when it is unsafe."""
+    parent = os.path.dirname(path)
+    try:
+        dir_st = _lstat_path(parent)
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "refused"
+    if not _posix_dir_is_private(dir_st):
+        return "refused"
+    try:
+        st = _lstat_path(path)
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "refused"
+    if not stat.S_ISSOCK(st.st_mode):
+        return "refused"
+    if not _uid_is_ours(st):
+        return "refused"
+    return "ok"
+
+
+def _log_handoff_note(home: Path, note: str) -> None:
+    """One fixed line in the Sync log. The invite is not written."""
+    path = Path(home) / "logs" / UI_LOG_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("%s join handoff: %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), note))
+    except OSError:
+        pass
+
+
+def _lock_is_held(home: Path) -> bool:
+    """True when a live lock is held. A lock this call takes is released."""
+    from PyQt5.QtCore import QLockFile
+
+    path = instance_lock_path(home)
+    if not path.parent.is_dir():
+        return False
+    lock = QLockFile(str(path))
+    if lock.tryLock(0):
+        lock.unlock()
+        return False
+    return True
+
+
+def _send_invite_posix(home: Path, invite: str) -> bool:
+    path = join_endpoint(home)
+    if not path:
+        return False
+    state = _inspect_posix_endpoint(path)
+    if state != "ok":
+        if state == "refused":
+            _log_handoff_note(home, "refused the socket before connecting")
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(0.5)
+        sock.connect(path)
+        sock.sendall((invite + "\n").encode("utf-8"))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+# A short-lived helper so a Windows --join does not construct QCoreApplication
+# in the caller, and so the invite is not placed on the helper's command line.
+_WIN_JOIN_SEND = """
+import sys
+from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtNetwork import QLocalSocket
+
+app = QCoreApplication([])
+name = sys.argv[1]
+payload = sys.stdin.buffer.read(4096)
+if not payload:
+    raise SystemExit(2)
+if not payload.endswith(b"\\n"):
+    payload += b"\\n"
+sock = QLocalSocket()
+sock.connectToServer(name)
+if not sock.waitForConnected(500):
+    raise SystemExit(2)
+sock.write(payload)
+if not sock.waitForBytesWritten(500):
+    raise SystemExit(2)
+sock.disconnectFromServer()
+raise SystemExit(0)
+"""
+
+
+def _send_invite_windows(name: str, invite: str) -> bool:
+    """Send on the user-only pipe. The client cannot read the pipe owner."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _WIN_JOIN_SEND, name],
+            input=(invite + "\n").encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def hand_join_invite(invite: str) -> str:
+    """Offer a second launch's invite to the running window.
+
+    "sent" means the open window took it. "busy" means the home is locked and
+    nothing is listening (an old build, or a stale socket). "free" means no
+    instance is holding the home, so the caller should join as it does today.
+    "rejected" means the text is empty or longer than the handoff cap, and the
+    home is free: the caller must not join. "held" is that same text while
+    another instance holds the home: say already-running, and do not send.
+    """
+    text = (invite or "").strip()
+    home = default_home()
+    if not text or len(text) > _JOIN_HANDOFF_MAX:
+        # Never send this, and never start a join. A held home is already running.
+        return "held" if _lock_is_held(home) else "rejected"
+    # Lock first. A free home joins normally and never connects.
+    if not _lock_is_held(home):
+        return "free"
+    if sys.platform == "win32":
+        sent = _send_invite_windows(join_server_name(home), text)
+    else:
+        sent = _send_invite_posix(home, text)
+    return "sent" if sent else "busy"
+
+
+def _start_join_server(ui) -> None:
+    """Listen for a second launch's invite. Failures are logged without the text."""
+    try:
+        from PyQt5.QtCore import QTimer
+        from PyQt5.QtNetwork import QLocalServer
+    except ImportError:
+        return
+    endpoint = join_endpoint(ui.home)
+    if not endpoint:
+        _log_handoff_note(ui.home, "could not choose a private socket path")
+        return
+    if sys.platform != "win32":
+        parent = os.path.dirname(endpoint)
+        if not _ensure_private_dir(parent):
+            _log_handoff_note(ui.home, "refused the private socket directory")
+            return
+        if not _clear_owned_socket(endpoint):
+            _log_handoff_note(ui.home, "refused a stale socket that is not ours")
+            return
+    server = QLocalServer(ui.app)
+    # User-only pipe ACL on Windows, and owner-only socket mode on POSIX.
+    server.setSocketOptions(QLocalServer.UserAccessOption)
+    server.setMaxPendingConnections(_JOIN_PENDING_MAX)
+    if sys.platform == "win32":
+        QLocalServer.removeServer(endpoint)
+    if not server.listen(endpoint):
+        _log_handoff_note(ui.home, "could not listen for a second launch")
+        return
+
+    pending: list = []
+
+    def drop(sock) -> None:
+        """Abort one handoff socket and release it. Safe to call twice."""
+        if getattr(sock, "_leasegrid_dropped", False):
+            return
+        sock._leasegrid_dropped = True
+        try:
+            pending.remove(sock)
+        except ValueError:
+            pass
+        timer = getattr(sock, "_leasegrid_read_timer", None)
+        if timer is not None:
+            timer.stop()
+        try:
+            sock.abort()
+        except Exception:
+            pass
+        sock.deleteLater()
+
+    def on_new() -> None:
+        while True:
+            sock = server.nextPendingConnection()
+            if sock is None:
+                return
+            if len(pending) >= _JOIN_PENDING_MAX:
+                drop(sock)
+                continue
+            pending.append(sock)
+            buf = bytearray()
+            timer = QTimer(sock)
+            timer.setSingleShot(True)
+            sock._leasegrid_read_timer = timer  # type: ignore[attr-defined]
+
+            def take(sock=sock, buf=buf) -> None:
+                if getattr(sock, "_leasegrid_dropped", False):
+                    return
+                if sock.bytesAvailable():
+                    chunk = bytes(sock.readAll())
+                    if chunk:
+                        buf.extend(chunk)
+                over = len(buf) > _JOIN_HANDOFF_MAX
+                complete = over or b"\n" in buf or sock.state() == sock.UnconnectedState
+                if not complete:
+                    return
+                raw = bytes(buf).split(b"\n", 1)[0]
+                del buf[:]
+                text = "" if over else raw.decode("utf-8", "replace").strip()
+                # Drop before any UI. exec_() in this slot nested one loop per
+                # invite, and SIGTERM then never reached the quit handler.
+                drop(sock)
+                if (
+                    text
+                    and len(text) <= _JOIN_HANDOFF_MAX
+                    and not getattr(ui, "_quitting", False)
+                ):
+                    QTimer.singleShot(0, lambda text=text: ui.receive_handed_invite(text))
+
+            timer.timeout.connect(lambda sock=sock: drop(sock))
+            timer.start(_JOIN_READ_TIMEOUT_MS)
+            sock.readyRead.connect(take)
+            sock.disconnected.connect(take)
+            if sock.bytesAvailable():
+                take()
+
+    server.newConnection.connect(on_new)
+    ui._join_server = server
+    ready = _test_env("LEASEGRID_TEST_JOIN_READY")
+    if ready:
+        try:
+            Path(ready).write_text("ready\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _close_join_server(ui) -> None:
+    server = getattr(ui, "_join_server", None)
+    ui._join_server = None
+    if server is None:
+        return
+    try:
+        from PyQt5.QtNetwork import QLocalSocket
+
+        for sock in list(server.findChildren(QLocalSocket)):
+            try:
+                sock.abort()
+            except Exception:
+                pass
+        server.close()
+        server.deleteLater()
+        app = getattr(ui, "app", None)
+        if app is not None:
+            app.processEvents()
+    except Exception:
+        try:
+            server.close()
+        except Exception:
+            pass
+
+
+def _arm_already_running_dismiss(QtCore, QtWidgets) -> None:
+    """Accept the already-running box from a test driver and record its text.
+
+    A driver sets ``_TEST_HOOKS`` and ``LEASEGRID_TEST_AUTODISMISS_MS``.
+    The timer runs inside the message box's own loop and clicks Ok. With the
+    hooks off, the env var does nothing. The text file receives only the box
+    text, which is the already-running sentence and never an invite.
+    """
+    raw = _test_env("LEASEGRID_TEST_AUTODISMISS_MS")
+    if not raw:
+        return
+    try:
+        delay = int(raw)
+    except ValueError:
+        return
+    if delay < 0:
+        return
+    path = _test_env("LEASEGRID_TEST_ALREADY_TEXT")
+    retry_ms = delay if delay >= 20 else 50
+
+    def dismiss() -> None:
+        box = QtWidgets.QApplication.activeModalWidget()
+        if box is None or not hasattr(box, "text"):
+            QtCore.QTimer.singleShot(retry_ms, dismiss)
+            return
+        try:
+            text = box.text()
+        except Exception:
+            text = ""
+        if path:
+            try:
+                dest = Path(path)
+                tmp = Path(str(dest) + ".tmp")
+                tmp.write_text(text, encoding="utf-8")
+                os.replace(tmp, dest)
+            except OSError:
+                pass
+        button = None
+        if hasattr(box, "button"):
+            try:
+                button = box.button(QtWidgets.QMessageBox.Ok)
+            except Exception:
+                button = None
+        if button is not None:
+            button.click()
+        elif hasattr(box, "accept"):
+            box.accept()
+
+    QtCore.QTimer.singleShot(delay, dismiss)
+
+
 def _show_already_running() -> None:
-    _QtCore, _QtGui, QtWidgets = _qt_api()
-    if QtWidgets.QApplication.instance() is None:
-        QtWidgets.QApplication(sys.argv)
+    """Say this Sync home is already open.
+
+    The application object stays referenced for the whole call. A temporary
+    that nobody keeps is destroyed at once, and the message box then aborts.
+    """
+    QtCore, _QtGui, QtWidgets = _qt_api()
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+    _arm_already_running_dismiss(QtCore, QtWidgets)
     QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
+    # The local has to stay alive across information(). Reading it here keeps
+    # that obvious; pumping events would deliver timers into a shared test app.
+    if app.closingDown():
+        return
 
 
 def format_status_chip(status: ConnectionStatus) -> str:
@@ -191,27 +796,40 @@ def about_line() -> str:
 
 
 # Whole tokens only. redact_furl keeps a head and a tail, and an 8-character
-# fragment is still a leak. A Tahoe invite code is a magic-wormhole code:
-# 1–3 digits and two or more hyphen-joined words, and every word is in the
-# PGP word list. The boundary is the start, the end, or a character that is
-# not a letter, digit, hyphen, or dot, so "(7-guitarist-revenge)" matches,
-# "500-from-server-side" does not, and "v0.1.6-rc-final" does not.
+# fragment is still a leak. A candidate invite is exactly the shape
+# WORMHOLE_CODE_RE accepts: 1–3 digits and two or more hyphen segments of
+# letters or digits. The boundary is not a letter, digit, or hyphen. A dot
+# is a boundary unless a digit sits in front of it, so
+# "sentence.7-guitarist-revenge" matches and "v1.2.7-guitarist-revenge" does
+# not. A segment counts when its letter prefix is a PGP word and any extra
+# characters are trailing digits, and every segment must count (all, not any).
+_CODE_BODY = WORMHOLE_CODE_RE.pattern[1:-1] if WORMHOLE_CODE_RE.pattern.startswith("^") else WORMHOLE_CODE_RE.pattern
 _BUG_JOIN_RE = re.compile(
     r"leasegrid:\S+|https?://\S+#\S*|(?:(?<=\s)|^)#[^\s]*i(?:=|%3[Dd])[^\s]*",
     re.IGNORECASE,
 )
 _BUG_PB_RE = re.compile(r"pb://\S+", re.IGNORECASE)
 _BUG_CODE_RE = re.compile(
-    r"(?<![a-z0-9.-])[0-9]{1,3}(?:-[a-z]+){2,}(?![a-z0-9-])",
+    r"(?<![A-Za-z0-9-])(?<!\d\.)(?:" + _CODE_BODY + r")(?![A-Za-z0-9-])",
     re.IGNORECASE,
 )
+_SEGMENT_PREFIX_RE = re.compile(r"^([a-z]+)(\d*)$")
+
+
+def _pgp_segment(segment: str) -> bool:
+    match = _SEGMENT_PREFIX_RE.match(segment.lower())
+    return bool(match) and match.group(1) in WORMHOLE_WORDS
 
 
 def _redact_wormhole_code(match: re.Match) -> str:
-    words = match.group(0).split("-")[1:]
-    if words and all(word.lower() in WORMHOLE_WORDS for word in words):
+    token = match.group(0)
+    if not is_wormhole_code(token):
+        return token
+    parts = token.split("-")[1:]
+    # all(), not any(): one real PGP word does not redact a mixed token.
+    if parts and all(_pgp_segment(part) for part in parts):
         return "[redacted]"
-    return match.group(0)
+    return token
 
 
 def scrub_bug_report(text: str) -> str:
@@ -221,32 +839,12 @@ def scrub_bug_report(text: str) -> str:
     return _BUG_CODE_RE.sub(_redact_wormhole_code, text)
 
 
-def _rotate_ui_log(path: Path) -> None:
-    """If ``path`` is over 1 MiB, move it to ``sync-ui.log.1``. Never raises.
-
-    An older ``.1`` is replaced. A failure (read-only directory, busy name)
-    leaves the current file in place so the caller can still append.
-    """
-    try:
-        if not path.is_file() or path.stat().st_size <= UI_LOG_MAX_BYTES:
-            return
-        backup = path.with_name(path.name + ".1")
-        try:
-            if backup.exists():
-                backup.unlink()
-        except OSError:
-            return
-        os.replace(path, backup)
-    except OSError:
-        return
-
-
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
     """Append a traceback to <home>/logs/sync-ui.log; never raises."""
     path = Path(home) / "logs" / UI_LOG_NAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _rotate_ui_log(path)
+        rotate_log(path)
         with path.open("a", encoding="utf-8") as f:
             f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), where))
             f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
@@ -1945,7 +2543,9 @@ class MainWindow:
             self.last_export_label.setText("Last export: never")
             return
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(info["last_export"])))
-        self.last_export_label.setText("Last export: %s  →  %s" % (when, info.get("path", "")))
+        self.last_export_label.setText(
+            "Last export: %s  →  %s" % (when, display_path(info.get("path", "")))
+        )
 
     def _refresh_recovery_nudge(self, box=None) -> None:
         widget = box if box is not None else self.win.findChild(self.QtWidgets.QWidget, "recoveryNudge")
@@ -2060,12 +2660,12 @@ class MainWindow:
         self.payment_lecture.setObjectName("paymentLecture")
         self.payment_lecture.hide()
         sl.addWidget(self.payment_lecture)
-        self.open_logs_btn = QtWidgets.QPushButton("Open logs folder")
+        self.open_logs_btn = QtWidgets.QPushButton(OPEN_LOGS_BUTTON)
         self.open_logs_btn.setObjectName("openLogsButton")
         self.open_logs_btn.setAutoDefault(False)
         self.open_logs_btn.clicked.connect(self.on_open_logs)
         sl.addWidget(self.open_logs_btn)
-        self.copy_bug_btn = QtWidgets.QPushButton("Copy bug-report details")
+        self.copy_bug_btn = QtWidgets.QPushButton(COPY_BUG_BUTTON)
         self.copy_bug_btn.setObjectName("copyBugReport")
         self.copy_bug_btn.setAutoDefault(False)
         self.copy_bug_btn.clicked.connect(self.on_copy_bug_report)
@@ -2083,12 +2683,12 @@ class MainWindow:
         try:
             logs.mkdir(parents=True, exist_ok=True)
         except OSError:
-            self.settings_status.setText(str(logs))
+            self.settings_status.setText(display_path(logs))
             return
         QtCore, QtGui, _QtWidgets = _qt_api()
         opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(logs)))
         if not opened:
-            self.settings_status.setText(str(logs))
+            self.settings_status.setText(display_path(logs))
 
     def bug_report_lines(self) -> list[str]:
         """The report lines before scrubbing. An allowlist: nothing else is copied.
@@ -2112,7 +2712,7 @@ class MainWindow:
             "Chip: %s" % self.status_chip.text(),
             "Joined: %s" % ("yes" if self._joined else "no"),
             folders,
-            "Logs: %s" % (self.home / "logs"),
+            "Logs: %s" % display_path(self.home / "logs"),
         ]
 
     def bug_report_text(self) -> str:
@@ -2217,7 +2817,7 @@ class MainWindow:
         open_act.triggered.connect(self.show)
         self.tray_credit_action = menu.addAction("Credit")
         self.tray_credit_action.triggered.connect(self.open_credit_place)
-        quit_act = menu.addAction("Quit")
+        quit_act = menu.addAction(INVITE_QUIT_BUTTON)
         quit_act.triggered.connect(self._on_tray_quit)
         self.tray_menu = menu
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
@@ -2257,8 +2857,8 @@ class MainWindow:
         box.setObjectName("inviteClosePrompt")
         box.setWindowTitle(APP_NAME)
         box.setText(INVITE_CLOSE_QUESTION)
-        quit_btn = box.addButton("Quit", QtWidgets.QMessageBox.AcceptRole)
-        keep_btn = box.addButton("Keep open", QtWidgets.QMessageBox.RejectRole)
+        quit_btn = box.addButton(INVITE_QUIT_BUTTON, QtWidgets.QMessageBox.AcceptRole)
+        keep_btn = box.addButton(INVITE_KEEP_OPEN, QtWidgets.QMessageBox.RejectRole)
         box.setDefaultButton(keep_btn)
         box.exec_()
         return box.clickedButton() is quit_btn
@@ -2300,6 +2900,8 @@ class MainWindow:
 
     def shutdown(self) -> None:
         """Stop the daemons this Sync process started (Magic Folder, then Tahoe)."""
+        self._dismiss_handed_replace_box()
+        _close_join_server(self)
         session = getattr(self, "_invite_session", None)
         if session is not None:
             session.close()
@@ -2310,6 +2912,180 @@ class MainWindow:
             except Exception:
                 pass
         release_instance_lock()
+
+    def _handed_replace_open_count(self) -> int:
+        """How many replace questions are open. One is the cap."""
+        try:
+            boxes = self.win.findChildren(self.QtWidgets.QMessageBox)
+        except Exception:
+            return 1 if getattr(self, "_handed_replace_box", None) is not None else 0
+        count = 0
+        for box in boxes:
+            try:
+                if box.objectName() == "handedInviteReplace":
+                    count += 1
+            except RuntimeError:
+                continue
+        return count
+
+    def _dismiss_handed_replace_box(self) -> None:
+        """Close the question without applying a pending invite. No nested loop."""
+        self._handed_replace_pending = ""
+        box = getattr(self, "_handed_replace_box", None)
+        self._handed_replace_box = None
+        timer = getattr(self, "_handed_replace_click_timer", None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        if box is None:
+            return
+        try:
+            box.blockSignals(True)
+            box.close()
+            # Keep the Qt parent. setParent(None) hands the C++ box to Python,
+            # which frees it as soon as this local goes away, while Qt may
+            # still be using it. deleteLater frees it from the event loop.
+            box.setObjectName("")
+            box.deleteLater()
+        except Exception:
+            pass
+
+    def _arm_replace_click_hook(self) -> None:
+        """Test-only. A file containing yes or no clicks the open question."""
+        if getattr(self, "_handed_replace_click_timer", None) is not None:
+            return
+        path = _test_env("LEASEGRID_TEST_REPLACE_CLICK_FILE")
+        if not path:
+            return
+        timer = self.QtCore.QTimer(self.win)
+        timer.setInterval(50)
+
+        def _poll() -> None:
+            box = getattr(self, "_handed_replace_box", None)
+            if box is None:
+                return
+            try:
+                choice = Path(path).read_text(encoding="utf-8").strip().lower()
+            except OSError:
+                return
+            if choice not in ("yes", "no"):
+                return
+            try:
+                Path(path).write_text("", encoding="utf-8")
+            except OSError:
+                return
+            standard = (
+                self.QtWidgets.QMessageBox.Yes
+                if choice == "yes"
+                else self.QtWidgets.QMessageBox.No
+            )
+            button = box.button(standard)
+            if button is not None:
+                button.click()
+
+        timer.timeout.connect(_poll)
+        timer.start()
+        self._handed_replace_click_timer = timer
+
+    def _open_handed_replace_box(self) -> None:
+        """Ask once, without exec_() or open(). Esc and the default are No."""
+        QtWidgets = self.QtWidgets
+        box = QtWidgets.QMessageBox(self.win)
+        box.setObjectName("handedInviteReplace")
+        box.setWindowTitle(APP_NAME)
+        box.setText(HANDED_INVITE_REPLACE)
+        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        box.setDefaultButton(QtWidgets.QMessageBox.No)
+        box.setEscapeButton(QtWidgets.QMessageBox.No)
+        box.finished.connect(self._on_handed_replace_finished)
+        self._handed_replace_box = box
+        self._arm_replace_click_hook()
+        # Non-modal, and show() returns at once, so no nested event loop runs
+        # inside a socket slot. Window- and application-modal shows both hit
+        # an access violation in Qt's modal blocking on Windows CI. The field
+        # changes only on Yes, to the latest pending invite.
+        box.setWindowModality(self.QtCore.Qt.NonModal)
+        box.show()
+        box.raise_()
+
+    def _on_handed_replace_finished(self, result: int) -> None:
+        pending = getattr(self, "_handed_replace_pending", "") or ""
+        box = getattr(self, "_handed_replace_box", None)
+        self._handed_replace_box = None
+        self._handed_replace_pending = ""
+        if box is not None:
+            try:
+                # This slot runs inside the box's own finished signal. Keep the
+                # Qt parent so Python never frees the box under QDialog::done();
+                # deleteLater frees it once control returns to the event loop.
+                box.setObjectName("")
+                box.deleteLater()
+            except Exception:
+                pass
+        if not getattr(self, "_quitting", False) and result == self.QtWidgets.QMessageBox.Yes:
+            if pending:
+                self.invite_edit.setText(pending)
+                self.invite_edit.setFocus()
+        self._dump_handed_invite()
+
+    def receive_handed_invite(self, invite: str) -> None:
+        """Show a second launch's invite. The user still has to join it.
+
+        A different non-empty field asks once. No is the default, including
+        Esc. The question names neither invite, and nothing here is logged.
+        A later invite while the question is open replaces the pending text.
+        """
+        text = (invite or "").strip()
+        if not text or len(text) > _JOIN_HANDOFF_MAX:
+            return
+        if getattr(self, "_quitting", False):
+            return
+        self.show()
+        if self._joined:
+            # No second-grid path exists. Say so, and do not keep the invite.
+            self.show_place(self.folders_tab)
+            self.folder_error.setStyleSheet("")
+            self.folder_error.setText(HANDED_INVITE_DROPPED)
+            self._dump_handed_invite()
+            return
+        self.stack.setCurrentWidget(self.join_page)
+        current = self.invite_edit.text()
+        if not current.strip() or current == text:
+            if not current.strip():
+                self.invite_edit.setText(text)
+                self.invite_edit.setFocus()
+            self._dump_handed_invite()
+            return
+        # One open question. A later invite only replaces the pending text.
+        self._handed_replace_pending = text
+        if getattr(self, "_handed_replace_box", None) is None:
+            self._open_handed_replace_box()
+        self._dump_handed_invite()
+
+    def _dump_handed_invite(self) -> None:
+        """Test hook. Production launches do not set the path, and nothing is logged."""
+        path = _test_env("LEASEGRID_TEST_INVITE_DUMP")
+        if not path:
+            return
+        try:
+            text = (
+                "joined=%s\nack=%s\nfield=%s\nboxes=%d\npending=%s\n"
+                % (
+                    "yes" if self._joined else "no",
+                    "1" if self.threat_ack.isChecked() else "0",
+                    self.invite_edit.text(),
+                    self._handed_replace_open_count(),
+                    getattr(self, "_handed_replace_pending", "") or "",
+                )
+            )
+            dest = Path(path)
+            tmp = Path(str(dest) + ".tmp")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, dest)
+        except OSError:
+            pass
 
     def _rect_on_a_screen(self, rect) -> bool:
         screens = self.QtGui.QGuiApplication.screens()
@@ -2403,9 +3179,11 @@ class MainWindow:
         self.win.resize(*DEFAULT_WINDOW_SIZE)
         self.win.move(0, 0)
 
-    def _guard_applied_size(self) -> None:
-        """Last check: a size Qt still left past the cap goes back to the default."""
-        if self._oversized(self.win.width(), self.win.height()):
+    def _guard_applied_size(self, width: Optional[int] = None, height: Optional[int] = None) -> None:
+        """Last check: a size past the cap goes back to the default, before Qt resizes."""
+        if width is None or height is None:
+            width, height = self.win.width(), self.win.height()
+        if self._oversized(width, height):
             self._reset_default_geometry()
 
     def _apply_window_record(self, x: int, y: int, width: int, height: int, maximized: bool) -> None:
@@ -2413,6 +3191,11 @@ class MainWindow:
         if not self._rect_on_a_screen(rect):
             return
         width, height = self._fitted_size(width, height)
+        if self._oversized(width, height):
+            # The fitter left the saved span. Refuse it before win.resize so a
+            # 16-million-pixel size never reaches Qt. The guard puts the default back.
+            self._guard_applied_size(width, height)
+            return
         self.win.resize(width, height)
         self.win.move(x, y)
         frame = self.win.frameGeometry()
@@ -2451,8 +3234,14 @@ class MainWindow:
     def _save_window_geometry(self) -> None:
         try:
             if self.win.isMaximized():
+                # normalGeometry is the client origin. win.x()/move() are the
+                # frame origin. Save the frame origin so a later restore does
+                # not walk by the frame margin on every maximize cycle.
                 normal = self.win.normalGeometry()
-                x, y = normal.x(), normal.y()
+                client = self.win.geometry()
+                frame = self.win.frameGeometry()
+                x = normal.x() - (client.x() - frame.x())
+                y = normal.y() - (client.y() - frame.y())
                 width, height = normal.width(), normal.height()
                 maximized = True
             else:
@@ -2487,6 +3276,7 @@ class MainWindow:
         if getattr(self, "_quitting", False):
             return
         self._quitting = True
+        self._dismiss_handed_replace_box()
         self._save_window_geometry()
         self.poll.stop()
         self.shutdown()
@@ -2501,7 +3291,7 @@ class MainWindow:
         self.status_chip.setText("REVIEW  " + err.message.split(" Unexpected error: ")[-1])
         text = err.banner()
         if log_path is not None:
-            text += "\nLog: %s" % log_path
+            text += "\nLog: %s" % display_path(log_path)
         self.unexpected_review.setText(text)
         self.unexpected_review.show()
 
@@ -2525,7 +3315,7 @@ class MainWindow:
             self.stack.setCurrentWidget(self.join_page)
             return
         self.stack.setCurrentWidget(self.join_page)
-        self._join_busy(True, "Tahoe node found at %s — connecting…" % self.tahoe.nodedir)
+        self._join_busy(True, "Tahoe node found at %s — connecting…" % display_path(self.tahoe.nodedir))
         try:
             status = self.tahoe.join_existing()
         except SyncError as exc:
@@ -2847,10 +3637,11 @@ class MainWindow:
             return
         target = Path(path)
         if not target.is_dir():
+            shown = display_path(path)
             if target.is_file():
-                message = "That path is not a folder: %s" % path
+                message = FOLDER_FILE_BANNER % shown
             else:
-                message = "That folder is not on this computer any more: %s" % path
+                message = FOLDER_MISSING_BANNER % shown
             self.show_folder_error(
                 SyncError(message, "Add the folder again if you still want it.")
             )
@@ -3097,6 +3888,105 @@ class MainWindow:
         }
 
 
+def _signal_names() -> tuple:
+    """Signals that should take the normal quit path.
+
+    Windows does not deliver SIGHUP, and an outside SIGTERM is
+    TerminateProcess, which no handler can see. A console close or Ctrl+Break
+    arrives as SIGBREAK. Ctrl+C is SIGINT.
+    """
+    if sys.platform == "win32":
+        names = ("SIGINT", "SIGBREAK")
+    else:
+        names = ("SIGTERM", "SIGINT", "SIGHUP")
+    return tuple(getattr(signal, name) for name in names if hasattr(signal, name))
+
+
+def _install_signal_quit(ui) -> None:
+    """Wake the Qt loop when a quit signal arrives, then call ``ui.quit()``.
+
+    The handler only sets a flag. ``set_wakeup_fd`` writes one byte from C so
+    the loop wakes during ``exec_``. The socket notifier and a short timer run
+    on the Qt thread and are the only places that touch Qt.
+    """
+    if getattr(ui, "_signal_quit_state", None) is not None:
+        return
+    read_s, write_s = socket.socketpair()
+    read_s.setblocking(False)
+    write_s.setblocking(False)
+    prev_fd = signal.set_wakeup_fd(write_s.fileno())
+    ui._signal_quit_requested = False
+
+    def _handler(signum, frame) -> None:
+        ui._signal_quit_requested = True
+
+    previous = {}
+    for sig in _signal_names():
+        previous[sig] = signal.signal(sig, _handler)
+
+    notifier = ui.QtCore.QSocketNotifier(
+        read_s.fileno(), ui.QtCore.QSocketNotifier.Read, ui.app
+    )
+
+    def _drain() -> None:
+        try:
+            while read_s.recv(256):
+                pass
+        except (BlockingIOError, InterruptedError, OSError):
+            pass
+
+    def _on_signal(*_args) -> None:
+        _drain()
+        if ui._signal_quit_requested:
+            ui.quit()
+
+    notifier.activated.connect(_on_signal)
+    timer = ui.QtCore.QTimer(ui.app)
+    timer.setInterval(100)
+    timer.timeout.connect(_on_signal)
+    timer.start()
+    ui._signal_quit_state = (read_s, write_s, notifier, timer, prev_fd, previous)
+    ready = _test_env("LEASEGRID_TEST_SIGNAL_READY")
+    if ready:
+        try:
+            Path(ready).write_text("ready\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _remove_signal_quit(ui) -> None:
+    state = getattr(ui, "_signal_quit_state", None)
+    if not state:
+        return
+    ui._signal_quit_state = None
+    read_s, write_s, notifier, timer, prev_fd, previous = state
+    try:
+        timer.stop()
+    except Exception:
+        pass
+    try:
+        notifier.setEnabled(False)
+    except Exception:
+        pass
+    for sig, handler in previous.items():
+        try:
+            signal.signal(sig, handler)
+        except OSError:
+            pass
+    try:
+        signal.set_wakeup_fd(prev_fd)
+    except (OSError, ValueError):
+        try:
+            signal.set_wakeup_fd(-1)
+        except (OSError, ValueError):
+            pass
+    for sock in (read_s, write_s):
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
 def run_app(
     nodedir: Optional[Path] = None,
     screenshot: Optional[Path] = None,
@@ -3116,6 +4006,7 @@ def run_app(
     install_excepthook(ui)
     ui.show()
     ui.QtWidgets.QApplication.processEvents()
+    _start_join_server(ui)
     try:
         if invite:
             # Headless join first (creates + starts the node); the modes below then
@@ -3179,4 +4070,8 @@ def _run_modes(
     if screenshot:
         ui.QtCore.QTimer.singleShot(400, lambda: ui.grab_to(screenshot))
         ui.QtCore.QTimer.singleShot(800, ui.app.quit)
-    return ui.app.exec_()
+    _install_signal_quit(ui)
+    try:
+        return ui.app.exec_()
+    finally:
+        _remove_signal_quit(ui)

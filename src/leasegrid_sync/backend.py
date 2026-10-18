@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -38,6 +39,8 @@ TAHOE_CONNECT_TIMEOUT = 30.0
 # stop() waits this long for SIGTERM, then SIGKILL, then waits again.
 TAHOE_STOP_WAIT = 10.0
 MF_STOP_WAIT = 5.0
+# Daemon logs and sync-ui.log rotate when they are over this size, not at it.
+LOG_ROTATE_BYTES = 1024 * 1024
 
 
 class SyncError(Exception):
@@ -60,8 +63,12 @@ class SyncError(Exception):
     def banner(self) -> str:
         text = self.message if self.message.startswith("FAIL") else "FAIL — " + self.message
         if self.next_hint:
-            return text + "\nNext: " + self.next_hint
-        return text
+            text = text + "\nNext: " + self.next_hint
+        # Every window label renders this string. Mask at that moment, not when
+        # the error is built, so the stored message keeps the real path.
+        from .app import mask_shown_paths
+
+        return mask_shown_paths(text)
 
 
 @dataclass
@@ -186,20 +193,226 @@ def redact_furl(value: str) -> str:
     return text
 
 
-def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
-    """Terminate a child and wait so it cannot stay a zombie.
+def _owns_process_group(proc: subprocess.Popen) -> bool:
+    """True only for a daemon this process put in its own group."""
+    return bool(getattr(proc, "_leasegrid_group", False))
 
-    Safe if the process has already exited. SIGTERM is tried first. After
-    that times out, SIGKILL is followed by another wait. Only
-    ``TimeoutExpired`` and ``OSError`` are caught.
-    """
-    if proc.poll() is not None:
+
+def _foreign_pgid(proc: subprocess.Popen) -> Optional[int]:
+    """Group id to signal, or None when that would hit our own group."""
+    if sys.platform == "win32" or not _owns_process_group(proc):
+        return None
+    try:
+        pgid = os.getpgid(proc.pid)
+    except OSError:
+        # macOS getpgid fails (ESRCH) on a zombie. popen_hidden used
+        # start_new_session, so the group id is the leader's pid, and while
+        # returncode is None nobody has reaped it, so that id is still pinned.
+        if proc.returncode is not None:
+            return None
+        pgid = proc.pid
+    try:
+        own = os.getpgrp()
+    except OSError:
+        own = None
+    if pgid <= 0 or pgid == own:
+        return None
+    return pgid
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except OSError:
+        pass
+
+
+def _taskkill_tree(pid: int) -> None:
+    """Windows tree kill. ``taskkill /T /F`` is the supported equivalent of killpg."""
+    if pid <= 0:
         return
+    subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def _close_stdin(proc: subprocess.Popen) -> None:
     try:
         if proc.stdin:
             proc.stdin.close()
     except OSError:
         pass
+
+
+def _wait_proc(proc: subprocess.Popen, timeout: float) -> None:
+    try:
+        proc.wait(timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+
+def _waitid_flags() -> Optional[int]:
+    """waitid flags that observe an exit without reaping, or None when absent."""
+    if sys.platform == "win32" or not hasattr(os, "waitid"):
+        return None
+    if not all(hasattr(os, name) for name in ("WEXITED", "WNOWAIT", "WNOHANG")):
+        return None
+    return os.WEXITED | os.WNOWAIT | os.WNOHANG  # type: ignore[attr-defined]
+
+
+def _darwin_leader_state(pid: int) -> str:
+    """macOS: 'running' or 'exited', observed with kqueue and never reaped.
+
+    macOS waitid with WNOWAIT and WNOHANG is not reliable (it can collect the
+    child or report nothing), so it is not used there. EVFILT_PROC NOTE_EXIT
+    only watches. ESRCH on attach means the leader has already exited; the
+    caller has not reaped it (returncode is None), so it is still a zombie
+    that pins the group id.
+    """
+    import errno
+    import select
+
+    try:
+        kq = select.kqueue()
+    except OSError:
+        return "running"
+    try:
+        ev = select.kevent(
+            pid,
+            filter=select.KQ_FILTER_PROC,
+            flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+            fflags=select.KQ_NOTE_EXIT,
+        )
+        try:
+            events = kq.control([ev], 1, 0)
+        except ProcessLookupError:
+            return "exited"
+        except OSError as exc:
+            return "exited" if exc.errno == errno.ESRCH else "running"
+        for got in events:
+            if got.flags & select.KQ_EV_ERROR:
+                return "exited" if got.data == errno.ESRCH else "running"
+            if got.fflags & select.KQ_NOTE_EXIT:
+                return "exited"
+        return "running"
+    finally:
+        kq.close()
+
+
+def _leader_state(proc: subprocess.Popen) -> str:
+    """'running', 'exited' (zombie, group id still pinned), or 'reaped'.
+
+    waitid with WNOWAIT does not collect the zombie. poll() would, and the
+    process-group id could then be reused before the group is killed.
+    ChildProcessError and OSError mean the leader is already gone. Windows
+    has no waitid; poll() there observes and reaps, which the Windows
+    tree-kill path already does.
+    """
+    if proc.returncode is not None:
+        return "reaped"
+    if sys.platform == "darwin":
+        return _darwin_leader_state(proc.pid)
+    flags = _waitid_flags()
+    if flags is None:
+        return "running" if proc.poll() is None else "reaped"
+    try:
+        info = os.waitid(os.P_PID, proc.pid, flags)
+    except (ChildProcessError, OSError):
+        return "reaped"
+    if info is None:
+        return "running"
+    return "exited"
+
+
+def _wait_leader_state(proc: subprocess.Popen, timeout: float) -> str:
+    """Poll without reaping until the leader has left or the timeout is up."""
+    deadline = time.time() + max(0.0, timeout)
+    while True:
+        state = _leader_state(proc)
+        if state != "running":
+            return state
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return "running"
+        time.sleep(min(0.05, remaining))
+
+
+def _finish_exited_group(proc: subprocess.Popen, pgid: int, terminate_timeout: float) -> None:
+    """SIGKILL a group whose leader is an unreaped zombie, then reap the leader."""
+    if _leader_state(proc) == "reaped":
+        return
+    _signal_group(pgid, signal.SIGKILL)
+    _wait_proc(proc, terminate_timeout)
+
+
+def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
+    """Stop a child and reap it so it cannot stay a zombie.
+
+    A daemon this process started in its own session owns that process group.
+    SIGTERM goes to the group, then the leader's exit is observed with
+    os.waitid(WNOWAIT) (kqueue NOTE_EXIT on macOS, where waitid WNOWAIT is
+    unreliable) so the zombie still pins the group id. Members that
+    obey SIGTERM get a short grace, at most half a second. The group then
+    gets SIGKILL, and only after that does proc.wait() reap the leader.
+    A grandchild that ignores SIGTERM dies in that SIGKILL. If the leader
+    had already exited and is still unreaped, the group is still SIGKILLed
+    before the reap.
+
+    poll() is the wrong check here: it reaps the leader, so the SIGKILL was
+    skipped and a TERM-ignoring grandchild survived. Once the leader is
+    already reaped (returncode is set, or waitid raises ChildProcessError
+    or OSError), the group is not signalled, because that id may have been
+    reused.
+
+    A process we did not put in a new group is signalled alone. This
+    process's own group is never signalled. On Windows the group path is
+    CTRL_BREAK_EVENT and then ``taskkill /T /F``. Only ``TimeoutExpired``
+    and ``OSError`` are caught on the lone-process path.
+    """
+    # returncode is set only after a reap. Do this before any use of the pid.
+    if proc.returncode is not None:
+        return
+    pgid = _foreign_pgid(proc)
+    windows_tree = sys.platform == "win32" and _owns_process_group(proc)
+    _close_stdin(proc)
+    if pgid is not None:
+        state = _leader_state(proc)
+        if state == "reaped":
+            return
+        if state == "running":
+            _signal_group(pgid, signal.SIGTERM)
+            state = _wait_leader_state(proc, terminate_timeout)
+            if state == "reaped":
+                return
+            if state == "running":
+                _signal_group(pgid, signal.SIGKILL)
+                _wait_proc(proc, terminate_timeout)
+                return
+            # The leader is already a zombie. TERM-obeying members get a
+            # short grace; a member that ignores SIGTERM still needs SIGKILL.
+            grace = min(0.5, max(0.0, terminate_timeout))
+            deadline = time.time() + grace
+            while time.time() < deadline:
+                if _leader_state(proc) == "reaped":
+                    return
+                time.sleep(min(0.05, max(0.0, deadline - time.time())))
+        _finish_exited_group(proc, pgid, terminate_timeout)
+        return
+    if windows_tree:
+        if proc.poll() is not None:
+            return
+        try:
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        except OSError:
+            pass
+        _wait_proc(proc, terminate_timeout)
+        if proc.poll() is None:
+            _taskkill_tree(proc.pid)
+            _wait_proc(proc, terminate_timeout)
+        return
     try:
         proc.terminate()
         proc.wait(timeout=terminate_timeout)
@@ -217,16 +430,47 @@ def reap_child(proc: subprocess.Popen, terminate_timeout: float) -> None:
         pass
 
 
+def rotate_log(path: Path) -> None:
+    """If ``path`` is over 1 MiB, rename it to ``<name>.1``. Never raises.
+
+    An older ``.1`` is replaced. A failure (read-only directory, busy name)
+    leaves the current file in place so the caller can still open it.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size <= LOG_ROTATE_BYTES:
+            return
+        backup = path.with_name(path.name + ".1")
+        try:
+            if backup.exists():
+                backup.unlink()
+        except OSError:
+            return
+        os.replace(path, backup)
+    except OSError:
+        return
+
+
 def popen_hidden(cmd: list[str], log_f) -> subprocess.Popen:
-    """Spawn a daemon without a console flash (Windows CREATE_NO_WINDOW)."""
+    """Spawn a daemon in its own process group, without a console flash.
+
+    POSIX uses ``start_new_session`` so the child's pid is the process-group
+    id. Windows ORs ``CREATE_NEW_PROCESS_GROUP`` with ``CREATE_NO_WINDOW``.
+    ``stop`` will signal that group only when this flag is set.
+    """
     kwargs: dict[str, Any] = {
         "stdin": subprocess.PIPE,
         "stdout": log_f,
         "stderr": subprocess.STDOUT,
     }
     if sys.platform == "win32":
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    return subprocess.Popen(cmd, **kwargs)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        kwargs["creationflags"] = flags
+    else:
+        kwargs["start_new_session"] = True
+    proc = subprocess.Popen(cmd, **kwargs)
+    proc._leasegrid_group = True  # type: ignore[attr-defined]
+    return proc
 
 
 def storage_offered(nodedir: Path) -> bool:
@@ -1032,10 +1276,16 @@ class TahoeClient:
                 "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
                 "paste an introducer furl to create one; Retry.",
             )
-        if self._proc is not None and self._proc.poll() is None:
-            return
+        if self._proc is not None:
+            if _leader_state(self._proc) == "running":
+                return
+            # Exited but unreaped: the zombie still pins the group. Kill the
+            # group before starting another daemon.
+            reap_child(self._proc, TAHOE_STOP_WAIT)
+            self._proc = None
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            rotate_log(self.log_path)
             log_f = open(self.log_path, "ab")
         except OSError as exc:
             raise join_filesystem_failure(exc) from exc
@@ -1049,8 +1299,10 @@ class TahoeClient:
             raise join_spawn_failure(exc, invite="", code=False, timeout=0) from exc
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self._proc.poll() is not None:
+            if _leader_state(self._proc) != "running":
+                proc = self._proc
                 self._proc = None
+                reap_child(proc, TAHOE_STOP_WAIT)
                 # The log can hold a traceback and a furl. The window names the
                 # file (operators asked to keep paths) and does not paste it.
                 raise SyncError(
@@ -1074,7 +1326,16 @@ class TahoeClient:
         self._proc = None
 
     def owns_process(self) -> bool:
-        return self._proc is not None and self._proc.poll() is None
+        """True while this process still has to reap the daemon it started.
+
+        An unreaped zombie counts: its process-group id is still the one
+        stop() must signal. poll() is not used, because that would reap the
+        leader and skip the group kill.
+        """
+        proc = self._proc
+        if proc is None:
+            return False
+        return _leader_state(proc) != "reaped"
 
     def reload_static_servers(self) -> None:
         """Restart a node this process started so ``servers.yaml`` is picked up.
@@ -1411,6 +1672,7 @@ class MagicFolderCtl:
             )
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            rotate_log(self.log_path)
             log_f = open(self.log_path, "ab")
         except OSError as exc:
             raise SyncError(
@@ -1430,7 +1692,10 @@ class MagicFolderCtl:
             ) from exc
         deadline = time.time() + 20
         while time.time() < deadline:
-            if self._proc.poll() is not None:
+            if _leader_state(self._proc) != "running":
+                proc = self._proc
+                self._proc = None
+                reap_child(proc, MF_STOP_WAIT)
                 # magic-folder.log can hold a traceback and a furl. A process
                 # exit is not an HTTP 500. Name the log. Do not paste it.
                 raise SyncError(

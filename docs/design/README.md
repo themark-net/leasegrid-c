@@ -115,3 +115,13 @@ Adds `55`–`59` and the pointer beside `docs/09-ui-track.md`. Does **not** rewr
 | [09-ui-track-P4-ANDROID-B-POINTER.md](../09-ui-track-P4-ANDROID-B-POINTER.md) | Pointer beside `09-ui-track.md` |
 
 **#44 one-liner:** Phone adds a file to a folder it already shows; **On friendnet** only after ack; desktop Sync stays primary.
+
+---
+
+## Desktop UI (v0.1.6, join hand-off in v0.1.7)
+
+Shipped behavior. Does not rewrite `10`–`59`.
+
+| File | Contents |
+|------|----------|
+| [60-DESKTOP-UI-V016.md](60-DESKTOP-UI-V016.md) | Settings logs and bug report, invite close, folder open, already-running hand-off, window geometry |

@@ -153,6 +153,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.export_recovery or args.restore_recovery:
         return _recovery_headless(args, nodedir)
     if args.join and not (args.dogfood_folder or args.credit_dogfood or args.screenshot):
+        from .app import _JOIN_HANDOFF_MAX, _show_already_running, hand_join_invite
+
+        text = args.join.strip()
+        outcome = hand_join_invite(text)
+        if outcome == "sent":
+            return 0
+        if outcome == "held":
+            _show_already_running()
+            return 1
+        if outcome == "rejected":
+            # The invite itself is not printed.
+            if len(text) > _JOIN_HANDOFF_MAX:
+                print("That invite is too long.", file=sys.stderr)
+            else:
+                print("That invite is empty.", file=sys.stderr)
+            return 1
+        if outcome == "busy":
+            _show_already_running()
+            return 0
         return _join_headless(args, nodedir)
     try:
         from .app import run_app

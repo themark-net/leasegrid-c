@@ -65,6 +65,24 @@ def check_release_notes(path: Path, version: str | None = None) -> list[str]:
     return problems
 
 
+def test_daemon_logs_rotate_when_the_daemon_starts() -> None:
+    """Daemon logs rotate at start. They do not rotate like sync-ui.log."""
+    notes = (ROOT / "docs" / "release-notes" / ("v%s.md" % __version__)).read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    testers = (ROOT / "docs" / "TESTERS.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs" / "TESTER-GUIDE.md").read_text(encoding="utf-8")
+    for label, text in (
+        ("notes", notes),
+        ("readme", readme),
+        ("testers", testers),
+        ("guide", guide),
+    ):
+        assert "rotate like" not in text, label
+        assert "the same way" not in text, label
+        assert "when the daemon starts" in text, label
+    assert "A file over 1 MiB rotates" not in guide
+
+
 def test_current_release_notes_match_the_template_shape() -> None:
     path = ROOT / "docs" / "release-notes" / ("v%s.md" % __version__)
     assert check_release_notes(path) == []

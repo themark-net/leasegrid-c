@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -22,6 +23,9 @@ _STALE_AGE_S = 120
 
 # The app process itself is the holder. The box is patched so a refusal can
 # print and exit, and a close sentinel asks the first window to quit cleanly.
+# Patching the box means this file does not catch a QApplication that is
+# discarded before the widget exists. The unmocked gate is
+# tests/test_sync_already_running.py.
 _APP_DRIVER = r'''
 import os
 import sys
@@ -228,6 +232,100 @@ def test_garbage_lock_older_than_stale_time_is_recovered(tmp_path: Path, monkeyp
     _recovered(monkeypatch, home)
 
 
+def test_empty_lock_mid_write_is_not_taken(tmp_path: Path, monkeypatch) -> None:
+    """A PID that appears during the short wait keeps the lock.
+
+    Another starter has created the lock file but not yet written its PID.
+    The grace hook stands in for that starter finishing its write during the
+    wait, so the order is the same on every runner. Stealing the file on the
+    first unreadable look would start a second instance.
+    """
+    import leasegrid_sync.app as appmod
+    from leasegrid_sync.app import acquire_instance_lock, release_instance_lock
+
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_bytes(b"")
+    # pid, application name, hostname: the shape QLockFile writes.
+    payload = "%d\nleasegrid-sync\n%s\n" % (os.getpid(), socket.gethostname())
+    graced: list[bool] = []
+
+    def finish_write() -> None:
+        graced.append(True)
+        lock.write_bytes(payload.encode("utf-8"))
+
+    monkeypatch.setattr(appmod, "_lock_writer_grace", finish_write)
+    took = acquire_instance_lock(home)
+    try:
+        assert graced == [True], "the empty lock was not given a grace wait"
+        assert took is False
+        assert lock.read_text(encoding="utf-8") == payload
+    finally:
+        if took:
+            release_instance_lock()
+
+
+def _refused(monkeypatch, home: Path) -> None:
+    """A launch through cli.main shows already-running and opens no window."""
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    nodedir = home / "tahoe"
+    with patch("leasegrid_sync.app.MainWindow", side_effect=AssertionError("window")) as window, patch(
+        "PyQt5.QtWidgets.QMessageBox.information", return_value=0
+    ) as box:
+        code = main(["--offscreen", "--nodedir", str(nodedir)])
+    assert code == 0
+    assert window.call_count == 0
+    assert box.call_count == 1
+    assert box.call_args[0][2] == ALREADY_RUNNING
+
+
+def test_fresh_empty_lock_is_refused(tmp_path: Path, monkeypatch) -> None:
+    """A PID-less lock younger than 2s is a rival or a crash mid-write.
+
+    It must not be deleted, and the refusal must not wait out Qt's 30s stale time.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    started = time.monotonic()
+    _refused(monkeypatch, home)
+    assert time.monotonic() - started < 5
+    assert lock.read_bytes() == b""
+
+
+def test_fresh_garbage_lock_is_refused(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    payload = b"not a qt lock\n%%%\n"
+    lock.write_bytes(payload)
+    started = time.monotonic()
+    _refused(monkeypatch, home)
+    assert time.monotonic() - started < 5
+    assert lock.read_bytes() == payload
+
+
+def test_empty_lock_past_the_age_threshold_relaunches_quickly(tmp_path: Path, monkeypatch) -> None:
+    """Past 2s, a PID-less lock is taken without waiting for Qt's 30s stale time.
+
+    Qt's stale time is the gate. Dropping setStaleLockTime leaves the 30s
+    default, and this 5s-old file is refused.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    past = time.time() - 5
+    os.utime(lock, (past, past))
+    started = time.monotonic()
+    _recovered(monkeypatch, home)
+    assert time.monotonic() - started < 5
+
+
 def test_foreign_host_lock_older_than_stale_time_is_recovered(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
@@ -359,3 +457,183 @@ def test_live_app_refuses_a_second_launch_and_releases_on_quit(tmp_path: Path) -
             _stop(second)
         if third is not None:
             _stop(third)
+
+
+def test_six_concurrent_starts_open_one_window(tmp_path: Path) -> None:
+    """Six launches at once still produce one window. The other five are refused."""
+    home = tmp_path / "home"
+    nodedir = tmp_path / "no-tahoe"
+    home.mkdir()
+    close_file = tmp_path / "close-now"
+    driver = tmp_path / "driver.py"
+    driver.write_text(_APP_DRIVER, encoding="utf-8")
+    procs: list[subprocess.Popen[str]] = []
+    pipes: list[_Pipe] = []
+    try:
+        for _ in range(6):
+            proc, pipe = _spawn_app(home, nodedir, close_file, driver)
+            procs.append(proc)
+            pipes.append(pipe)
+        shown = 0
+        boxes = 0
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            shown = sum("WINDOW_SHOWN" in pipe.text() for pipe in pipes)
+            boxes = sum(("MSGBOX:%s" % ALREADY_RUNNING) in pipe.text() for pipe in pipes)
+            finished = sum(proc.poll() is not None for proc in procs)
+            if shown == 1 and boxes == 5 and finished >= 5:
+                break
+            time.sleep(0.05)
+        else:
+            details = [
+                (proc.poll(), pipe.text(), pipe.errors()) for proc, pipe in zip(procs, pipes)
+            ]
+            raise AssertionError("six starts did not settle: %s" % (details,))
+        assert shown == 1
+        assert boxes == 5
+        assert not (nodedir / "tahoe.cfg").is_file()
+        close_file.write_text("quit", encoding="utf-8")
+        winner = next(
+            proc for proc, pipe in zip(procs, pipes) if "WINDOW_SHOWN" in pipe.text()
+        )
+        assert winner.wait(timeout=15) == 0
+        assert not instance_lock_path(home).exists()
+    finally:
+        for proc in procs:
+            _stop(proc)
+
+
+# Six real processes call acquire_instance_lock on one home per round.
+# Holders are counted before any of them releases.
+_LOCK_RACE = r'''
+import os
+import sys
+import time
+from pathlib import Path
+
+N = 6
+
+
+def worker(k, root, trials):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from leasegrid_sync.app import acquire_instance_lock, release_instance_lock
+
+    for t in range(trials):
+        d = root / str(t)
+        while not (d / "go").exists():
+            time.sleep(0.0005)
+        ok = acquire_instance_lock(d)
+        (d / ("r%d_%d" % (k, int(ok)))).write_text("1", encoding="utf-8")
+        while not (d / "done").exists():
+            time.sleep(0.0005)
+        if ok:
+            release_instance_lock()
+    os._exit(0)
+
+
+def _wait_kids(kids):
+    if os.name == "posix":
+        for pid in kids:
+            os.waitpid(pid, 0)
+        return
+    for proc in kids:
+        proc.wait(timeout=120)
+
+
+def main():
+    trials = int(sys.argv[1])
+    root = Path(sys.argv[2])
+    kind = sys.argv[3]
+    if os.name == "posix":
+        kids = []
+        for k in range(N):
+            pid = os.fork()
+            if pid == 0:
+                try:
+                    worker(k, root, trials)
+                except Exception:
+                    os._exit(1)
+            kids.append(pid)
+    else:
+        import subprocess
+
+        kids = []
+        for k in range(N):
+            kids.append(
+                subprocess.Popen(
+                    [sys.executable, __file__, "worker", str(k), str(root), str(trials)]
+                )
+            )
+    # Let the workers import Qt before the first round.
+    time.sleep(2)
+    multi = 0
+    zero = 0
+    for t in range(trials):
+        d = root / str(t)
+        d.mkdir(parents=True)
+        if kind in ("empty", "aged"):
+            lock = d / ".leasegrid-sync.lock"
+            lock.write_text("", encoding="utf-8")
+            if kind == "aged":
+                old = time.time() - 5
+                os.utime(lock, (old, old))
+        elif kind == "garbage":
+            (d / ".leasegrid-sync.lock").write_text("junk\n", encoding="utf-8")
+        (d / "go").write_text("", encoding="utf-8")
+        deadline = time.time() + 30
+        while len([p for p in d.iterdir() if p.name.startswith("r")]) < N:
+            if time.time() > deadline:
+                print("TIMEOUT round %d" % t)
+                os._exit(2)
+            time.sleep(0.001)
+        wins = len([p for p in d.iterdir() if p.name.endswith("_1")])
+        if wins > 1:
+            multi += 1
+        if wins == 0:
+            zero += 1
+        (d / "done").write_text("", encoding="utf-8")
+    _wait_kids(kids)
+    print("multi=%d zero=%d trials=%d kind=%s" % (multi, zero, trials, kind))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "worker":
+        worker(int(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4]))
+    else:
+        main()
+'''
+
+
+def test_six_callers_never_double_hold(tmp_path: Path) -> None:
+    """Concurrent acquire_instance_lock calls never overlap on one home.
+
+    A fresh empty lock is refused (zero holders). No pre-existing lock, and a
+    PID-less lock older than 2s, each have exactly one holder. Counted while
+    every caller is still inside the call.
+    """
+    script = tmp_path / "race.py"
+    script.write_text(_LOCK_RACE, encoding="utf-8")
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    # 200 rounds per kind. The macOS Intel runner is about 3x slower than
+    # Linux, so each kind gets its own generous timeout instead of a shared
+    # 60 s wall-clock assertion; a hang still fails by timeout.
+    rounds = 200
+    for kind, expect_zero in (("empty", True), ("none", False), ("aged", False)):
+        root = tmp_path / kind
+        root.mkdir()
+        proc = subprocess.run(
+            [sys.executable, str(script), str(rounds), str(root), kind],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=180,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        line = proc.stdout.strip().splitlines()[-1]
+        assert line.startswith("multi=0 "), line
+        if expect_zero:
+            assert " zero=%d " % rounds in line, line
+        else:
+            assert " zero=0 " in line, line

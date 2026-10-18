@@ -267,6 +267,43 @@ def test_empty_lock_mid_write_is_not_taken(tmp_path: Path, monkeypatch) -> None:
             release_instance_lock()
 
 
+def test_second_trylock_takes_the_lock_after_the_writer_grace(tmp_path: Path, monkeypatch) -> None:
+    """The writer removes the empty file during the grace, so the second try takes it.
+
+    One holder afterwards: a rival tryLock fails. Treating the first miss as
+    final would leave the home unlocked.
+    """
+    import leasegrid_sync.app as appmod
+    from PyQt5.QtCore import QLockFile
+    from leasegrid_sync.app import acquire_instance_lock, release_instance_lock
+
+    home = tmp_path / "home"
+    home.mkdir()
+    lock_path = instance_lock_path(home)
+    lock_path.write_bytes(b"")
+    graced: list[bool] = []
+
+    def writer_finishes() -> None:
+        graced.append(True)
+        try:
+            lock_path.unlink()
+        except OSError:
+            pass
+
+    monkeypatch.setattr(appmod, "_lock_writer_grace", writer_finishes)
+    took = acquire_instance_lock(home)
+    try:
+        assert graced == [True]
+        assert took is True
+        assert lock_path.is_file()
+        rival = QLockFile(str(lock_path))
+        rival.setStaleLockTime(2000)
+        assert rival.tryLock(0) is False
+    finally:
+        if took:
+            release_instance_lock()
+
+
 def _refused(monkeypatch, home: Path) -> None:
     """A launch through cli.main shows already-running and opens no window."""
     monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))

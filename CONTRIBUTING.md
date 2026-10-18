@@ -13,6 +13,10 @@ Product sequencing (Magic Folder UX, operator package, architecture-heavy flags)
 5. Price share-byte-months, not plaintext terabytes.
 6. Do not ship Tahoe WUI as the product UI; Magic Folder–class sync is the buyer surface.
 
+## Systems safety
+
+Standing rule: every Tester/Reviewer blocker a pattern could catch becomes a `tools/semgrep` rule with `ruleid` / `ok` fixtures, in the same PR as the fix. Name the blocker in the rule message. The ids and the do / don't / test lines are in [AGENTS.md](AGENTS.md) and [.grok/skills/systems-safety/SKILL.md](.grok/skills/systems-safety/SKILL.md).
+
 ## How to change the spec
 
 Open an issue first for anything that moves trust (new issuer powers, new slash condition, new on-chain field) or any **architecture-heavy** roadmap flag (abuse/free reads, issuer compromise, settlement, operator AUP). Patches that only clarify wire formats or lab steps can go straight to a PR.

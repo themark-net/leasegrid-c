@@ -20,7 +20,15 @@ leasegrid-zkap = "leasegrid_zkap.cli:main"
 leasegrid-sync = "leasegrid_sync.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.6"]
+dev = [
+  "pytest>=7",
+  # 0.17.1 is the version this gate was verified with. S403 is preview-only
+  # there; a later ruff can move or drop it and change what CI rejects.
+  "ruff==0.17.1",
+]
+# Semgrep is large and has no Windows wheel. CI installs it only in the
+# ubuntu semgrep job; ci-local installs it unless CI_LOCAL_SKIP_SEMGREP=1.
+lint = ["semgrep==1.181.0"]
 sync = ["PyQt5>=5.15", "segno>=1.6"]
 # Tahoe 1.20 + Magic Folder 24.3 in the same venv as the Sync app. The three
 # pins below are what keep `tahoe run` booting on a 2026 resolver: Foolscap
@@ -58,4 +66,34 @@ line-length = 100
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+# preview + explicit codes: S403 is preview-only in ruff 0.17. Prefixes
+# (B, and any future S group) stay on stable rules.
+preview = true
+explicit-preview-rules = true
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "B",
+  "SIM115",
+  "PLW1510",
+  "S102",
+  "S103",
+  "S104",
+  "S108",
+  "S301",
+  "S302",
+  "S306",
+  "S307",
+  "S324",
+  "S403",
+  "S506",
+  "S602",
+  "S604",
+  "S605",
+  "S606",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]

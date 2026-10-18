@@ -73,6 +73,33 @@ else
   echo "==> tahoe extra skipped (check-0b local test will skip)"
 fi
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
-"$PYTHON" -m ruff check src tests scripts --select E4,E7,E9,F
+"$PYTHON" -m ruff check src tests scripts
+# Semgrep has no native Windows build. A host without a wheel sets
+# CI_LOCAL_SKIP_SEMGREP=1. Any other install or scan failure fails the gate.
+if [[ "${CI_LOCAL_SKIP_SEMGREP:-}" == "1" ]]; then
+  echo "SKIPPED semgrep (CI_LOCAL_SKIP_SEMGREP=1; host has no semgrep wheel)"
+else
+  echo "==> semgrep (install .[lint], then test and scan)"
+  if ! "$PYTHON" -m pip install -q -e ".[lint]"; then
+    echo "FAIL: could not install the lint extra (semgrep==1.181.0)." >&2
+    echo "Set CI_LOCAL_SKIP_SEMGREP=1 only when this host has no semgrep wheel." >&2
+    exit 1
+  fi
+  # semgrep 1.181.0's `python -m semgrep` exits 2 before parsing args.
+  # The console script next to this interpreter is the supported entry point.
+  SEMGREP="$(dirname "$PYTHON")/semgrep"
+  if [[ ! -x "$SEMGREP" ]]; then
+    echo "FAIL: semgrep entry point missing next to $PYTHON" >&2
+    exit 1
+  fi
+  if ! "$SEMGREP" --test --metrics=off tools/semgrep; then
+    echo "FAIL: semgrep --test tools/semgrep" >&2
+    exit 1
+  fi
+  if ! "$SEMGREP" scan --metrics=off --error --config tools/semgrep src scripts packaging; then
+    echo "FAIL: semgrep scan src scripts packaging" >&2
+    exit 1
+  fi
+fi
 "$PYTHON" -m pytest -q
 echo "==> ci-local PASS"

@@ -1,0 +1,12 @@
+rules:
+  - id: awk-interval-expression
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include: ["*.sh"]
+    message: >-
+      awk regex interval like {n,} or {n,m}. mawk 1.3.4-20200120 (Ubuntu 20.04/22.04) and some
+      busybox builds treat it as literal text, so redaction silently fails (PR #74 T2: 16
+      regressions). Do the redaction in Python, or expand the repetition. shellcheck does not
+      catch this. Rule SS6.
+    pattern-regex: "(match|sub|gsub|split)\\([^)]*/[^/]*\\{[0-9]+,[0-9]*\\}[^/]*/|~ */[^/]*\\{[0-9]+,[0-9]*\\}[^/]*/"

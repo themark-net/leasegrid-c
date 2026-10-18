@@ -187,7 +187,7 @@ def run_local() -> int:
                 if "replay different R was accepted" in str(e):
                     raise
                 if "403" not in str(e) and "replay" not in str(e).lower():
-                    raise ClientError("expected replay fail, got: %s" % e)
+                    raise ClientError("expected replay fail, got: %s" % e) from e
 
             _ok(
                 "0b.4",
@@ -215,7 +215,7 @@ def run_local() -> int:
                 raise ClientError("issuer accepted settlement with R")
             except ClientError as e:
                 if "must not receive R" not in str(e) and "400" not in str(e):
-                    raise ClientError("expected R reject, got: %s" % e)
+                    raise ClientError("expected R reject, got: %s" % e) from e
             stats = http_json(issuer_url + "/v0/info")
             if int(stats.get("settlement-rejected-r") or 0) < 1:
                 raise ClientError("issuer did not count rejected R")

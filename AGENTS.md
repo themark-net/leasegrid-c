@@ -12,6 +12,23 @@ Prefer the Testing Trophy: mostly integration/E2E for product confidence. Unit t
 
 No tautological or implementation-detail unit sprawl as Done.
 
+## Systems rules
+
+Systems rules (Reviewer FAILs on violation; cite the id):
+SS1 Locks: never delete or "recover" a lock you don't hold. Use QLockFile defaults, flock or O_EXCL. Ship an N-proc x M-round test asserting exactly one holder.
+SS2 PIDs: while you still own the unreaped leader, check exit with os.waitid(P_PID, pid, WEXITED|WNOHANG|WNOWAIT) (kqueue on macOS), then killpg the group, then reap. Never signal a reaped or stored pid or pgid. poll() reaps and is the wrong check.
+SS3 IPC: no endpoints in /tmp or gettempdir(). Use $XDG_RUNTIME_DIR or a 0700 dir whose owner you verify. Use QLocalServer UserAccessOption and check the peer uid. AF_UNIX path < 104 bytes.
+SS4 Untrusted state: never feed file bytes to restoreGeometry, restoreState or pickle. Parse into fields, clamp to the screen and int32, and default on any error. Add a property or fuzz test.
+SS5 Ints to C/Qt: clamp to [-2^31, 2^31-1] and to a sane domain before any Qt or ctypes call.
+SS6 Secrets: one redactor, tested with generated secrets in random context plus an independent detector. No awk regex intervals ({n,}).
+SS7 Platforms: guard POSIX-only calls with sys.platform (killpg, getpgid, SIGHUP/SIGKILL). Claim CI green only with `gh pr checks` output.
+SS8 Proof of RED: every fix ships a test shown failing with the fix reverted (paste the receipt).
+Standing rule: every Tester/Reviewer blocker a pattern could catch becomes a tools/semgrep rule with fixtures, in the same PR as the fix.
+
+Skill: [.grok/skills/systems-safety/SKILL.md](.grok/skills/systems-safety/SKILL.md)
+
+Before claiming done: run `scripts/prove-red.py` on a cases file for your fixes and paste the table into the PR body. Exit 0 means every case is RED. A baseline that is not green, or a pytest exit other than 1, is a setup error (exit 2), not RED. Never write 'CI green' without `gh pr checks` output or a run URL listing all jobs.
+
 ## Verify / dogfood
 
 ```bash

@@ -205,7 +205,12 @@ def _foreign_pgid(proc: subprocess.Popen) -> Optional[int]:
     try:
         pgid = os.getpgid(proc.pid)
     except OSError:
-        return None
+        # macOS getpgid fails (ESRCH) on a zombie. popen_hidden used
+        # start_new_session, so the group id is the leader's pid, and while
+        # returncode is None nobody has reaped it, so that id is still pinned.
+        if proc.returncode is not None:
+            return None
+        pgid = proc.pid
     try:
         own = os.getpgrp()
     except OSError:

@@ -2990,7 +2990,7 @@ class MainWindow:
         self._handed_replace_click_timer = timer
 
     def _open_handed_replace_box(self) -> None:
-        """Ask once, without exec_(). Esc and the default are No."""
+        """Ask once, without exec_() or open(). Esc and the default are No."""
         QtWidgets = self.QtWidgets
         box = QtWidgets.QMessageBox(self.win)
         box.setObjectName("handedInviteReplace")
@@ -3002,7 +3002,11 @@ class MainWindow:
         box.finished.connect(self._on_handed_replace_finished)
         self._handed_replace_box = box
         self._arm_replace_click_hook()
-        box.open()
+        # Application-modal like the old exec_(), but show() returns at once,
+        # so no nested event loop runs inside a socket slot. open() (window
+        # modal) crashed the Windows offscreen platform in CI.
+        box.setWindowModality(self.QtCore.Qt.ApplicationModal)
+        box.show()
 
     def _on_handed_replace_finished(self, result: int) -> None:
         pending = getattr(self, "_handed_replace_pending", "") or ""

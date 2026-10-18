@@ -9,6 +9,7 @@ text. The invite in the dump is a fake.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -52,17 +53,31 @@ def _wait_until(predicate, timeout: float) -> bool:
     return False
 
 
-def _launch(tmp_path: Path, *args: str, text_file: Path | None = None, dismiss: bool = False):
+def _launch(
+    tmp_path: Path,
+    *args: str,
+    text_file: Path | None = None,
+    dismiss: bool = False,
+    shown: Path | None = None,
+):
     home = tmp_path / "home"
     nodedir = tmp_path / "missing-node"
-    err_path = tmp_path / ("second-%s.err" % (text_file.name if text_file else "first"))
+    if shown is not None:
+        tag = shown.name
+    elif text_file is not None:
+        tag = text_file.name
+    else:
+        tag = "first"
+    err_path = tmp_path / ("second-%s.err" % tag)
     env = os.environ.copy()
     env["LEASEGRID_SYNC_HOME"] = str(home)
     env["QT_QPA_PLATFORM"] = _QPA
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.pop("LEASEGRID_TAHOE_BIN", None)
     env.pop("LEASEGRID_MAGIC_FOLDER_BIN", None)
-    if not dismiss:
+    if shown is not None:
+        env["LEASEGRID_TEST_ALREADY_SHOWN"] = str(shown)
+    elif not dismiss:
         env["LEASEGRID_TEST_JOIN_READY"] = str(tmp_path / "join-ready")
         env["LEASEGRID_TEST_SIGNAL_READY"] = str(tmp_path / "signal-ready")
         env["LEASEGRID_TEST_INVITE_DUMP"] = str(tmp_path / "invite-dump")
@@ -196,3 +211,53 @@ def test_unmocked_second_launch_shows_already_running_and_stays_up(tmp_path: Pat
             _stop(second)
         if third is not None:
             _stop(third)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "TerminateProcess cannot be caught. The already-running box does not "
+        "install a SIGTERM handler on Windows."
+    ),
+)
+def test_already_running_second_launch_exits_0_on_sigterm(tmp_path: Path) -> None:
+    """A plain second launch showing the box exits 0 when it receives SIGTERM.
+
+    Without the box-path handler the process dies from SIGTERM and the code is not 0.
+    """
+    ready = tmp_path / "join-ready"
+    shown = tmp_path / "shown"
+    first, first_err, first_f = _launch(tmp_path)
+    second = None
+    second_f = None
+    try:
+        assert _wait_until(lambda: ready.is_file() or first.poll() is not None, 25), (
+            "first app did not listen: rc %s %s" % (first.poll(), _stderr(first_err)[-800:])
+        )
+        assert first.poll() is None, _stderr(first_err)
+        second, second_err, second_f = _launch(tmp_path, shown=shown)
+        assert _wait_until(lambda: shown.is_file() or second.poll() is not None, 20), (
+            "second launch did not show the box: rc %s %s"
+            % (second.poll(), _stderr(second_err)[-800:])
+        )
+        assert second.poll() is None, _stderr(second_err)
+        assert shown.read_text(encoding="utf-8") == ALREADY_RUNNING
+        assert second.poll() is None
+        os.kill(second.pid, signal.SIGTERM)
+        try:
+            rc = second.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            _stop(second)
+            pytest.fail(
+                "second launch still alive after SIGTERM: %s" % _stderr(second_err)[-800:]
+            )
+        assert rc == 0, "rc %s stderr %s" % (rc, _stderr(second_err)[-800:])
+        assert rc not in (134, -15, -6, -11)
+    finally:
+        if not first_f.closed:
+            first_f.close()
+        _stop(first)
+        if second is not None:
+            _stop(second)
+        if second_f is not None and not second_f.closed:
+            second_f.close()

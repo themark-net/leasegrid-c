@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1673,3 +1674,127 @@ def test_refresh_http_message_rewrites_only_status_500(tmp_path: Path, code: int
     assert mapped.http_status == code
     assert ("could not refresh folders" in mapped.message) is is_30
     assert (mapped is err) is (not is_30)
+
+
+def _exited_unreaped(pid: int) -> bool:
+    """True when ``pid`` has exited and this process has not collected it.
+
+    ``poll`` and ``wait`` are not used. Either would set ``Popen.returncode``,
+    and ``_leader_state`` would then report ``reaped`` without looking at the
+    zombie.
+    """
+    if sys.platform == "linux":
+        from tests.proc_util import is_zombie
+
+        return is_zombie(pid)
+    if sys.platform == "win32":
+        from tests.proc_util import pid_alive
+
+        return not pid_alive(pid)
+    try:
+        out = subprocess.run(
+            ["ps", "-o", "state=", "-p", str(pid)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return out.stdout.strip().startswith("Z")
+
+
+def _respawn_tahoe(tmp_path: Path) -> str:
+    """First ``run`` exits at once. A later ``run`` writes node.url and stays up."""
+    script = tmp_path / "respawn_tahoe.py"
+    script.write_text(
+        "import os\n"
+        "import sys\n"
+        "import time\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "if not args or args[0] != 'run' or len(args) < 2:\n"
+        "    raise SystemExit(0)\n"
+        "nodedir = Path(args[1])\n"
+        "count_path = nodedir / 'run-count'\n"
+        "count = 0\n"
+        "if count_path.is_file():\n"
+        "    try:\n"
+        "        count = int(count_path.read_text(encoding='utf-8') or '0')\n"
+        "    except ValueError:\n"
+        "        count = 0\n"
+        "count_path.write_text(str(count + 1) + '\\n', encoding='utf-8')\n"
+        "if count == 0:\n"
+        "    raise SystemExit(0)\n"
+        "(nodedir / 'node.url').write_text('http://127.0.0.1:1/\\n', encoding='utf-8')\n"
+        "(nodedir / 'spawned.pid').write_text(str(os.getpid()) + '\\n', encoding='utf-8')\n"
+        "while True:\n"
+        "    time.sleep(0.2)\n",
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        bat = tmp_path / "tahoe.bat"
+        bat.write_text('@\"%s\" \"%s\" %%*\n' % (sys.executable, script), encoding="utf-8")
+        return str(bat)
+    exe = tmp_path / "tahoe-bin"
+    exe.write_text(
+        "#!/bin/sh\nexec \"%s\" \"%s\" \"$@\"\n" % (sys.executable, script),
+        encoding="utf-8",
+    )
+    exe.chmod(0o755)
+    return str(exe)
+
+
+def test_start_respawns_an_unreaped_exited_leader(tmp_path: Path) -> None:
+    """A dead unreaped leader is not left in place. start() reaps it and spawns.
+
+    The first ``run`` is planted on the client and not collected. Calling
+    start() for that run would reap it inside the startup wait, so the next
+    start() would not be looking at a zombie.
+    """
+    from tests.proc_util import pid_alive
+
+    nodedir = tmp_path / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    home = tmp_path / "home"
+    binary = _respawn_tahoe(tmp_path)
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=binary, home=home)
+    kwargs: dict = {}
+    if sys.platform != "win32":
+        kwargs["start_new_session"] = True
+    leader = subprocess.Popen(
+        [binary, "run", str(nodedir)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        **kwargs,
+    )
+    leader._leasegrid_group = True  # type: ignore[attr-defined]
+    try:
+        deadline = time.time() + 5
+        while time.time() < deadline and not _exited_unreaped(leader.pid):
+            time.sleep(0.02)
+        assert leader.returncode is None
+        assert _exited_unreaped(leader.pid), "planted leader was reaped or never exited"
+        client._proc = leader
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            client.start(timeout=5)
+        spawned_path = nodedir / "spawned.pid"
+        assert spawned_path.is_file(), "no new daemon was spawned"
+        new_pid = int(spawned_path.read_text(encoding="utf-8").strip())
+        assert new_pid != leader.pid
+        assert pid_alive(new_pid)
+        assert client._proc is not None
+        assert client._proc.pid == new_pid
+        assert client.owns_process()
+    finally:
+        client.stop()
+        if leader.returncode is None:
+            try:
+                leader.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                leader.kill()
+                try:
+                    leader.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass

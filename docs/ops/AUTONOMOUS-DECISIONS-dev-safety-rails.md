@@ -7,3 +7,8 @@ Merge message set with `git merge -m` | `--no-edit` default "Merge remote-tracki
 Omit ruff selector S377 | include S377 and let ruff fail the gate | ruff 0.17.1 (from `ruff>=0.6`) has no S377 rule and rejects the selector; the other listed S codes stay
 Enable ruff `preview` plus `explicit-preview-rules` | leave S403 as a no-op warning | S403 is preview-only in ruff 0.17.1; explicit codes keep prefix `B` on stable rules
 Call the venv `semgrep` entry point | `python -m semgrep`, which the drop-in names | semgrep 1.181.0's `__main__` exits 2 before parsing arguments; the console script is the supported command
+R9n plants the exited fake `run` on `_proc` | call `start()` for the dying run, then `start()` again | `start()` reaps a daemon that dies during its own wait, so the second call would not see a zombie
+N1i uses wormhole-shaped invites, a marker binary, and a patched welcome | letter invites, or a real welcome | letters fail `parse_invite` before any spawn, so a joining Yes would stay green; a real welcome waits out the 30s start timeout
+SIGTERM clicks Ok on the already-running box | `app.quit()` alone | `QMessageBox.information` runs a nested loop that `quit()` does not end
+No new Semgrep rules in item 4 | one rule per survivor | item 4's gate is the behavioral test and its mutant; these bugs are state and control flow, not a local pattern the seed rules missed
+Official prove-red receipt runs after the item 4 commit | run it on the dirty tree | prove-red refuses a target with uncommitted changes, and `app.py` holds the fix until that commit

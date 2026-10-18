@@ -13,6 +13,18 @@ PyQt5 = pytest.importorskip("PyQt5")
 from leasegrid_sync.app import HANDED_INVITE_REPLACE, MainWindow  # noqa: E402
 from leasegrid_sync.backend import SyncError  # noqa: E402
 
+# Wormhole-shaped fakes. Letters do not parse, so a Yes that joined would
+# raise before any daemon started. Not secrets.
+INVITE_A = "7-guitarist-revenge"
+INVITE_B = "8-pianist-kindness"
+
+_WINDOWS_BOX = (
+    "Showing a real QMessageBox inside the shared pytest QApplication "
+    "access-violates on Windows CI (window-, application- and non-modal "
+    "alike); the old version mocked exec_. The real-process tests in "
+    "test_sync_join_replace.py show the real box on Windows."
+)
+
 
 def _window(tmp_path: Path) -> MainWindow:
     home = tmp_path / "home"
@@ -65,15 +77,45 @@ def _click(window: MainWindow, answer: int) -> None:
         fuse.stop()
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason=(
-        "Showing a real QMessageBox inside the shared pytest QApplication "
-        "access-violates on Windows CI (window-, application- and non-modal "
-        "alike); the old version mocked exec_. The real-process tests in "
-        "test_sync_join_replace.py show the real box on Windows."
-    ),
-)
+def _stay_up_tahoe(tmp_path: Path, marker: Path) -> str:
+    """A ``tahoe run`` that records a spawn and stays up. POSIX wrapper."""
+    script = tmp_path / "stay_tahoe.py"
+    script.write_text(
+        "import sys\n"
+        "import time\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "marker = Path(%r)\n"
+        "if args and args[0] == 'run' and len(args) > 1:\n"
+        "    Path(args[1], 'node.url').write_text('http://127.0.0.1:1/\\n', encoding='utf-8')\n"
+        "    marker.write_text('spawned\\n', encoding='utf-8')\n"
+        "    while True:\n"
+        "        time.sleep(0.2)\n"
+        "raise SystemExit(0)\n" % str(marker),
+        encoding="utf-8",
+    )
+    exe = tmp_path / "tahoe-stay"
+    exe.write_text(
+        "#!/bin/sh\nexec \"%s\" \"%s\" \"$@\"\n" % (sys.executable, script),
+        encoding="utf-8",
+    )
+    exe.chmod(0o755)
+    return str(exe)
+
+
+def _welcome_when_ready(client):
+    def welcome(timeout: float = 5.0):
+        if not (client.nodedir / "node.url").is_file():
+            raise SyncError("could not join this friendnet. Tahoe client is not reachable.")
+        return {
+            "introducers": {"statuses": ["Connected to tcp:127.0.0.1:45001 via tcp"]},
+            "servers": [{"nickname": "storage-1", "connection_status": "connected"}],
+        }
+
+    return welcome
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason=_WINDOWS_BOX)
 def test_handed_invite_keeps_typed_text_unless_the_user_says_yes(tmp_path: Path) -> None:
     window = _window(tmp_path)
     QtWidgets = window.QtWidgets
@@ -105,5 +147,54 @@ def test_handed_invite_keeps_typed_text_unless_the_user_says_yes(tmp_path: Path)
             logged = log.read_text(encoding="utf-8")
             assert "invite arrived" not in logged
             assert "\nB\n" not in logged
+    finally:
+        _close(window)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason=_WINDOWS_BOX)
+def test_yes_on_handed_replace_does_not_start_a_join(tmp_path: Path) -> None:
+    """Yes puts the pending invite in the field. The user still has to press Join.
+
+    A Yes handler that calls the join action spawns Tahoe. The threat box is
+    checked so that path is not refused before the spawn.
+    """
+    window = _window(tmp_path)
+    marker = tmp_path / "spawned"
+    window.tahoe.tahoe_bin = _stay_up_tahoe(tmp_path, marker)
+    window.threat_ack.setChecked(True)
+    try:
+        window.invite_edit.setText(INVITE_A)
+        window.receive_handed_invite(INVITE_B)
+        with patch.object(window.tahoe, "welcome", side_effect=_welcome_when_ready(window.tahoe)):
+            _click(window, window.QtWidgets.QMessageBox.Yes)
+        assert window.invite_edit.text() == INVITE_B
+        assert window._joined is False
+        assert window._joining is False
+        assert not marker.is_file()
+        assert window.tahoe._proc is None
+    finally:
+        window.tahoe.stop()
+        _close(window)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason=_WINDOWS_BOX)
+def test_rehanding_the_current_invite_drops_the_older_pending(tmp_path: Path) -> None:
+    """The latest hand wins. Re-handing the field invite clears an older pending Yes.
+
+    Leaving the pending text in place would apply that older invite on a later Yes.
+    """
+    window = _window(tmp_path)
+    try:
+        window.invite_edit.setText(INVITE_A)
+        window.receive_handed_invite(INVITE_B)
+        assert window._handed_replace_pending == INVITE_B
+        assert len(_replace_boxes(window)) == 1
+        window.receive_handed_invite(INVITE_A)
+        assert (getattr(window, "_handed_replace_pending", "") or "") == ""
+        assert _replace_boxes(window) == []
+        assert window.invite_edit.text() == INVITE_A
+        window._on_handed_replace_finished(window.QtWidgets.QMessageBox.Yes)
+        assert window.invite_edit.text() == INVITE_A
+        assert window._joined is False
     finally:
         _close(window)

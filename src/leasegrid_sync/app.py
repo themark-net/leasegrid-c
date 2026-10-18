@@ -754,6 +754,118 @@ def _arm_already_running_dismiss(QtCore, QtWidgets) -> None:
     QtCore.QTimer.singleShot(delay, dismiss)
 
 
+def _arm_already_running_shown(QtCore, QtWidgets) -> None:
+    """Record the already-running box text without clicking it.
+
+    ``LEASEGRID_TEST_ALREADY_SHOWN`` is read only when ``_TEST_HOOKS`` is on.
+    The file receives the box sentence, which is never an invite.
+    """
+    path = _test_env("LEASEGRID_TEST_ALREADY_SHOWN")
+    if not path:
+        return
+
+    def record() -> None:
+        box = QtWidgets.QApplication.activeModalWidget()
+        if box is None or not hasattr(box, "text"):
+            QtCore.QTimer.singleShot(50, record)
+            return
+        try:
+            text = box.text()
+        except Exception:
+            text = ""
+        try:
+            dest = Path(path)
+            tmp = Path(str(dest) + ".tmp")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, dest)
+        except OSError:
+            pass
+
+    QtCore.QTimer.singleShot(0, record)
+
+
+def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
+    """SIGTERM during the already-running box closes it so the process exits 0.
+
+    This path never reaches the main-window quit hook. ``information`` runs a
+    nested loop, so the handler clicks Ok the same way the test dismiss hook
+    does. Windows cannot catch the outside terminate, so it is not installed
+    there.
+    """
+    if sys.platform == "win32" or getattr(app, "_already_running_signal", None) is not None:
+        return
+    read_s, write_s = socket.socketpair()
+    read_s.setblocking(False)
+    write_s.setblocking(False)
+    prev_fd = signal.set_wakeup_fd(write_s.fileno())
+    hit = {"on": False}
+
+    def _handler(signum, frame) -> None:
+        hit["on"] = True
+
+    previous = signal.signal(signal.SIGTERM, _handler)
+    notifier = QtCore.QSocketNotifier(read_s.fileno(), QtCore.QSocketNotifier.Read, app)
+
+    def _on(*_args) -> None:
+        try:
+            while read_s.recv(256):
+                pass
+        except (BlockingIOError, InterruptedError, OSError):
+            pass
+        if not hit["on"]:
+            return
+        box = QtWidgets.QApplication.activeModalWidget()
+        if box is not None and hasattr(box, "button"):
+            try:
+                button = box.button(QtWidgets.QMessageBox.Ok)
+            except Exception:
+                button = None
+            if button is not None:
+                button.click()
+            elif hasattr(box, "done"):
+                try:
+                    box.done(0)
+                except Exception:
+                    pass
+        app.quit()
+
+    notifier.activated.connect(_on)
+    timer = QtCore.QTimer(app)
+    timer.setInterval(100)
+    timer.timeout.connect(_on)
+    timer.start()
+    app._already_running_signal = (read_s, write_s, notifier, timer, prev_fd, previous)
+
+
+def _disarm_already_running_signal_quit(app) -> None:
+    state = getattr(app, "_already_running_signal", None)
+    if not state:
+        return
+    app._already_running_signal = None
+    read_s, write_s, notifier, timer, prev_fd, previous = state
+    try:
+        timer.stop()
+    except Exception:
+        pass
+    try:
+        notifier.setEnabled(False)
+    except Exception:
+        pass
+    try:
+        signal.signal(signal.SIGTERM, previous)
+    except OSError:
+        pass
+    try:
+        signal.set_wakeup_fd(prev_fd)
+    except (OSError, ValueError):
+        pass
+    for sock in (read_s, write_s):
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
 def _show_already_running() -> None:
     """Say this Sync home is already open.
 
@@ -763,7 +875,12 @@ def _show_already_running() -> None:
     QtCore, _QtGui, QtWidgets = _qt_api()
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     _arm_already_running_dismiss(QtCore, QtWidgets)
-    QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
+    _arm_already_running_shown(QtCore, QtWidgets)
+    _arm_already_running_signal_quit(app, QtCore, QtWidgets)
+    try:
+        QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
+    finally:
+        _disarm_already_running_signal_quit(app)
     # The local has to stay alive across information(). Reading it here keeps
     # that obvious; pumping events would deliver timers into a shared test app.
     if app.closingDown():
@@ -3053,10 +3170,15 @@ class MainWindow:
             return
         self.stack.setCurrentWidget(self.join_page)
         current = self.invite_edit.text()
-        if not current.strip() or current == text:
-            if not current.strip():
-                self.invite_edit.setText(text)
-                self.invite_edit.setFocus()
+        if not current.strip():
+            self.invite_edit.setText(text)
+            self.invite_edit.setFocus()
+            self._dump_handed_invite()
+            return
+        if current == text:
+            # The latest hand is the text already in the field. Drop an older
+            # pending replacement so a later Yes cannot apply it.
+            self._dismiss_handed_replace_box()
             self._dump_handed_invite()
             return
         # One open question. A later invite only replaces the pending text.

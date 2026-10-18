@@ -80,3 +80,17 @@ RED:
 - RED: drop `path.write_bytes(original)` from the `finally` → `test_caught_mutant_is_red_and_restores` bytes differ (`return 2` left in the file)
 - RED: survivor branch `return 0` → `test_surviving_mutant_exits_1` sees exit 0
 - RED: `if False and _uncommitted` → `test_dirty_target_exits_2_and_is_unchanged` stderr is `git diff is not quiet`, not `uncommitted`
+
+- item 4: DONE | tests: ci-local → ruff clean, semgrep 8/8 and 0 findings, pytest 594 passed, 5 xfailed, 4 warnings in 142.98s | files: app.py (latest-wins + already-running SIGTERM), five tests, cases file | err: none
+
+R9n needed no product change. `start()` already reaps a leader whose `_leader_state` is not `running` and spawns again. The new test plants an unreaped exited fake `run` on `_proc` (calling `start()` for that run would reap it inside the startup wait). v0.1.7 group-kill and pid-reuse tests still pass (29 related tests, including `test_sync_process_group.py`).
+
+Latest hand wins: re-handing the invite already in the field clears the pending replacement and closes the box. SIGTERM on the plain "already running" second launch clicks Ok and exits 0. N1i and L5n were already correct; the tests pin them.
+
+RED (hand-applied, then restored; official `prove-red.py` receipt is in the handoff because the harness refuses a dirty target):
+
+- RED: `_leader_state` final `return "exited"` → `return "running"` → `test_start_respawns_an_unreaped_exited_leader` (no spawned pid)
+- RED: Yes handler calls `on_join_invite` → `test_yes_on_handed_replace_does_not_start_a_join` (`_joined` is True)
+- RED: drop the second `lock.tryLock(0)` → `test_second_trylock_takes_the_lock_after_the_writer_grace` (`took` is False)
+- RED: drop `_dismiss_handed_replace_box()` on a same-text re-hand → `test_rehanding_the_current_invite_drops_the_older_pending` (pending stays `8-pianist-kindness`)
+- RED: drop `_arm_already_running_signal_quit` → `test_already_running_second_launch_exits_0_on_sigterm` (rc -15)

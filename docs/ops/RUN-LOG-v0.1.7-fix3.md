@@ -35,3 +35,7 @@ RED mutant: drop the QApplication reference in _show_already_running → same te
 state: DONE | item 4 F1 F3 | tests: test_forty_char_base64url_tokens_are_redacted (0/80), test_digit_underscore_tokens_leak_no_worse_than_base (46/300, bound 46) | ci-local: 577 passed, 5 xfailed, 4 warnings in 135.09s | err: none
 RED base: not applicable. packaging/tahoe-log-filter.sh is byte-identical to b267059, so both tests pass there. Filter behavior was not changed.
 RED mutant: F1 {40,}→{41,} → test_forty_char_base64url_tokens_are_redacted 79/80 leaked; F3 protector widened to [a-z0-9_] → test_digit_underscore_tokens_leak_no_worse_than_base 233/300.
+
+state: DONE | item 5 C2 S1 S10 | tests: test_idle_partial_line_is_closed_and_a_later_handoff_works, test_socket_with_a_foreign_uid_is_not_sent, test_server_keeps_a_planted_file_and_does_not_listen | ci-local: 580 passed, 5 xfailed, 4 warnings in 136.50s | err: none
+RED base: not a failure. The idle timer, the socket-uid check, and the planted-file refusal are already in b267059. The three tests passed there (3 passed in 2.92s). The gap was the missing tests.
+RED mutant: C2 remove timer.start(_JOIN_READ_TIMEOUT_MS) → idle test recv still-open; S1 drop the socket uid check → hand_join_invite returned sent; S10 unlink the planted file → the server listened.

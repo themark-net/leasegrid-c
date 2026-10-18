@@ -281,6 +281,61 @@ def test_symlinked_directory_receives_nothing(monkeypatch) -> None:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _stat_with_uid(st: os.stat_result, uid: int) -> os.stat_result:
+    """Same file, different owner. A foreign-uid socket needs root to chown."""
+    return os.stat_result(
+        (
+            st.st_mode,
+            st.st_ino,
+            st.st_dev,
+            st.st_nlink,
+            uid,
+            st.st_gid,
+            st.st_size,
+            st.st_atime,
+            st.st_mtime,
+            st.st_ctime,
+        )
+    )
+
+
+@_POSIX_ONLY
+def test_socket_with_a_foreign_uid_is_not_sent(monkeypatch) -> None:
+    """Refuse when the socket owner is not us, and send nothing.
+
+    The directory lstat stays real. Only this socket path reports another
+    uid: a socket owned by someone else cannot be planted without root.
+    """
+    root, home = _short_home()
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    endpoint = _prepare_private(home, 0o700)
+    listener = _Listener(endpoint)
+    holder = _hold(home)
+    real_lstat = os.lstat
+    real_stat = os.stat
+
+    def _foreign(follow, path, *args, **kwargs):
+        st = follow(path, *args, **kwargs)
+        # dir_fd lookups are shutil and the like, not the socket-path check.
+        if args or kwargs:
+            return st
+        if os.path.abspath(path) == os.path.abspath(endpoint):
+            return _stat_with_uid(st, os.getuid() + 1)
+        return st
+
+    monkeypatch.setattr(appmod.os, "lstat", lambda path, *a, **k: _foreign(real_lstat, path, *a, **k))
+    monkeypatch.setattr(appmod.os, "stat", lambda path, *a, **k: _foreign(real_stat, path, *a, **k))
+    try:
+        assert hand_join_invite(FAKE_INVITE) == "busy"
+        assert listener.received() == b""
+        parent = os.lstat(os.path.dirname(endpoint))
+        assert parent.st_uid == os.getuid()
+    finally:
+        listener.close()
+        _release(holder)
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @_POSIX_ONLY
 def test_wrong_owner_receives_nothing(monkeypatch) -> None:
     root, home = _short_home()
@@ -296,6 +351,27 @@ def test_wrong_owner_receives_nothing(monkeypatch) -> None:
     finally:
         listener.close()
         _release(holder)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@_POSIX_ONLY
+def test_server_keeps_a_planted_file_and_does_not_listen(monkeypatch) -> None:
+    """A non-socket at the endpoint stays. The server does not listen there."""
+    root, home = _short_home()
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    endpoint = _prepare_private(home, 0o700)
+    planted = "planted-not-a-socket\n"
+    Path(endpoint).write_text(planted, encoding="utf-8")
+    window = MainWindow(nodedir=root / "missing-node", home=home, autoload=False)
+    try:
+        _start_join_server(window)
+        assert getattr(window, "_join_server", None) is None
+        assert Path(endpoint).is_file()
+        assert Path(endpoint).read_text(encoding="utf-8") == planted
+    finally:
+        _close_join_server(window)
+        window.poll.stop()
+        window.win.hide()
         shutil.rmtree(root, ignore_errors=True)
 
 

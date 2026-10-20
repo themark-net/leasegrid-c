@@ -28,7 +28,7 @@ Tester page (join, add a folder, report a bug): [`docs/TESTERS.md`](https://gith
 ## What's new in v0.1.8
 
 - If you open several invites while Leasegrid Sync is already running, the newest one wins. An older invite still waiting to replace the Join page is dropped.
-- If you start Leasegrid Sync a second time, get the "already running" box, and then stop that second copy with Ctrl-C (or it gets SIGTERM/SIGHUP), it now exits cleanly instead of crashing.
+- On Linux and macOS, if you start Leasegrid Sync a second time, get the "already running" box, and then stop that second copy with Ctrl-C (or it gets SIGTERM/SIGHUP), it now closes the box and exits with code 0 instead of being killed by the signal.
 - From v0.1.5, correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
 - Details: [v0.1.8 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.8.md) (and [v0.1.7](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.7.md) before it).
 

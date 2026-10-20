@@ -66,12 +66,19 @@ def check_release_notes(path: Path, version: str | None = None) -> list[str]:
 
 
 def test_daemon_logs_rotate_when_the_daemon_starts() -> None:
-    """Daemon logs rotate at start. They do not rotate like sync-ui.log."""
+    """Daemon logs rotate at start. They do not rotate like sync-ui.log.
+
+    The rotation change shipped in v0.1.7, so its notes and the guide must say
+    "when the daemon starts". Current notes and pages may drop the bullet in a
+    later release, but must never reintroduce the wrong wording.
+    """
+    v017 = (ROOT / "docs" / "release-notes" / "v0.1.7.md").read_text(encoding="utf-8")
     notes = (ROOT / "docs" / "release-notes" / ("v%s.md" % __version__)).read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     testers = (ROOT / "docs" / "TESTERS.md").read_text(encoding="utf-8")
     guide = (ROOT / "docs" / "TESTER-GUIDE.md").read_text(encoding="utf-8")
     for label, text in (
+        ("v0.1.7 notes", v017),
         ("notes", notes),
         ("readme", readme),
         ("testers", testers),
@@ -79,6 +86,7 @@ def test_daemon_logs_rotate_when_the_daemon_starts() -> None:
     ):
         assert "rotate like" not in text, label
         assert "the same way" not in text, label
+    for label, text in (("v0.1.7 notes", v017), ("guide", guide)):
         assert "when the daemon starts" in text, label
     assert "A file over 1 MiB rotates" not in guide
 
@@ -92,7 +100,12 @@ def test_placeholder_and_sixth_bullet_are_rejected(tmp_path: Path) -> None:
     source = ROOT / "docs" / "release-notes" / ("v%s.md" % __version__)
     dest = tmp_path / source.name
     text = source.read_text(encoding="utf-8")
-    text = text.replace("## What's new\n", "## What's new\n- <placeholder> one more change\n", 1)
+    section = text.split("## What's new\n", 1)[1].split("\n## ", 1)[0]
+    have = sum(1 for line in section.splitlines() if line.startswith("- "))
+    assert have <= 5
+    # One <placeholder> bullet plus fillers: exactly six bullets in all.
+    extra = "".join("- filler change %d\n" % i for i in range(5 - have))
+    text = text.replace("## What's new\n", "## What's new\n- <placeholder> one more change\n" + extra, 1)
     dest.write_text(text, encoding="utf-8")
     problems = check_release_notes(dest)
     assert any("<placeholder>" in problem or "placeholder markup" in problem for problem in problems)

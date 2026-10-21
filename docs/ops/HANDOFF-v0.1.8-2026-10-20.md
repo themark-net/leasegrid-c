@@ -1,9 +1,13 @@
-# Handoff — v0.1.8 (`build/release-0.1.8`), 2026-10-20
+# Handoff — v0.1.8 (`build/release-0.1.8`), 2026-10-20 (released 2026-10-21)
 
 Tracks [#76](https://github.com/themark-net/leasegrid-c/issues/76). This is a friends-and-family bump that ships the two `## Unreleased` fixes from #75, which merged at `7e73a64` after v0.1.7 was tagged on `78a691a`.
 
 - **Branch:** `build/release-0.1.8` off `origin/main` @ `7e73a64`.
-- **Pushed only.** There is no PR, tag or merge yet, per Grok Bot's 2026-10-20 instruction, which overrides #76 step 4.
+- **No-PR flow.** This replaces #76 step 4 (open a PR), per Grok Bot's 2026-10-20 instruction.
+  - The branch was pushed and CI ran on its `cursor/release-0.1.8` twin.
+  - Tester and Reviewer both PASSed at `14027d3`.
+  - PM authorized shipping under Mark's standing friends-and-family rule.
+  - `main` was then fast-forwarded to `14027d3` with no merge commit.
 - **Decisions:** [`AUTONOMOUS-DECISIONS-2026-10-20.md`](AUTONOMOUS-DECISIONS-2026-10-20.md).
 
 ## What changed
@@ -21,31 +25,56 @@ Tracks [#76](https://github.com/themark-net/leasegrid-c/issues/76). This is a fr
 - **`tests/test_release_notes.py`:** two tests assumed the v0.1.7 notes were current. The rotation-wording test now pins the v0.1.7 notes and the guide. The sixth-bullet test pads to exactly six bullets. Both still go red on the wrong wording.
 - **No product logic changed.**
 
-## Not done yet (each needs the PR first)
+## Release (2026-10-21)
 
-1. Open the PR from `build/release-0.1.8` to `main`.
-2. Get a Tester + Reviewer double PASS. The Tester runs both behaviors on a real build:
+1. **Double PASS at `14027d3`.** The Tester ran both behaviors on a real build:
    - with a second invite handed to a running app, the newest one wins;
    - on Linux and macOS, Ctrl-C, SIGTERM or SIGHUP on the "already running" box exits 0. Windows does not install this handler (`app.py` `_arm_already_running_signal_quit`).
-3. Merge.
-4. Push an annotated tag `v0.1.8` on the merged main SHA.
-5. Check the release: a single body from `docs/release-notes/v0.1.8.md`, and 7 assets, the same set as v0.1.7, including the `SHA256SUMS-*` files. v0.1.0 through v0.1.7 must still be listed.
-6. Record the release SHA, the tag and the AppImage SHA-256 here.
+2. **`main` fast-forwarded** `7e73a64..14027d3`. Normal push, no PR and no merge commit.
+3. **Annotated tag `v0.1.8`,** message "Leasegrid v0.1.8 (friends and family)":
+   - tag object `032c5627ff11988b8d86f11fdf9d8b3e1a56c9cc`
+   - commit `14027d32ace7bc0799ed88e228b2de42b9cb4787`
+4. **Release:** https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.8, published 2026-10-21 09:11 PT. Not a draft or a prerelease, and `releases/latest` points at it.
+   - **Body:** one body, byte-identical to `docs/release-notes/v0.1.8.md`. No auto-generated notes were appended.
+   - **Assets:** 7, the same set as v0.1.7:
+     - `Leasegrid_Sync-0.1.8-x86_64.AppImage`
+     - `Leasegrid_Sync-0.1.8-macos-x86_64.dmg`
+     - `Leasegrid_Sync-0.1.8-win64-setup.exe`
+     - `Leasegrid_Sync-0.1.8-win64.zip`
+     - `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` and `SHA256SUMS-win64`
+   - **AppImage SHA-256:** `b7e5ab27f52c8fbc8ea0d1cebc383103c8e5103dee58121f7131bc295661be36`. `sha256sum -c SHA256SUMS-linux-x86_64` passes on the downloaded file.
+   - **Earlier releases:** v0.1.0 through v0.1.7 are still published, and none are drafts.
+   - **Links:** every current-build link in `README.md`, `docs/TESTERS.md` and `docs/TESTER-GUIDE.md` returns 200. That covers the 4 asset downloads, `releases/tag/v0.1.8`, `releases/latest`, and the v0.1.8 and v0.1.7 notes.
+5. **Not done:** no marketing and no tester blast.
 
 ## CI
 
-At `011fc2f`, all 8 jobs were green, pushed as `cursor/release-0.1.8`:
+Release SHA `14027d3`. All runs are attempt 1, with no reruns:
 
-| Workflow | Run | Event | Jobs |
+| Workflow | Run | Event | Result |
 |---|---|---|---|
-| CI | [39455995814](https://github.com/themark-net/leasegrid-c/actions/runs/39455995814) | push | 4/4: `test` on ubuntu, windows and macos, plus `semgrep` |
-| Android Slice A | [39455995648](https://github.com/themark-net/leasegrid-c/actions/runs/39455995648) | push | 1/1: `debug APK` |
-| Installers | [39456514212](https://github.com/themark-net/leasegrid-c/actions/runs/39456514212) | workflow_dispatch | 3/3: linux, windows, macos |
+| CI | [39459067594](https://github.com/themark-net/leasegrid-c/actions/runs/39459067594) | push `cursor/release-0.1.8` | success: `test` on ubuntu, windows and macos, plus `semgrep` |
+| Android Slice A | [39459067622](https://github.com/themark-net/leasegrid-c/actions/runs/39459067622) | push `cursor/release-0.1.8` | success: `debug APK` |
+| Installers | [39459098907](https://github.com/themark-net/leasegrid-c/actions/runs/39459098907) | workflow_dispatch `cursor/release-0.1.8` | success: linux, windows, macos |
+| Installers (tag) | [39632073534](https://github.com/themark-net/leasegrid-c/actions/runs/39632073534) | push tag `v0.1.8` | success: built and published the release |
+| CI / Android / Installers on `main` | [39632050280](https://github.com/themark-net/leasegrid-c/actions/runs/39632050280) / [39632050282](https://github.com/themark-net/leasegrid-c/actions/runs/39632050282) / [39632050369](https://github.com/themark-net/leasegrid-c/actions/runs/39632050369) | push `main` | success |
 
-- **Installers was dispatched by hand.** Its `paths:` filter skipped the new-branch push. On a branch dispatch, the release-publish steps run only on `refs/tags/v*`, so nothing was published.
-- **`build/**` triggers nothing.** It matches no workflow trigger, so CI runs on the matching `cursor/release-0.1.8` branch.
-- **Local CI** (`scripts/ci-local.sh`): 606 passed, 5 xfailed, all checks passed.
-- **Later commit.** The run report for the docs-only follow-up commit (Reviewer B1) has its CI run IDs.
+The first commit, `011fc2f`, was green too: CI 39455995814, Android 39455995648, Installers 39456514212.
+
+- **Installers on the branch was dispatched by hand.** Its `paths:` filter skipped the new-branch push. On a branch, the publish steps run only on `refs/tags/v*`.
+- **`build/**` triggers no workflow,** so CI ran on the `cursor/release-0.1.8` twin at the same SHA.
+
+### Test counts (606 vs 594)
+
+- **Local CI** (`scripts/ci-local.sh`, Linux) at `011fc2f` and at `14027d3`: 606 passed, 5 xfailed.
+- **GitHub CI at `14027d3`:**
+  - ubuntu: 606 passed, 5 xfailed
+  - macos: 605 passed, 1 skipped, 5 xfailed
+  - windows: 571 passed, 35 skipped, 5 xfailed
+
+  The skips are platform-only tests, such as POSIX signals and process groups.
+- **Where 594 comes from:** #75's own handoff (`HANDOFF-dev-safety-rails.md`) and its run log, at #75's intermediate commit `a80979c`. #75's fix2 round then added tests (`RUN-LOG-dev-safety-rails-fix2.md`: 606), and #75 was squash-merged as `7e73a64` with 606.
+- **v0.1.8 added no tests.** It edited two tests in `tests/test_release_notes.py`; that file has 3 `test_` functions before and after. So 606 at `7e73a64` and 606 at `14027d3` agree, and 594 is a pre-merge count from #75, not a v0.1.8 number.
 
 ## Reviewer B1 follow-up (docs only)
 

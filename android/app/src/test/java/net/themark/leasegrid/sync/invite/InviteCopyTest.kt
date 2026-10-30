@@ -10,42 +10,50 @@ import net.themark.leasegrid.sync.ui.failNextLine
 
 // #50 option 1: the phone asks for the desktop's full join link. Pure JVM.
 class InviteCopyTest {
-    private val forbidden = listOf("furl", "pb://", "introducer", "wormhole")
-
     private fun failFor(raw: String): InviteFail =
         Invite.attempt(raw, fail = { it }) { error("expected fail for $raw") }
 
-    // Every InviteFail path plus the screen copy.
-    private fun userVisible(): List<String> {
-        val samples = listOf(
-            "",
-            "7-guitarist-revenge",
-            "https://example.test/tahoe",
-            "not-a-code",
-            "leasegrid:join",
-            "#v=1&n=2",
-            "#v=1&i=not-a-link",
-            "pb://short",
-        )
+    private val samples = listOf(
+        "",
+        "   ",
+        "7-guitarist-revenge",
+        "https://example.test/tahoe",
+        "not-a-code",
+        "leasegrid:join",
+        "#v=1&n=2",
+        "#v=1&i=not-a-link",
+        "pb://short",
+    )
+
+    @Test
+    fun userVisibleInviteStringsPassTheBannedWordGuard() {
         val fails = samples.flatMap { failFor(it).let { exc -> listOf(exc.banner, exc.next) } }
-        return listOf(Invite.TITLE, Invite.BODY, Invite.INPUT_HINT, Invite.ACK_MSG, Invite.ACK_NEXT) + fails
+        val screen = listOf(
+            Invite.TITLE, Invite.BODY, Invite.INPUT_HINT, Invite.ACK_MSG, Invite.ACK_NEXT,
+            Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT,
+        )
+        for (line in screen + fails) {
+            assertEquals("banned word in: $line", emptyList<String>(), bannedWords(line))
+        }
     }
 
     @Test
-    fun userVisibleInviteStringsNameNoFurl() {
-        for (line in userVisible()) {
-            for (word in forbidden) {
-                assertFalse("'$word' in: $line", line.lowercase().contains(word))
-            }
+    fun bannedWordGuardCatchesEachWord() {
+        for (bad in listOf(
+            "the furl", "a pb://x value", "Introducer down", "wormhole code",
+            "this friendnet", "could not join this", "Could Not Join",
+        )) {
+            assertTrue(bad, bannedWords(bad).isNotEmpty())
         }
     }
 
     @Test
     fun screenCopyMatchesDesign() {
+        assertEquals("Share invite", Invite.SHARE_INVITE)
         assertEquals("Show full join link (advanced)", Invite.SHOW_FULL_JOIN_LINK)
         assertEquals("Join a shared folder", Invite.TITLE)
         assertEquals(
-            "On your computer, open the share card in Leasegrid Sync and tick Show full join link (advanced). " +
+            "On your computer, click Share invite in Leasegrid Sync and tick Show full join link (advanced). " +
                 "Copy that link and paste it below.",
             Invite.BODY,
         )
@@ -54,25 +62,35 @@ class InviteCopyTest {
 
     @Test
     fun failCopyMatchesDesign() {
-        assertEquals(
-            "Couldn't join with that link. On your computer, tick Show full join link (advanced) again, " +
-                "paste the new link here, and tap Retry.",
-            Invite.WORMHOLE_NEXT,
-        )
-        val garbage = failFor("not-a-code")
+        assertEquals("Paste the join link first.", failFor("").banner)
+        assertEquals("Paste the join link first.", failFor("   ").banner)
         assertEquals(
             "That isn't a join link. On your computer, tick Show full join link (advanced), " +
                 "then copy and paste the whole link.",
-            garbage.banner,
+            failFor("not-a-code").banner,
         )
-        val web = failFor("https://example.test/tahoe")
         assertEquals(
             "That's the Sync web page address, not a join link. On your computer, " +
                 "tick Show full join link (advanced) and paste that link here.",
-            web.banner,
+            failFor("https://example.test/tahoe").banner,
+        )
+        val noAddress = "That link is missing your computer's address. On your computer, " +
+            "tick Show full join link (advanced), then copy and paste the whole link."
+        assertEquals(noAddress, failFor("leasegrid:join").banner)
+        assertEquals(noAddress, failFor("#v=1&n=2").banner)
+        assertEquals(
+            "That join link is incomplete. On your computer, tick Show full join link (advanced), " +
+                "then copy and paste the whole link.",
+            failFor("pb://short").banner,
         )
         // An i= value that is not an address is garbage too.
         assertEquals(Invite.GARBAGE_MSG, failFor("#v=1&i=not-a-link").banner)
+        assertEquals("Couldn't reach your computer.", Invite.JOIN_FAILED)
+        assertEquals(
+            "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry. " +
+                "If it still fails, copy the join link again from your computer and paste it here.",
+            Invite.JOIN_FAILED_NEXT,
+        )
     }
 
     @Test
@@ -104,12 +122,19 @@ class InviteCopyTest {
     }
 
     @Test
-    fun garbageAndWebUrlRenderNoNextLine() {
-        for (raw in listOf("not-a-code", "#v=1&i=not-a-link", "https://example.test/tahoe")) {
+    fun everyParseFailRendersNoNextLine() {
+        for (raw in samples) {
             assertNull(raw, failNextLine(failFor(raw).next))
         }
-        // WORMHOLE_NEXT is for a real join attempt that failed; it does render.
-        assertEquals("Next: ${Invite.WORMHOLE_NEXT}", failNextLine(Invite.WORMHOLE_NEXT))
+        // JOIN_FAILED_NEXT is for a real join attempt that failed; it does render.
+        assertEquals("Next: ${Invite.JOIN_FAILED_NEXT}", failNextLine(Invite.JOIN_FAILED_NEXT))
+    }
+
+    @Test
+    fun joinStaysDisabledForABlankField() {
+        assertFalse(Invite.joinEnabled(true, ""))
+        assertFalse(Invite.joinEnabled(true, "  \t "))
+        assertTrue(Invite.joinEnabled(true, "x"))
     }
 
     @Test
@@ -121,12 +146,18 @@ class InviteCopyTest {
     }
 
     @Test
-    fun everyFailBannerNamesTheDesktopLabel() {
-        for (raw in listOf("7-guitarist-revenge", "not-a-code", "https://example.test/tahoe")) {
+    fun linkFailBannersNameTheDesktopLabel() {
+        for (raw in listOf("7-guitarist-revenge", "not-a-code", "https://example.test/tahoe", "leasegrid:join", "pb://short")) {
             val exc = failFor(raw)
             assertTrue(exc.banner, exc.banner.contains(Invite.SHOW_FULL_JOIN_LINK))
         }
-        assertTrue(Invite.WORMHOLE_NEXT.contains(Invite.SHOW_FULL_JOIN_LINK))
         assertTrue(Invite.BODY.contains(Invite.SHOW_FULL_JOIN_LINK))
+        assertTrue(Invite.BODY.contains(Invite.SHARE_INVITE))
     }
+}
+
+/** Words a phone user must never see (#50): internals, "friendnet", "could not join". */
+fun bannedWords(line: String): List<String> {
+    val low = line.lowercase()
+    return listOf("furl", "pb://", "introducer", "wormhole", "friendnet", "could not join").filter { low.contains(it) }
 }

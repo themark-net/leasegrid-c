@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Environment
 import android.os.StatFs
+import android.util.Log
 import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,7 +33,6 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.themark.leasegrid.sync.grid.AndroidGrid
 import net.themark.leasegrid.sync.invite.Invite
-import net.themark.leasegrid.sync.invite.InviteFail
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
 import net.themark.leasegrid.sync.recovery.ImportFail
@@ -42,8 +42,6 @@ import net.themark.leasegrid.sync.session.ServerRef
 import net.themark.leasegrid.sync.session.Session
 import net.themark.leasegrid.sync.session.SessionStore
 import java.io.File
-
-data class FailBanner(val message: String, val next: String)
 
 data class ChildRow(val name: String, val kind: String, val cap: String, val size: Int)
 
@@ -57,6 +55,8 @@ sealed class Place {
     data object About : Place()
     data object Settings : Place()
 }
+
+private const val TAG = "LeasegridSync"
 
 class AppModel(app: Application) : AndroidViewModel(app) {
     private val store = SessionStore(File(app.filesDir, "leasegrid"))
@@ -85,6 +85,25 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     var pickedBytes by mutableStateOf<ByteArray?>(null)
 
     private var retry: (() -> Unit)? = null
+
+    // The pasted text stays in inviteText on every fail (#50).
+    private val joinFlow = JoinFlow(
+        text = { inviteText },
+        launch = { block -> runGrid("Joining…", block) },
+        learn = { furl -> learn(furl, fatal = false) },
+        show = { banner, again -> show(banner, again) },
+        joined = { parsed, learned ->
+            val next = Session(
+                introducerFurl = parsed.furl,
+                shares = parsed.shares ?: listOf(2, 3, 3),
+                folders = session?.folders ?: emptyList(),
+                servers = learned,
+            )
+            store.save(next)
+            session = next
+            place = Place.Folders
+        },
+    )
 
     init {
         val existing = store.load()
@@ -154,29 +173,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             show(FailBanner(Invite.ACK_MSG, Invite.ACK_NEXT)) { join() }
             return
         }
-        val text = inviteText
-        // A fail keeps inviteText in the field so the person can fix it.
-        runGrid("Joining…") {
-            Invite.attempt(
-                text,
-                fail = { exc: InviteFail -> show(FailBanner(exc.banner, exc.next)) { join() } },
-            ) { parsed ->
-                val learned = learn(parsed.furl) ?: run {
-                    // A real join attempt failed: now the Next line is WORMHOLE_NEXT.
-                    fail?.let { show(FailBanner(it.message, Invite.WORMHOLE_NEXT)) { join() } }
-                    return@attempt
-                }
-                val next = Session(
-                    introducerFurl = parsed.furl,
-                    shares = parsed.shares ?: listOf(2, 3, 3),
-                    folders = session?.folders ?: emptyList(),
-                    servers = learned,
-                )
-                store.save(next)
-                session = next
-                place = Place.Folders
-            }
-        }
+        joinFlow.join()
     }
 
     fun onPicked(name: String, bytes: ByteArray) {
@@ -215,12 +212,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             session = next
             place = Place.Folders
             if (learned == null) {
-                show(
-                    FailBanner(
-                        "could not reach the introducer yet. Folder names are on this phone.",
-                        "check the network path to the introducer; Retry.",
-                    ),
-                ) { refresh() }
+                show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { refresh() }
             }
         }
     }
@@ -755,18 +747,14 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                 }.toString())
             }
         } catch (exc: Exception) {
-            if (fatal) {
-                show(
-                    FailBanner(
-                        "could not join this friendnet. Introducer is unreachable.",
-                        "check the network path to the introducer (and that it is running); Retry. (${exc.javaClass.simpleName})",
-                    ),
-                ) { refresh() }
-            }
+            // Raw error to the log only, never on screen (#50).
+            Log.w(TAG, "learn failed: ${exc.javaClass.simpleName}")
+            if (fatal) show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { refresh() }
             return null
         }
         if (!result.ok) {
-            if (fatal) show(FailBanner(result.message, result.next)) { refresh() }
+            Log.w(TAG, "learn failed: ${result.message}")
+            if (fatal) show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { refresh() }
             return null
         }
         val servers = result.raw["servers"]?.jsonArray?.map { el ->

@@ -1,17 +1,17 @@
 # Leasegrid
 
 Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject.
-**Leasegrid Sync** is the desktop app: join a friend's grid, add a folder, and it syncs. Current friends-and-family build: [v0.1.8](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.8) (unsigned) · newest: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest).
+**Leasegrid Sync** is the desktop app: join a friend's grid, add a folder, and it syncs. Current friends-and-family build: [v0.1.9](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.9) (unsigned) · newest: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest).
 
 ## Install Leasegrid Sync
 
 | OS | Download | One-liner |
 |----|----------|-----------|
-| Linux x86_64 (glibc 2.35+) | [`Leasegrid_Sync-0.1.8-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.8/Leasegrid_Sync-0.1.8-x86_64.AppImage) | `chmod +x` it and run it (needs FUSE). |
-| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.8-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.8/Leasegrid_Sync-0.1.8-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.8-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.8/Leasegrid_Sync-0.1.8-win64-setup.exe) or [`.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.8/Leasegrid_Sync-0.1.8-win64.zip) | SmartScreen: **More info → Run anyway**. From the zip, start `leasegrid-sync.exe`; `leasegrid-sync-cli.exe` is the console program, not the window. |
+| Linux x86_64 (glibc 2.35+) | [`Leasegrid_Sync-0.1.9-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.9/Leasegrid_Sync-0.1.9-x86_64.AppImage) | `chmod +x` it and run it (needs FUSE). |
+| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.9-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.9/Leasegrid_Sync-0.1.9-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (below). |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.9-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.9/Leasegrid_Sync-0.1.9-win64-setup.exe) or [`.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.9/Leasegrid_Sync-0.1.9-win64.zip) | SmartScreen: **More info → Run anyway**. From the zip, start `leasegrid-sync.exe`; `leasegrid-sync-cli.exe` is the console program, not the window. |
 
-**Checksums:** compare your download with the matching `SHA256SUMS-*` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.8).
+**Checksums:** compare your download with the matching `SHA256SUMS-*` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.9).
 
 <details>
 <summary>macOS: “unidentified developer” — Open Anyway steps</summary>
@@ -25,12 +25,13 @@ On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead
 
 Tester page (join, add a folder, report a bug): [`docs/TESTERS.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTERS.md) · full guide: [`docs/TESTER-GUIDE.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md).
 
-## What's new in v0.1.8
+## What's new in v0.1.9
 
-- If you open several invites while Leasegrid Sync is already running, the newest one wins. An older invite still waiting to replace the Join page is dropped.
-- On Linux and macOS, if you start Leasegrid Sync a second time, get the "already running" box, and then stop that second copy with Ctrl-C (or it gets SIGTERM/SIGHUP), it now closes the box and exits with code 0 instead of being killed by the signal.
+- On Android, **Invite** now asks for your computer's full join link: in Leasegrid Sync on the computer, click **Share invite** and tick **Show full join link (advanced)**, then paste it on the phone. A short code or web link gets a plain explanation instead.
+- On Android, if the phone cannot reach your computer you see *Couldn't reach your computer.* with one next step. The **Join a shared folder** button stays off until a link is pasted.
+- The desktop app is the same as v0.1.8 apart from the version number.
 - From v0.1.5, correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
-- Details: [v0.1.8 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.8.md) (and [v0.1.7](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.7.md) before it).
+- Details: [v0.1.9 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.9.md) (and [v0.1.8](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.8.md) before it).
 
 ## Known issues
 

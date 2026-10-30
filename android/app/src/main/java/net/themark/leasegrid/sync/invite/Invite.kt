@@ -45,6 +45,13 @@ object Invite {
     const val JOIN_FAILED_NEXT =
         "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry. If it still fails, copy the join link again from your computer and paste it here."
 
+    // Refresh and recovery import fail on the Folders screen, which has no link field:
+    // no paste sentence there (#50 N1). Retry runs refresh().
+    const val REFRESH_FAILED_NEXT =
+        "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry."
+    // Shown only after the imported session was saved.
+    const val IMPORT_SAVED_MSG = "Folder names are on this phone. Couldn't reach your computer to finish."
+
     /** Parse first. A failed parse never reaches [join]. */
     inline fun <T> attempt(raw: String, fail: (InviteFail) -> T, join: (ParsedInvite) -> T): T {
         val parsed = try {

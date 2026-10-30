@@ -15,7 +15,7 @@ INVITE = (
 )
 APP_PY = Path(__file__).resolve().parents[1] / "src" / "leasegrid_sync" / "app.py"
 APP_MODEL = INVITE.parents[1] / "ui" / "AppModel.kt"
-JOIN_FLOW = INVITE.parents[1] / "ui" / "JoinFlow.kt"
+SESSION_FLOW = INVITE.parents[1] / "ui" / "SessionFlow.kt"
 SYNC_APP = INVITE.parents[1] / "ui" / "SyncApp.kt"
 
 # Exact tokens the code still uses. Any other literal that names them is copy.
@@ -45,6 +45,8 @@ _DESIGN = {
     "JOIN_FAILED": "Couldn't reach your computer.",
     "JOIN_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, "
     "then tap Retry. If it still fails, copy the join link again from your computer and paste it here.",
+    "REFRESH_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
+    "IMPORT_SAVED_MSG": "Folder names are on this phone. Couldn't reach your computer to finish.",
 }
 
 _PARSE_FAILS = ("EMPTY_MSG", "WORMHOLE_MSG", "GARBAGE_MSG", "WEB_URL_MSG", "NO_ADDRESS_MSG", "MALFORMED_MSG")
@@ -83,16 +85,17 @@ def test_invite_kt_user_strings_pass_banned_word_guard():
 
 
 def test_learn_failure_strings_pass_banned_word_guard():
-    """learn() and JoinFlow put only Invite.JOIN_FAILED(+_NEXT) on screen (#50 B2)."""
+    """learn() shows nothing; SessionFlow owns the copy (#50 B2, N1).
+
+    What SessionFlow shows is behavior-tested in SessionFlowTest.kt. learn() itself
+    calls the Python grid (Chaquopy), so this one structural check stays a source scan.
+    """
     model = APP_MODEL.read_text(encoding="utf-8")
     learn = _fun_body(model, "    private suspend fun learn(")
     assert not _banned(_LITERAL.findall(learn))
-    assert learn.count("FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)") == 2
-    assert "result.message, result.next" not in learn
-    assert "simpleName})\"" not in learn.split("Log.w", 1)[0]
-    flow = JOIN_FLOW.read_text(encoding="utf-8")
+    assert "show(" not in learn and "FailBanner" not in learn
+    flow = SESSION_FLOW.read_text(encoding="utf-8")
     assert not _banned(_LITERAL.findall(flow))
-    assert "FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { join() }" in flow
     # The import screen's learn() fail uses the same pair; no inline introducer copy anywhere.
     assert "introducer yet" not in model
     assert "Introducer is unreachable" not in model
@@ -136,9 +139,17 @@ def test_screen_uses_design_copy_and_join_keeps_pasted_text():
     assert "paste invite" not in ui
     model = APP_MODEL.read_text(encoding="utf-8")
     body = _fun_body(model, "    fun join() {")
-    assert "joinFlow.join()" in body
-    flow = JOIN_FLOW.read_text(encoding="utf-8")
+    assert "flow.join()" in body
+    flow = SESSION_FLOW.read_text(encoding="utf-8")
     assert "Invite.attempt(" in flow
     # A fail leaves the pasted text in the field.
     assert "inviteText =" not in body
     assert "inviteText =" not in flow
+
+
+def test_folders_screen_copy_never_says_paste():
+    """Refresh and import fail on the Folders screen, which has no link field (#50 N1)."""
+    text = INVITE.read_text(encoding="utf-8")
+    for name in ("REFRESH_FAILED_NEXT", "IMPORT_SAVED_MSG"):
+        low = _kotlin_const(text, name).lower()
+        assert "paste" not in low and "join link" not in low, name

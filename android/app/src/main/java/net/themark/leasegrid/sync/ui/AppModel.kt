@@ -86,24 +86,22 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     private var retry: (() -> Unit)? = null
 
+    // Join, refresh and import-finish live in SessionFlow (pure JVM, tested there).
     // The pasted text stays in inviteText on every fail (#50).
-    private val joinFlow = JoinFlow(
-        text = { inviteText },
-        launch = { block -> runGrid("Joining…", block) },
-        learn = { furl -> learn(furl, fatal = false) },
-        show = { banner, again -> show(banner, again) },
-        joined = { parsed, learned ->
-            val next = Session(
-                introducerFurl = parsed.furl,
-                shares = parsed.shares ?: listOf(2, 3, 3),
-                folders = session?.folders ?: emptyList(),
-                servers = learned,
-            )
+    private val flow = SessionFlow(object : FlowHost {
+        override var inviteText: String
+            get() = this@AppModel.inviteText
+            set(value) { this@AppModel.inviteText = value }
+        override val session: Session? get() = this@AppModel.session
+        override fun launch(label: String, block: suspend () -> Unit) = runGrid(label, block)
+        override suspend fun learn(furl: String): List<ServerRef>? = this@AppModel.learn(furl)
+        override fun save(next: Session) {
             store.save(next)
-            session = next
+            this@AppModel.session = next
             place = Place.Folders
-        },
-    )
+        }
+        override fun show(banner: FailBanner, again: () -> Unit) = this@AppModel.show(banner, again)
+    })
 
     init {
         val existing = store.load()
@@ -173,7 +171,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             show(FailBanner(Invite.ACK_MSG, Invite.ACK_NEXT)) { join() }
             return
         }
-        joinFlow.join()
+        flow.join()
     }
 
     fun onPicked(name: String, bytes: ByteArray) {
@@ -200,32 +198,20 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                 show(FailBanner(exc.banner, exc.next)) { importRecovery() }
                 return@runGrid
             }
-            val learned = learn(bundle.introducerFurl, fatal = false)
-            val next = Session(
-                introducerFurl = bundle.introducerFurl,
-                nickname = bundle.nickname,
-                shares = bundle.shares,
-                folders = bundle.folders.map { FolderRef(it.name, it.collective) },
-                servers = learned ?: session?.servers ?: emptyList(),
-            )
-            store.save(next)
-            session = next
-            place = Place.Folders
-            if (learned == null) {
-                show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { refresh() }
+            flow.finishImport(bundle.introducerFurl) { learned ->
+                Session(
+                    introducerFurl = bundle.introducerFurl,
+                    nickname = bundle.nickname,
+                    shares = bundle.shares,
+                    folders = bundle.folders.map { FolderRef(it.name, it.collective) },
+                    servers = learned ?: session?.servers ?: emptyList(),
+                )
             }
         }
     }
 
     fun refresh() {
-        val current = session ?: return
-        runGrid("Refreshing…") {
-            val learned = learn(current.introducerFurl) ?: return@runGrid
-            val next = current.copy(servers = learned)
-            store.save(next)
-            session = next
-            place = Place.Folders
-        }
+        flow.refresh()
     }
 
     fun openFolder(folder: FolderRef) {
@@ -738,7 +724,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         return dir
     }
 
-    private suspend fun learn(furl: String, fatal: Boolean = true): List<ServerRef>? {
+    /** Null on any failure. Never shows a banner: SessionFlow owns the copy (#50). */
+    private suspend fun learn(furl: String): List<ServerRef>? {
         val result = try {
             withContext(Dispatchers.IO) {
                 dispatch("learn", buildJsonObject {
@@ -749,12 +736,10 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         } catch (exc: Exception) {
             // Raw error to the log only, never on screen (#50).
             Log.w(TAG, "learn failed: ${exc.javaClass.simpleName}")
-            if (fatal) show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { refresh() }
             return null
         }
         if (!result.ok) {
             Log.w(TAG, "learn failed: ${result.message}")
-            if (fatal) show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { refresh() }
             return null
         }
         val servers = result.raw["servers"]?.jsonArray?.map { el ->

@@ -30,7 +30,7 @@ class InviteCopyTest {
         val fails = samples.flatMap { failFor(it).let { exc -> listOf(exc.banner, exc.next) } }
         val screen = listOf(
             Invite.TITLE, Invite.BODY, Invite.INPUT_HINT, Invite.ACK_MSG, Invite.ACK_NEXT,
-            Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT,
+            Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT, Invite.REFRESH_FAILED_NEXT, Invite.IMPORT_SAVED_MSG,
         )
         for (line in screen + fails) {
             assertEquals("banned word in: $line", emptyList<String>(), bannedWords(line))

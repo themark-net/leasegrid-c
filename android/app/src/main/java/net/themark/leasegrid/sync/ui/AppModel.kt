@@ -733,6 +733,9 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                     put("timeout", 25)
                 }.toString())
             }
+        } catch (exc: CancellationException) {
+            // A cancelled join must not paint JOIN_FAILED over a newer attempt.
+            throw exc
         } catch (exc: Exception) {
             // Raw error to the log only, never on screen (#50).
             Log.w(TAG, "learn failed: ${exc.javaClass.simpleName}")

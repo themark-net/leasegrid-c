@@ -138,6 +138,41 @@ class InviteCopyTest {
     }
 
     @Test
+    fun aLinkCutInsideAnEscapeIsIncomplete() {
+        val exc = failFor("leasegrid:join#v=1&i=pb%3A%2")
+        assertEquals(Invite.MALFORMED_MSG, exc.banner)
+        assertEquals(Invite.NO_NEXT, exc.next)
+    }
+
+    @Test
+    fun everyPrefixOfAJoinLinkFailsWithDesignCopyOrParses() {
+        // Fake fixture shaped like desktop format_join_url (percent-encoded i=).
+        val link = "leasegrid:join#v=1&i=pb%3A%2F%2Fhashhashhash%40127.0.0.1%3A45001%2Fswissnumswiss&n=2&h=3&t=3"
+        val design = setOf(
+            Invite.EMPTY_MSG, Invite.WORMHOLE_MSG, Invite.GARBAGE_MSG, Invite.WEB_URL_MSG,
+            Invite.NO_ADDRESS_MSG, Invite.MALFORMED_MSG,
+        )
+        var parsed = 0
+        for (end in 0..link.length) {
+            val prefix = link.substring(0, end)
+            val result: Any = try {
+                Invite.attempt(prefix, fail = { it }) { it }
+            } catch (exc: Exception) {
+                throw AssertionError("prefix $end threw ${exc.javaClass.simpleName}")
+            }!!
+            if (result is InviteFail) {
+                assertTrue("prefix $end: ${result.banner}", result.banner in design)
+                assertEquals("prefix $end", Invite.NO_NEXT, result.next)
+                assertFalse(result.banner, result.banner.contains("Exception"))
+            } else {
+                parsed++
+            }
+        }
+        assertTrue("the whole link parses", Invite.attempt(link, fail = { null }) { it } != null)
+        assertTrue(parsed > 0)
+    }
+
+    @Test
     fun aJoinLinkStillReachesJoin() {
         val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"
         var joined: ParsedInvite? = null

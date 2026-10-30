@@ -118,6 +118,8 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
     }
     Text(Invite.TITLE, fontWeight = FontWeight.SemiBold)
     Text(Invite.BODY, style = MaterialTheme.typography.bodyMedium)
+    // The keyboard Done action and the Join button share one enabled/busy check.
+    val joinOn = joinControlEnabled(model.acknowledged, model.inviteText, model.busy)
     OutlinedTextField(
         value = model.inviteText,
         onValueChange = { model.inviteText = it },
@@ -133,9 +135,8 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
             keyboardType = KeyboardType.Uri,
             imeAction = ImeAction.Done,
         ),
-        keyboardActions = KeyboardActions(onDone = { if (model.joinEnabled()) model.join() }),
+        keyboardActions = KeyboardActions(onDone = { if (joinOn) model.join() }),
     )
-    val joinOn = joinControlEnabled(model.acknowledged, model.inviteText, model.busy)
     ProbeButton(
         name = "join_button",
         enabled = joinOn,

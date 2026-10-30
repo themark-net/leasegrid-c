@@ -116,6 +116,16 @@ class SessionFlowTest {
     }
 
     @Test
+    fun aCancelledJoinPaintsNothing() {
+        val host = Host(link)
+        host.learnThrows = kotlin.coroutines.cancellation.CancellationException("newer attempt")
+        SessionFlow(host).join()
+        // The fake launch maps an escaped throw to "generic"; JOIN_FAILED must not appear.
+        assertEquals(FailBanner("generic", ""), host.banner)
+        assertTrue(host.saved.isEmpty())
+    }
+
+    @Test
     fun retryAfterAParseFailUsesTheFieldAsItIsNow() {
         val host = Host("7-guitarist-revenge")
         host.answers.add(listOf(server))

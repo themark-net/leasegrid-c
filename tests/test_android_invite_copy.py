@@ -153,3 +153,19 @@ def test_folders_screen_copy_never_says_paste():
     for name in ("REFRESH_FAILED_NEXT", "IMPORT_SAVED_MSG"):
         low = _kotlin_const(text, name).lower()
         assert "paste" not in low and "join link" not in low, name
+
+
+def test_learn_rethrows_cancellation_and_done_matches_join_button():
+    """S1: a cancelled join paints nothing; keyboard Done uses the Join button's check.
+
+    Source scans: AppModel.learn() needs Chaquopy and the Compose keyboard action needs a device.
+    SessionFlowTest.aCancelledJoinPaintsNothing covers the flow side.
+    """
+    learn = _fun_body(APP_MODEL.read_text(encoding="utf-8"), "    private suspend fun learn(")
+    assert re.search(r"catch \(exc: CancellationException\) \{\s*(//[^\n]*\s*)?throw exc", learn)
+    assert learn.index("CancellationException") < learn.index("catch (exc: Exception)")
+    ui = SYNC_APP.read_text(encoding="utf-8")
+    assert "val joinOn = joinControlEnabled(model.acknowledged, model.inviteText, model.busy)" in ui
+    assert "KeyboardActions(onDone = { if (joinOn) model.join() })" in ui
+    assert "enabled = joinOn," in ui
+    assert ui.index("val joinOn =") < ui.index("onDone")

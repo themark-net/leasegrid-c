@@ -100,7 +100,12 @@ object Invite {
     }
 
     private fun fromFragment(frag: String): ParsedInvite {
-        val decoded = java.net.URLDecoder.decode(frag, "UTF-8")
+        // A link cut inside a %XX escape makes the decoder throw: that is an incomplete link.
+        val decoded = try {
+            java.net.URLDecoder.decode(frag, "UTF-8")
+        } catch (_: IllegalArgumentException) {
+            throw InviteFail(MALFORMED_MSG, NO_NEXT)
+        }
         val params = mutableMapOf<String, String>()
         for (part in decoded.split("&")) {
             val eq = part.indexOf('=')

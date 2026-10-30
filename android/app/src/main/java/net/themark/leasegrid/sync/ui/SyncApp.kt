@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import net.themark.leasegrid.sync.invite.Invite
 import net.themark.leasegrid.sync.recovery.SCARY_LOSS
 
 private val THREAT = listOf(
@@ -115,6 +116,8 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
         )
         Text("I understand the four points above.")
     }
+    Text(Invite.TITLE, fontWeight = FontWeight.SemiBold)
+    Text(Invite.BODY, style = MaterialTheme.typography.bodyMedium)
     OutlinedTextField(
         value = model.inviteText,
         onValueChange = { model.inviteText = it },
@@ -124,7 +127,7 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
             .focusRequester(inviteFocus)
             .semantics(mergeDescendants = true) { dogfoodField("invite_field") },
         label = { Text("Invite") },
-        placeholder = { Text("paste invite…") },
+        placeholder = { Text(Invite.INPUT_HINT) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Uri,

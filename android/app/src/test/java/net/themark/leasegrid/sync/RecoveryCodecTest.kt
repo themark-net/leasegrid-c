@@ -161,10 +161,9 @@ class InviteTest {
             error("expected fail")
         } catch (exc: InviteFail) {
             assertTrue(exc.next.lowercase().contains("join link"))
-            // Real desktop labels (app.py): the Share invite button and the
-            // Show full join link (advanced) checkbox. There is no "invite card".
-            assertTrue(exc.next, exc.next.contains("click Share invite"))
-            assertTrue(exc.next, exc.next.contains("tick Show full join link (advanced)"))
+            // Desktop label pinned in Invite.SHOW_FULL_JOIN_LINK (#50).
+            assertTrue(exc.next, exc.next.contains(Invite.SHOW_FULL_JOIN_LINK))
+            assertEquals(Invite.WORMHOLE_MSG, exc.banner)
             assertFalse(exc.next, exc.next.lowercase().contains("invite card"))
             assertFalse(exc.next.lowercase().contains("pb://"))
             assertFalse(exc.next.lowercase().contains("furl"))
@@ -209,7 +208,7 @@ class InviteTest {
             Invite.parse("https://example.test/tahoe")
             error("expected fail")
         } catch (exc: InviteFail) {
-            assertTrue(exc.banner.contains("web URL") || exc.next.contains("web UI"))
+            assertEquals(Invite.WEB_URL_MSG, exc.banner)
         }
     }
 }

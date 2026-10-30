@@ -13,10 +13,33 @@ object Invite {
 
     const val ACK_MSG = "could not join this friendnet. The four points above are not acknowledged."
     const val ACK_NEXT = "check “I understand the four points above.”, then Join."
+
+    // Desktop share card label (src/leasegrid_sync/app.py). Pinned once here;
+    // tests/test_android_invite_copy.py checks it against the desktop widget.
+    const val SHOW_FULL_JOIN_LINK = "Show full join link"
+
+    const val TITLE = "Join a shared folder"
+    const val BODY =
+        "On your computer, open the share card in Leasegrid Sync and choose $SHOW_FULL_JOIN_LINK. Copy that link and paste it below."
+    const val INPUT_HINT = "Paste the full join link"
     const val WORMHOLE_MSG =
-        "could not join this friendnet. This phone does not take a short code."
+        "That's a short code. This phone can't use short codes yet. On your computer, choose $SHOW_FULL_JOIN_LINK, then paste that link here."
     const val WORMHOLE_NEXT =
-        "on desktop Sync, click Share invite, tick Show full join link (advanced), and paste that link here; Retry."
+        "Couldn't join with that link. On your computer, choose $SHOW_FULL_JOIN_LINK again, paste the new link here, and tap Retry."
+    const val GARBAGE_MSG =
+        "That isn't a join link. On your computer, choose $SHOW_FULL_JOIN_LINK, then copy and paste the whole link."
+    const val WEB_URL_MSG =
+        "That's the Sync web page address, not a join link. On your computer, choose $SHOW_FULL_JOIN_LINK and paste that link here."
+
+    /** Parse first. A failed parse never reaches [join]. */
+    inline fun <T> attempt(raw: String, fail: (InviteFail) -> T, join: (ParsedInvite) -> T): T {
+        val parsed = try {
+            parse(raw)
+        } catch (exc: InviteFail) {
+            return fail(exc)
+        }
+        return join(parsed)
+    }
 
     fun parse(raw: String): ParsedInvite {
         val text = raw.trim()
@@ -52,15 +75,9 @@ object Invite {
             if (frag.contains("i=") || frag.lowercase().contains("i%3d")) {
                 return fromFragment(frag)
             }
-            throw InviteFail(
-                "could not join this friendnet. That looks like a web URL.",
-                "Leasegrid Sync does not use the Tahoe web UI. Paste the full join link from desktop Sync.",
-            )
+            throw InviteFail(WEB_URL_MSG, WORMHOLE_NEXT)
         }
-        throw InviteFail(
-            "could not join this friendnet. Invite code invalid.",
-            "ask your inviter for a fresh full join link; Retry.",
-        )
+        throw InviteFail(GARBAGE_MSG, WORMHOLE_NEXT)
     }
 
     fun joinEnabled(acknowledged: Boolean, invite: String): Boolean {
@@ -97,10 +114,7 @@ object Invite {
     private fun validateFurl(raw: String): String {
         val text = raw.trim()
         if (!text.startsWith("pb://")) {
-            throw InviteFail(
-                "could not join this friendnet. Invite code invalid.",
-                "ask your inviter for a fresh full join link; Retry.",
-            )
+            throw InviteFail(GARBAGE_MSG, WORMHOLE_NEXT)
         }
         val rest = text.removePrefix("pb://")
         if (!rest.contains("/") || rest.length < 12) {

@@ -155,24 +155,23 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val text = inviteText
+        // A fail keeps inviteText in the field so the person can fix it.
         runGrid("Joining…") {
-            val parsed = try {
-                Invite.parse(text)
-            } catch (exc: InviteFail) {
-                show(FailBanner(exc.banner, exc.next)) { join() }
-                return@runGrid
+            Invite.attempt(
+                text,
+                fail = { exc: InviteFail -> show(FailBanner(exc.banner, exc.next)) { join() } },
+            ) { parsed ->
+                val learned = learn(parsed.furl) ?: return@attempt
+                val next = Session(
+                    introducerFurl = parsed.furl,
+                    shares = parsed.shares ?: listOf(2, 3, 3),
+                    folders = session?.folders ?: emptyList(),
+                    servers = learned,
+                )
+                store.save(next)
+                session = next
+                place = Place.Folders
             }
-            val learned = learn(parsed.furl)
-            if (learned == null) return@runGrid
-            val next = Session(
-                introducerFurl = parsed.furl,
-                shares = parsed.shares ?: listOf(2, 3, 3),
-                folders = session?.folders ?: emptyList(),
-                servers = learned,
-            )
-            store.save(next)
-            session = next
-            place = Place.Folders
         }
     }
 

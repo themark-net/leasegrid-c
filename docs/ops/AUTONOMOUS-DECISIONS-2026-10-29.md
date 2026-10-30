@@ -1,0 +1,3 @@
+# Autonomous decisions — 2026-10-29
+
+#50 option 1 (branch `build/invite-joinlink-50`): Design's exact copy, label pinned once as `Invite.SHOW_FULL_JOIN_LINK = "Show full join link"`; each fail shows the Design case line as the banner and `WORMHOLE_NEXT` as the Next line (short code, garbage, web URL); empty, no-address and malformed lines unchanged | add "(advanced)" to match the desktop checkbox exactly, or write a separate Next line per case | Design gave exact strings and one Next line; the desktop checkbox reads "Show full join link (advanced)", so the test accepts the label with or without that suffix and the mismatch goes back to Design

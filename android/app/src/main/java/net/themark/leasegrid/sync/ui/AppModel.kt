@@ -161,7 +161,11 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                 text,
                 fail = { exc: InviteFail -> show(FailBanner(exc.banner, exc.next)) { join() } },
             ) { parsed ->
-                val learned = learn(parsed.furl) ?: return@attempt
+                val learned = learn(parsed.furl) ?: run {
+                    // A real join attempt failed: now the Next line is WORMHOLE_NEXT.
+                    fail?.let { show(FailBanner(it.message, Invite.WORMHOLE_NEXT)) { join() } }
+                    return@attempt
+                }
                 val next = Session(
                     introducerFurl = parsed.furl,
                     shares = parsed.shares ?: listOf(2, 3, 3),

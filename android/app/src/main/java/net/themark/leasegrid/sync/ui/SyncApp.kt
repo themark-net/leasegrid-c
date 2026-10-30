@@ -456,7 +456,7 @@ private fun FailCard(model: AppModel) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("FAIL — ${banner.message}", fontWeight = FontWeight.SemiBold)
-            Text("Next: ${banner.next}")
+            failNextLine(banner.next)?.let { Text(it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { model.retryFail() }) { Text("Retry") }
                 OutlinedButton(onClick = { model.dismissFail() }) { Text("Dismiss") }

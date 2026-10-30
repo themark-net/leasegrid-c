@@ -3,8 +3,10 @@ package net.themark.leasegrid.sync.invite
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import net.themark.leasegrid.sync.ui.failNextLine
 
 // #50 option 1: the phone asks for the desktop's full join link. Pure JVM.
 class InviteCopyTest {
@@ -40,9 +42,10 @@ class InviteCopyTest {
 
     @Test
     fun screenCopyMatchesDesign() {
+        assertEquals("Show full join link (advanced)", Invite.SHOW_FULL_JOIN_LINK)
         assertEquals("Join a shared folder", Invite.TITLE)
         assertEquals(
-            "On your computer, open the share card in Leasegrid Sync and choose Show full join link. " +
+            "On your computer, open the share card in Leasegrid Sync and tick Show full join link (advanced). " +
                 "Copy that link and paste it below.",
             Invite.BODY,
         )
@@ -51,19 +54,21 @@ class InviteCopyTest {
 
     @Test
     fun failCopyMatchesDesign() {
-        val next = "Couldn't join with that link. On your computer, choose Show full join link again, " +
-            "paste the new link here, and tap Retry."
-        assertEquals(next, Invite.WORMHOLE_NEXT)
+        assertEquals(
+            "Couldn't join with that link. On your computer, tick Show full join link (advanced) again, " +
+                "paste the new link here, and tap Retry.",
+            Invite.WORMHOLE_NEXT,
+        )
         val garbage = failFor("not-a-code")
         assertEquals(
-            "That isn't a join link. On your computer, choose Show full join link, then copy and paste the whole link.",
+            "That isn't a join link. On your computer, tick Show full join link (advanced), " +
+                "then copy and paste the whole link.",
             garbage.banner,
         )
-        assertEquals(next, garbage.next)
         val web = failFor("https://example.test/tahoe")
         assertEquals(
-            "That's the Sync web page address, not a join link. On your computer, choose Show full join link " +
-                "and paste that link here.",
+            "That's the Sync web page address, not a join link. On your computer, " +
+                "tick Show full join link (advanced) and paste that link here.",
             web.banner,
         )
         // An i= value that is not an address is garbage too.
@@ -81,11 +86,30 @@ class InviteCopyTest {
         exc!!
         assertEquals(
             "That's a short code. This phone can't use short codes yet. On your computer, " +
-                "choose Show full join link, then paste that link here.",
+                "tick Show full join link (advanced), then paste that link here.",
             exc.banner,
         )
         assertNotEquals(Invite.GARBAGE_MSG, exc.banner)
-        assertEquals(Invite.WORMHOLE_NEXT, exc.next)
+    }
+
+    @Test
+    fun shortCodePasteRendersNoNextLineAndNeverJoins() {
+        var joinCalls = 0
+        val exc = Invite.attempt("7-guitarist-revenge", fail = { it }) {
+            joinCalls++
+            null
+        }!!
+        assertEquals(0, joinCalls)
+        assertNull("short code must render no Next line", failNextLine(exc.next))
+    }
+
+    @Test
+    fun garbageAndWebUrlRenderNoNextLine() {
+        for (raw in listOf("not-a-code", "#v=1&i=not-a-link", "https://example.test/tahoe")) {
+            assertNull(raw, failNextLine(failFor(raw).next))
+        }
+        // WORMHOLE_NEXT is for a real join attempt that failed; it does render.
+        assertEquals("Next: ${Invite.WORMHOLE_NEXT}", failNextLine(Invite.WORMHOLE_NEXT))
     }
 
     @Test
@@ -97,11 +121,12 @@ class InviteCopyTest {
     }
 
     @Test
-    fun everyFailLineNamesTheDesktopLabel() {
+    fun everyFailBannerNamesTheDesktopLabel() {
         for (raw in listOf("7-guitarist-revenge", "not-a-code", "https://example.test/tahoe")) {
             val exc = failFor(raw)
             assertTrue(exc.banner, exc.banner.contains(Invite.SHOW_FULL_JOIN_LINK))
-            assertTrue(exc.next, exc.next.contains(Invite.SHOW_FULL_JOIN_LINK))
         }
+        assertTrue(Invite.WORMHOLE_NEXT.contains(Invite.SHOW_FULL_JOIN_LINK))
+        assertTrue(Invite.BODY.contains(Invite.SHOW_FULL_JOIN_LINK))
     }
 }

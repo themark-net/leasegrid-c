@@ -14,22 +14,26 @@ object Invite {
     const val ACK_MSG = "could not join this friendnet. The four points above are not acknowledged."
     const val ACK_NEXT = "check “I understand the four points above.”, then Join."
 
-    // Desktop share card label (src/leasegrid_sync/app.py). Pinned once here;
+    // Desktop share card checkbox label, exact (src/leasegrid_sync/app.py).
     // tests/test_android_invite_copy.py checks it against the desktop widget.
-    const val SHOW_FULL_JOIN_LINK = "Show full join link"
+    const val SHOW_FULL_JOIN_LINK = "Show full join link (advanced)"
+
+    // Short code, garbage and web URL show no Next line (#50, Design).
+    // WORMHOLE_NEXT shows only after a real join attempt fails.
+    const val NO_NEXT = ""
 
     const val TITLE = "Join a shared folder"
     const val BODY =
-        "On your computer, open the share card in Leasegrid Sync and choose $SHOW_FULL_JOIN_LINK. Copy that link and paste it below."
+        "On your computer, open the share card in Leasegrid Sync and tick $SHOW_FULL_JOIN_LINK. Copy that link and paste it below."
     const val INPUT_HINT = "Paste the full join link"
     const val WORMHOLE_MSG =
-        "That's a short code. This phone can't use short codes yet. On your computer, choose $SHOW_FULL_JOIN_LINK, then paste that link here."
+        "That's a short code. This phone can't use short codes yet. On your computer, tick $SHOW_FULL_JOIN_LINK, then paste that link here."
     const val WORMHOLE_NEXT =
-        "Couldn't join with that link. On your computer, choose $SHOW_FULL_JOIN_LINK again, paste the new link here, and tap Retry."
+        "Couldn't join with that link. On your computer, tick $SHOW_FULL_JOIN_LINK again, paste the new link here, and tap Retry."
     const val GARBAGE_MSG =
-        "That isn't a join link. On your computer, choose $SHOW_FULL_JOIN_LINK, then copy and paste the whole link."
+        "That isn't a join link. On your computer, tick $SHOW_FULL_JOIN_LINK, then copy and paste the whole link."
     const val WEB_URL_MSG =
-        "That's the Sync web page address, not a join link. On your computer, choose $SHOW_FULL_JOIN_LINK and paste that link here."
+        "That's the Sync web page address, not a join link. On your computer, tick $SHOW_FULL_JOIN_LINK and paste that link here."
 
     /** Parse first. A failed parse never reaches [join]. */
     inline fun <T> attempt(raw: String, fail: (InviteFail) -> T, join: (ParsedInvite) -> T): T {
@@ -50,7 +54,7 @@ object Invite {
             )
         }
         if (wormhole.matches(text.lowercase())) {
-            throw InviteFail(WORMHOLE_MSG, WORMHOLE_NEXT)
+            throw InviteFail(WORMHOLE_MSG, NO_NEXT)
         }
         if (text.startsWith("pb://")) {
             return ParsedInvite("furl", validateFurl(text))
@@ -75,9 +79,9 @@ object Invite {
             if (frag.contains("i=") || frag.lowercase().contains("i%3d")) {
                 return fromFragment(frag)
             }
-            throw InviteFail(WEB_URL_MSG, WORMHOLE_NEXT)
+            throw InviteFail(WEB_URL_MSG, NO_NEXT)
         }
-        throw InviteFail(GARBAGE_MSG, WORMHOLE_NEXT)
+        throw InviteFail(GARBAGE_MSG, NO_NEXT)
     }
 
     fun joinEnabled(acknowledged: Boolean, invite: String): Boolean {
@@ -114,7 +118,7 @@ object Invite {
     private fun validateFurl(raw: String): String {
         val text = raw.trim()
         if (!text.startsWith("pb://")) {
-            throw InviteFail(GARBAGE_MSG, WORMHOLE_NEXT)
+            throw InviteFail(GARBAGE_MSG, NO_NEXT)
         }
         val rest = text.removePrefix("pb://")
         if (!rest.contains("/") || rest.length < 12) {

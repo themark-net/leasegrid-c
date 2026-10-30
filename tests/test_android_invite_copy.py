@@ -25,16 +25,16 @@ _FORBIDDEN = re.compile(r"pb://|furl|introducer|wormhole", re.IGNORECASE)
 # Design copy for #50 (exact).
 _DESIGN = {
     "TITLE": "Join a shared folder",
-    "BODY": "On your computer, open the share card in Leasegrid Sync and choose Show full join link. "
+    "BODY": "On your computer, open the share card in Leasegrid Sync and tick Show full join link (advanced). "
     "Copy that link and paste it below.",
     "INPUT_HINT": "Paste the full join link",
     "WORMHOLE_MSG": "That's a short code. This phone can't use short codes yet. On your computer, "
-    "choose Show full join link, then paste that link here.",
-    "GARBAGE_MSG": "That isn't a join link. On your computer, choose Show full join link, "
+    "tick Show full join link (advanced), then paste that link here.",
+    "GARBAGE_MSG": "That isn't a join link. On your computer, tick Show full join link (advanced), "
     "then copy and paste the whole link.",
     "WEB_URL_MSG": "That's the Sync web page address, not a join link. On your computer, "
-    "choose Show full join link and paste that link here.",
-    "WORMHOLE_NEXT": "Couldn't join with that link. On your computer, choose Show full join link again, "
+    "tick Show full join link (advanced) and paste that link here.",
+    "WORMHOLE_NEXT": "Couldn't join with that link. On your computer, tick Show full join link (advanced) again, "
     "paste the new link here, and tap Retry.",
 }
 
@@ -64,18 +64,32 @@ def test_invite_copy_matches_design():
 
 
 def test_show_full_join_link_matches_desktop_label():
-    """One pinned label, checked against the desktop share card (#50).
+    """One pinned label, exactly the desktop share card checkbox (#50).
 
-    Desktop is QCheckBox("Show full join link (advanced)"). Design's Android
-    copy names it without the "(advanced)" suffix.
+    Desktop: app.py line 1620, QCheckBox("Show full join link (advanced)").
     """
     label = _kotlin_const(INVITE.read_text(encoding="utf-8"), "SHOW_FULL_JOIN_LINK")
-    assert label == "Show full join link"
-    app = APP_PY.read_text(encoding="utf-8")
-    match = re.search(r'QtWidgets\.QCheckBox\("(%s[^"]*)"\)' % re.escape(label), app)
-    assert match, "desktop has no checkbox labelled %r" % label
-    assert match.group(1) in (label, label + " (advanced)")
-    assert 'QPushButton("Share invite")' in app
+    assert label == "Show full join link (advanced)"
+    lines = APP_PY.read_text(encoding="utf-8").splitlines()
+    match = re.search(r'QtWidgets\.QCheckBox\("([^"]*)"\)', lines[1620 - 1])
+    assert match, "app.py:1620 is not the share card checkbox"
+    assert match.group(1) == label
+
+
+def test_short_code_garbage_web_url_have_no_next_line():
+    text = INVITE.read_text(encoding="utf-8")
+    assert _kotlin_const(text, "NO_NEXT") == ""
+    for name in ("WORMHOLE_MSG", "GARBAGE_MSG", "WEB_URL_MSG"):
+        assert "InviteFail(%s, NO_NEXT)" % name in text, name
+    assert "WORMHOLE_NEXT)" not in text
+    ui = SYNC_APP.read_text(encoding="utf-8")
+    assert "failNextLine(banner.next)" in ui
+    assert 'Text("Next: ${banner.next}")' not in ui
+    model = APP_MODEL.read_text(encoding="utf-8")
+    start = model.index("    fun join() {")
+    body = model[start : model.index("\n    fun ", start + 1)]
+    # WORMHOLE_NEXT only after learn() (a real join attempt) fails.
+    assert body.index("learn(parsed.furl)") < body.index("Invite.WORMHOLE_NEXT")
 
 
 def test_screen_uses_design_copy_and_join_keeps_pasted_text():

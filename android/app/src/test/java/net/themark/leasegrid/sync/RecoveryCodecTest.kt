@@ -160,11 +160,10 @@ class InviteTest {
             Invite.parse("7-guitarist-revenge")
             error("expected fail")
         } catch (exc: InviteFail) {
-            assertTrue(exc.next.lowercase().contains("join link"))
-            // Desktop label pinned in Invite.SHOW_FULL_JOIN_LINK (#50).
-            assertTrue(exc.next, exc.next.contains(Invite.SHOW_FULL_JOIN_LINK))
+            // Desktop label pinned in Invite.SHOW_FULL_JOIN_LINK; no Next line (#50).
             assertEquals(Invite.WORMHOLE_MSG, exc.banner)
-            assertFalse(exc.next, exc.next.lowercase().contains("invite card"))
+            assertTrue(exc.banner, exc.banner.contains(Invite.SHOW_FULL_JOIN_LINK))
+            assertEquals("", exc.next)
             assertFalse(exc.next.lowercase().contains("pb://"))
             assertFalse(exc.next.lowercase().contains("furl"))
         }

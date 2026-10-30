@@ -125,3 +125,5 @@ Shipped behavior. Does not rewrite `10`–`59`.
 | File | Contents |
 |------|----------|
 | [60-DESKTOP-UI-V016.md](60-DESKTOP-UI-V016.md) | Settings logs and bug report, invite close, folder open, already-running hand-off, window geometry |
+
+Android Invite copy (#50): [61-ANDROID-INVITE-JOINLINK.md](61-ANDROID-INVITE-JOINLINK.md), join link copy, banned words, label pins.

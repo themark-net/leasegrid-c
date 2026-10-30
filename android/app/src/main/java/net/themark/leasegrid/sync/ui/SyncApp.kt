@@ -141,7 +141,7 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
         name = "join_button",
         enabled = joinOn,
         onClick = { model.join() },
-        label = if (model.busy) "Joining…" else "Join friendnet",
+        label = if (model.busy) "Joining…" else Invite.TITLE,
     )
     ProbeButton(
         name = "import_recovery_button",

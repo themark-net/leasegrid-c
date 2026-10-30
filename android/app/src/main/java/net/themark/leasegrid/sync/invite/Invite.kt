@@ -23,6 +23,7 @@ object Invite {
     // show no Next line (#50, Design). A failed learn() shows JOIN_FAILED_NEXT.
     const val NO_NEXT = ""
 
+    // Also the Join button label (Design, #50).
     const val TITLE = "Join a shared folder"
     const val BODY =
         "On your computer, click $SHARE_INVITE in Leasegrid Sync and tick $SHOW_FULL_JOIN_LINK. Copy that link and paste it below."
@@ -50,7 +51,7 @@ object Invite {
     const val REFRESH_FAILED_NEXT =
         "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry."
     // Shown only after the imported session was saved.
-    const val IMPORT_SAVED_MSG = "Folder names are on this phone. Couldn't reach your computer to finish."
+    const val IMPORT_SAVED_MSG = "Saved on this phone. Couldn't reach your computer to finish."
 
     /** Parse first. A failed parse never reaches [join]. */
     inline fun <T> attempt(raw: String, fail: (InviteFail) -> T, join: (ParsedInvite) -> T): T {

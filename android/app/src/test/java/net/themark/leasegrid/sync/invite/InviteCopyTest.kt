@@ -52,6 +52,11 @@ class InviteCopyTest {
         assertEquals("Share invite", Invite.SHARE_INVITE)
         assertEquals("Show full join link (advanced)", Invite.SHOW_FULL_JOIN_LINK)
         assertEquals("Join a shared folder", Invite.TITLE)
+        assertEquals("Saved on this phone. Couldn't reach your computer to finish.", Invite.IMPORT_SAVED_MSG)
+        assertEquals(
+            "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
+            Invite.REFRESH_FAILED_NEXT,
+        )
         assertEquals(
             "On your computer, click Share invite in Leasegrid Sync and tick Show full join link (advanced). " +
                 "Copy that link and paste it below.",

@@ -46,7 +46,7 @@ _DESIGN = {
     "JOIN_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, "
     "then tap Retry. If it still fails, copy the join link again from your computer and paste it here.",
     "REFRESH_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
-    "IMPORT_SAVED_MSG": "Folder names are on this phone. Couldn't reach your computer to finish.",
+    "IMPORT_SAVED_MSG": "Saved on this phone. Couldn't reach your computer to finish.",
 }
 
 _PARSE_FAILS = ("EMPTY_MSG", "WORMHOLE_MSG", "GARBAGE_MSG", "WEB_URL_MSG", "NO_ADDRESS_MSG", "MALFORMED_MSG")
@@ -169,3 +169,35 @@ def test_learn_rethrows_cancellation_and_done_matches_join_button():
     assert "KeyboardActions(onDone = { if (joinOn) model.join() })" in ui
     assert "enabled = joinOn," in ui
     assert ui.index("val joinOn =") < ui.index("onDone")
+
+
+def _invite_section(ui: str) -> str:
+    """SyncApp's Invite/join section: from the Invite title to the Welcome fail card."""
+    start = ui.index("    Text(Invite.TITLE")
+    return ui[start : ui.index("    FailCard(model)", start)]
+
+
+def test_syncapp_invite_section_passes_banned_word_guard():
+    """#50 surfaces in SyncApp: title, body, field, Join button, import link.
+
+    Scoped on purpose: older SyncApp copy outside this section (threat card,
+    Folders, write sheet, About) still says "friendnet"; that is a follow-up.
+    """
+    section = _invite_section(SYNC_APP.read_text(encoding="utf-8"))
+    literals = _LITERAL.findall(section)
+    assert "Joining…" in literals
+    assert not _banned(literals)
+    # The Join button reads the Invite title (Design: "Join a shared folder").
+    assert 'label = if (model.busy) "Joining…" else Invite.TITLE,' in section
+    assert _kotlin_const(INVITE.read_text(encoding="utf-8"), "TITLE") == "Join a shared folder"
+
+
+def test_introducer_unreachable_is_never_on_screen():
+    """The grid's "Introducer is unreachable" text only reaches Log.w (#50 B2)."""
+    main_java = INVITE.parents[5]  # android/app/src/main/java
+    hits = [
+        str(path.relative_to(main_java))
+        for path in main_java.rglob("*.kt")
+        if "introducer is unreachable" in path.read_text(encoding="utf-8").lower()
+    ]
+    assert hits == [], hits

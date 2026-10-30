@@ -179,7 +179,7 @@ class SessionFlowTest {
         }
         assertEquals("Photos", host.saved.single().folders.single().name)
         assertEquals(
-            FailBanner("Folder names are on this phone. Couldn't reach your computer to finish.", Invite.REFRESH_FAILED_NEXT),
+            FailBanner("Saved on this phone. Couldn't reach your computer to finish.", Invite.REFRESH_FAILED_NEXT),
             host.banner,
         )
         assertNoPaste(host)

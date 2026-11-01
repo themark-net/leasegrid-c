@@ -6,6 +6,18 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
+ * Unexpected grid failure. The exception class is for the log, not the card.
+ * Retry is the caller's job: it must run the same block again.
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun unexpectedGridCard(exc: Exception): FailBanner {
+    return FailBanner(
+        "could not complete that.",
+        "Retry. If it repeats, check the network and the invite.",
+    )
+}
+
+/**
  * One grid coroutine at a time.
  *
  * A newer [launch] or [cancel] bumps the ticket first. The older coroutine's

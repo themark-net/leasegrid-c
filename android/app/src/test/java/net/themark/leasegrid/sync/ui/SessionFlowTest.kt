@@ -144,6 +144,30 @@ class SessionFlowTest {
     }
 
     @Test
+    fun aMarkedPasteJoinsAndAMarksOnlyPasteRecoversOnRetry() {
+        val marked = Host("\uFEFF\u200B$link\u200B")
+        marked.answers.add(listOf(server))
+        SessionFlow(marked).join()
+        assertEquals(listOf(furl), marked.learnCalls)
+        assertEquals(1, marked.saved.size)
+        assertNull(marked.banner)
+        assertClean(marked)
+
+        val blank = Host("\u200B\uFEFF")
+        SessionFlow(blank).join()
+        assertEquals(Invite.EMPTY_MSG, blank.banner!!.message)
+        assertEquals(Invite.NO_NEXT, blank.banner!!.next)
+        assertTrue(blank.learnCalls.isEmpty())
+        assertTrue(blank.saved.isEmpty())
+        assertClean(blank)
+        blank.inviteText = link
+        blank.answers.add(listOf(server))
+        blank.retry!!.invoke()
+        assertEquals(listOf(furl), blank.learnCalls)
+        assertNull(blank.banner)
+    }
+
+    @Test
     fun retryAfterAParseFailUsesTheFieldAsItIsNow() {
         val host = Host("7-guitarist-revenge")
         host.answers.add(listOf(server))

@@ -9,7 +9,9 @@ data class ParsedInvite(
 class InviteFail(val banner: String, val next: String) : Exception(banner)
 
 object Invite {
-    private val wormhole = Regex("^[0-9]{1,3}(-[a-z0-9]+){2,}$")
+    // A real short code is a few words. Pastes longer than this are not one.
+    // The old regex overflowed the stack on a few KB of "-a" groups (#78).
+    private const val SHORT_CODE_MAX = 256
 
     const val ACK_MSG = "Read the four points above first."
     const val ACK_NEXT = "check “I understand the four points above.”, then Join."
@@ -68,7 +70,7 @@ object Invite {
         if (text.isEmpty()) {
             throw InviteFail(EMPTY_MSG, NO_NEXT)
         }
-        if (wormhole.matches(text.lowercase())) {
+        if (isShortCode(text)) {
             throw InviteFail(WORMHOLE_MSG, NO_NEXT)
         }
         if (text.startsWith("pb://")) {
@@ -127,6 +129,30 @@ object Invite {
             null
         }
         return ParsedInvite("url", validateFurl(furl), shares)
+    }
+
+    /** Linear stand-in for `^[0-9]{1,3}(-[a-z0-9]+){2,}$`. No backtracking. */
+    private fun isShortCode(text: String): Boolean {
+        if (text.length > SHORT_CODE_MAX) return false
+        val low = text.lowercase()
+        var i = 0
+        var digits = 0
+        while (i < low.length && low[i] in '0'..'9') {
+            digits++
+            if (digits > 3) return false
+            i++
+        }
+        if (digits == 0) return false
+        var groups = 0
+        while (i < low.length) {
+            if (low[i] != '-') return false
+            i++
+            val start = i
+            while (i < low.length && (low[i] in 'a'..'z' || low[i] in '0'..'9')) i++
+            if (i == start) return false
+            groups++
+        }
+        return groups >= 2
     }
 
     private fun validateFurl(raw: String): String {

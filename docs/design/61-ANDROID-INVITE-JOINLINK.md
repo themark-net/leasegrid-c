@@ -17,4 +17,4 @@ Strings:
 
 Tests: the banned-word guard covers every user-visible string. The desktop label test pins 'Share invite' and 'Show full join link (advanced)'. Pasting a short code shows its own message, with no Next line and no join attempt. With a fake unreachable desktop, the failure pair shows and Retry rejoins. Recover: if a desktop label drifts, the pin test fails before release.
 
-Guard scope today: Invite.kt, SessionFlow.kt, AppModel.learn() and the SyncApp Invite/join section; other legacy banners are tracked as a follow-up.
+Guard scope: Invite.kt, SessionFlow.kt, AppModel.learn(), and every string literal in SyncApp.kt. Phone chips say "Not in the shared folder yet" and "In the shared folder". Design packs 55-59 still use the older word; the phone follows this note.

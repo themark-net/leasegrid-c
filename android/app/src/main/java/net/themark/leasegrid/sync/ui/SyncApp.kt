@@ -55,7 +55,7 @@ import net.themark.leasegrid.sync.invite.Invite
 import net.themark.leasegrid.sync.recovery.SCARY_LOSS
 
 private val THREAT = listOf(
-    "Friendnet trust — unpaid by default. This is not Dropbox-the-company and not Filecoin.",
+    "Shared folder trust: unpaid by default. This is not Dropbox-the-company and not Filecoin.",
     "No storage proofs — dead nodes are dropped. This phone does not offer storage.",
     "Transport honesty — the invite may claim I2P or Tor. Reads may use LAN or WAN.",
     "Recovery — lose the recovery key and your devices and access can be gone forever. Import the same U4 recovery key. There is no reset password.",
@@ -225,7 +225,7 @@ private fun Folders(model: AppModel) {
     val folders = model.session?.folders.orEmpty()
     if (folders.isEmpty()) {
         Text("No folders yet.")
-        Text("Join reached this friendnet. Import a recovery key from desktop Sync to see folder names. This phone cannot invent folders.")
+        Text("Joined. Import a recovery key from Leasegrid Sync on your computer to see folder names. This phone cannot invent folders.")
         OutlinedButton(onClick = { model.goImport() }) { Text("Import recovery key…") }
     } else {
         folders.forEach { folder ->
@@ -349,7 +349,7 @@ private fun WriteSheetCard(model: AppModel) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Remove ${sheet.name} from ${sheet.folder} on the friendnet?",
+                        "Remove ${sheet.name} from ${sheet.folder} for every Sync computer?",
                         fontWeight = FontWeight.Medium,
                     )
                     Text("Other Sync computers will lose this copy.")
@@ -364,7 +364,7 @@ private fun WriteSheetCard(model: AppModel) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Discard ${sheet.name}?", fontWeight = FontWeight.Medium)
-                    Text("It is not on the friendnet yet.")
+                    Text("It is not in the shared folder yet.")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { model.confirmDiscard() }) { Text("Discard") }
                         OutlinedButton(onClick = { model.cancelSheet() }) { Text("Cancel") }
@@ -411,7 +411,7 @@ private fun About(model: AppModel) {
 @Composable
 private fun Settings(model: AppModel) {
     TextButton(onClick = { model.goFolders() }) { Text("← Settings") }
-    Text("Transport honesty: an invite may name I2P or Tor. File reads use the storage address the friendnet announced, which may be LAN or WAN. Loopback addresses are also tried via the emulator host alias.")
+    Text("Transport honesty: an invite may name I2P or Tor. File reads use the storage address this phone learned, which may be LAN or WAN. Loopback addresses are also tried via the emulator host alias.")
     Text(WriteCopy.DESKTOP_FOLDERS)
     Text("This phone can add a file to a folder it already shows. There is no write-sync setting here. Offer and Credit are not on this screen.")
     OutlinedButton(onClick = { model.clearDownloads() }, modifier = Modifier.fillMaxWidth()) {

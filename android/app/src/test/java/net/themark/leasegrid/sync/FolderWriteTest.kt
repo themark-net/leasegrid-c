@@ -13,6 +13,7 @@ import net.themark.leasegrid.sync.ui.directoryWritable
 import net.themark.leasegrid.sync.ui.keepBothName
 import net.themark.leasegrid.sync.ui.rowActions
 import net.themark.leasegrid.sync.ui.showPendingProgress
+import net.themark.leasegrid.sync.invite.bannedWords
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -21,8 +22,8 @@ import org.junit.Test
 
 /**
  * The chip is a product rule, not a label we assert against itself.
- * These fail if a write is marked On friendnet before acknowledge,
- * if discard pretends to be a friendnet remove, or if a read-only cap
+ * These fail if a write is marked in the shared folder before acknowledge,
+ * if discard pretends to remove a saved file, or if a read-only cap
  * is treated as writable.
  */
 class FolderWriteTest {
@@ -38,9 +39,9 @@ class FolderWriteTest {
         val row = board.visibleFiles(cap, emptyList()).single()
         assertEquals(Chip.Pending, row.chip)
         assertEquals(WriteCopy.PENDING, chipText(row))
-        assertEquals("Not on friendnet yet", chipText(row))
+        assertEquals("Not in the shared folder yet", chipText(row))
         assertFalse(chipText(row).contains("computer"))
-        assertFalse(chipText(row).contains("On friendnet"))
+        assertTrue(bannedWords(chipText(row)).isEmpty())
         assertTrue(row.progress <= 0.9f)
 
         assertTrue(board.acknowledge(cap, "receipt.pdf", pending.token))
@@ -48,8 +49,9 @@ class FolderWriteTest {
             cap,
             listOf(ChildRow("receipt.pdf", "file", "URI:CHK:abc:def:1:1:80", 80)),
         ).single()
-        assertEquals("On friendnet", chipText(landed))
+        assertEquals("In the shared folder", chipText(landed))
         assertFalse(chipText(landed).contains("computer"))
+        assertTrue(bannedWords(chipText(landed)).isEmpty())
     }
 
     @Test
@@ -124,7 +126,7 @@ class FolderWriteTest {
         assertFalse(row.failed)
         assertTrue(showPendingProgress(row))
         assertEquals(WriteCopy.PENDING, chipText(row))
-        assertEquals("Not on friendnet yet", chipText(row))
+        assertEquals("Not in the shared folder yet", chipText(row))
 
         assertTrue(board.noteSilence(cap, "lg44-live.txt", pending.token, ADD_SILENCE_MS))
         board.noteProgress(cap, "lg44-live.txt", 0.99f)
@@ -132,9 +134,9 @@ class FolderWriteTest {
         assertTrue(row.failed)
         assertFalse(showPendingProgress(row))
         assertEquals(Chip.Pending, row.chip)
-        assertEquals("Not on friendnet yet", chipText(row))
+        assertEquals("Not in the shared folder yet", chipText(row))
         assertFalse(chipText(row).contains("computer"))
-        assertFalse(chipText(row).startsWith("On friendnet"))
+        assertTrue(bannedWords(chipText(row)).isEmpty())
         assertEquals(listOf("Retry", "Cancel"), rowActions(writable = true, row))
 
         assertTrue(board.acknowledge(cap, "lg44-live.txt", pending.token))
@@ -142,7 +144,7 @@ class FolderWriteTest {
             cap,
             listOf(ChildRow("lg44-live.txt", "file", "URI:CHK:a:b:1:1:33", 33)),
         ).single()
-        assertEquals("On friendnet", chipText(landed))
+        assertEquals("In the shared folder", chipText(landed))
         assertEquals(listOf("Open", "Remove"), rowActions(writable = true, landed))
     }
 

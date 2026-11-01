@@ -138,6 +138,8 @@ _JOIN_READ_TIMEOUT_MS = 2000
 _INSTANCE_LOCK = None
 # Test drivers in tests/ set this before main(). An env var alone does nothing.
 _TEST_HOOKS = False
+# Set by the pre-window quit handler. A signal before the Qt loop used to kill us.
+_EARLY_QUIT = False
 
 
 def _test_env(name: str) -> str:
@@ -4042,6 +4044,66 @@ def _signal_names() -> tuple:
     return tuple(getattr(signal, name) for name in names if hasattr(signal, name))
 
 
+_EARLY_PREVIOUS = None
+
+
+def _arm_early_signal_quit() -> None:
+    """Catch a quit signal before the window handler exists.
+
+    ``_install_signal_quit`` runs only when the Qt loop is about to start.
+    A signal in that gap used to kill the process and leave the home lock.
+    The handler only sets a flag. The caller checks it on the main thread.
+    """
+    global _EARLY_QUIT, _EARLY_PREVIOUS
+    _EARLY_QUIT = False
+    if _EARLY_PREVIOUS is not None:
+        return
+
+    def _handler(signum, frame) -> None:
+        global _EARLY_QUIT
+        _EARLY_QUIT = True
+
+    previous = {}
+    for sig in _signal_names():
+        try:
+            previous[sig] = signal.signal(sig, _handler)
+        except (OSError, ValueError):
+            continue
+    _EARLY_PREVIOUS = previous
+
+
+def _disarm_early_signal_quit() -> None:
+    """Put back the handlers from before ``_arm_early_signal_quit``."""
+    global _EARLY_PREVIOUS
+    previous = _EARLY_PREVIOUS
+    _EARLY_PREVIOUS = None
+    if not previous:
+        return
+    for sig, prev in previous.items():
+        try:
+            signal.signal(sig, prev)
+        except (OSError, ValueError):
+            continue
+
+
+def _pause_when_early_signal_test_asks() -> None:
+    """Block only in a hooked test, until a quit signal or the deadline.
+
+    The path is LEASEGRID_TEST_EARLY_PAUSE. The test waits until that file
+    exists, then signals. Production never sets the hook, so it does not wait.
+    """
+    path = _test_env("LEASEGRID_TEST_EARLY_PAUSE")
+    if not path:
+        return
+    try:
+        Path(path).write_text("paused\n", encoding="utf-8")
+    except OSError:
+        return
+    deadline = time.time() + 15
+    while time.time() < deadline and not _EARLY_QUIT:
+        time.sleep(0.05)
+
+
 def _install_signal_quit(ui) -> None:
     """Wake the Qt loop when a quit signal arrives, then call ``ui.quit()``.
 
@@ -4139,29 +4201,42 @@ def run_app(
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     # One window per Sync home. Headless CLI commands never reach here.
-    if not acquire_instance_lock(default_home()):
-        _show_already_running()
-        return 0
-    ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
-    install_excepthook(ui)
-    ui.show()
-    ui.QtWidgets.QApplication.processEvents()
-    _start_join_server(ui)
+    _arm_early_signal_quit()
     try:
-        if invite:
-            # Headless join first (creates + starts the node); the modes below then
-            # attach to it as an existing node and quit stops what we started.
-            try:
-                ui.tahoe.join_invite(invite.strip(), offer_storage=offer_storage)
-            except SyncError as exc:
-                ui.show_join_error(exc)
-                if screenshot:
-                    ui.grab_to(screenshot)
-                print(exc.banner(), file=sys.stderr)
-                return 1
-        return _run_modes(ui, screenshot, dogfood_folder, credit_dogfood, credit_tier)
+        if not acquire_instance_lock(default_home()):
+            _show_already_running()
+            return 0
+        _pause_when_early_signal_test_asks()
+        if _EARLY_QUIT:
+            release_instance_lock()
+            return 0
+        ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
+        install_excepthook(ui)
+        if _EARLY_QUIT:
+            ui.shutdown()
+            return 0
+        ui.show()
+        ui.QtWidgets.QApplication.processEvents()
+        _start_join_server(ui)
+        try:
+            if _EARLY_QUIT:
+                return 0
+            if invite:
+                # Headless join first (creates + starts the node); the modes below then
+                # attach to it as an existing node and quit stops what we started.
+                try:
+                    ui.tahoe.join_invite(invite.strip(), offer_storage=offer_storage)
+                except SyncError as exc:
+                    ui.show_join_error(exc)
+                    if screenshot:
+                        ui.grab_to(screenshot)
+                    print(exc.banner(), file=sys.stderr)
+                    return 1
+            return _run_modes(ui, screenshot, dogfood_folder, credit_dogfood, credit_tier)
+        finally:
+            ui.shutdown()
     finally:
-        ui.shutdown()
+        _disarm_early_signal_quit()
 
 
 def _run_modes(
@@ -4171,6 +4246,8 @@ def _run_modes(
     credit_dogfood: bool,
     credit_tier: str,
 ) -> int:
+    if _EARLY_QUIT:
+        return 0
     if not (credit_dogfood or dogfood_folder is not None):
         # Window is visible first so a slow Tahoe start shows progress copy, not a blank desktop.
         ui._try_autoload()

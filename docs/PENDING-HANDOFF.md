@@ -360,3 +360,22 @@ python3 -m venv .venv && PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh
 
 `.venv` lives under the worktree. `.gitignore` line 4 is `.venv/`, so that directory is ignored. Do not commit it. Never run `ci-local` against `tahoe-venv`. This refresh did not run `scripts/ci-local.sh`.
 
+---
+
+## 2026-11-01, #78 and #80 F1 F2, Android invite paste (`bot/lg-78-invite-1031`)
+
+Not Feature GO. Not a release. No PR. No merge. No tag. Full write-up: [`ops/HANDOFF-lg-78-invite-1031.md`](ops/HANDOFF-lg-78-invite-1031.md).
+
+| | |
+|--|--|
+| **Branch** | `bot/lg-78-invite-1031` |
+| **Base** | `origin/main` @ `7ce0785691b925c4b2f0ef06f7cd3c7d2796386a` |
+| **#78 long paste** | `97ee7e6`. The short-code check is a linear scan. A paste longer than 256 characters is not a short code. A ~100 KB near-miss returns "That isn't a join link." and does not throw. |
+| **#78 cancel ghost** | Already on origin/main. Recorded in `4782d8a`. `AppModel.learn` rethrows cancellation, so a cancelled join does not paint "Couldn't reach your computer." This lane did not edit `AppModel.kt` or `SyncApp.kt`. |
+| **#80 F1** | `be0a398`. NUL, U+FFFD, whitespace (a decoded `+` or a newline), and a swissnum under 8 characters return "That join link is incomplete." A clean link still joins. Retry after the field is replaced reaches learn. |
+| **#80 F2** | `a9b1b38`. Leading or trailing U+200B or U+FEFF is stripped, including a mark decoded onto either end of the address. The link still joins. A paste of only those marks says "Paste the join link first." Retry with the real link joins. |
+| **Tests** | Gradle on the F1 commit: InviteCopyTest 15, SessionFlowTest 10, 0 failures. F2 red then green by direct JUnit: 27 tests, 0 failures after the fix. `tests/test_android_invite_copy.py`, 12 functions, 0 failures. |
+| **Not run** | Full `:app:testDebugUnitTest` and pregate. The heavy lock was held from 05:48Z by another lane's sleep loop. This lane did not signal that process. |
+| **Left for lg-80** | Busy flag, retry double tap, FlowHost tests, bad recovery file, legacy "friendnet" copy, design 61 wording. Do not edit `Invite.kt` from that lane. |
+| **Gate** | Tester plus Reviewer on this branch. |
+

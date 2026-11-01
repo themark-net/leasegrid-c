@@ -48,3 +48,27 @@ Rubric for the one review pass (pass/fail, not a score):
 ## exits
 
 - state: DONE | tests: none (log only) | files: docs/ops/RUN-LOG-lg-77-design-1031.md | err: none
+
+## design-77
+
+- design-77 | a251f92426dd74d7ef4cbf99f2ff4a551b430858 | tests: none (docs only, no behavior code) | result: docs/design/77-ANDROID-INVITE-OPTION2.md pushed on bot/lg-77-design-1031
+- state: DONE | tests: none | files: docs/design/77-ANDROID-INVITE-OPTION2.md, docs/ops/AUTONOMOUS-DECISIONS-lg-77-design-1031.md, docs/ops/RUN-LOG-lg-77-design-1031.md | err: none
+- Host at item start: MemAvailable about 45 GiB, load about 2.7 on 32 cores. Wall clock 2026-11-01T02:40Z, inside the 8 hour cap from the drop-in commit at 2026-10-31 19:33 -0700. Runner.Worker was present at launch and absent at the item check. No suite was run either way.
+
+## review-77
+
+One lead pass against rubric R1-R8. Fixes are in a251f92 (applied before that commit was pushed). No second product item.
+
+Findings fixed:
+- Pip caps were written as HTML entities. They now say "below".
+- Empty-field copy still told the person to paste a join link only. It now accepts a short code or a link, and names the test pin that must change.
+- The nobody-answered arm must inject a short budget. It must not assert that a constant equals 120 by reading it back.
+- A second redeem is a fresh client. Folders has no invite field, so it is not a second tap on that screen.
+- Join is also disabled while busy. The helper is `joinControlEnabled` in `DogfoodProbe.kt`.
+- PyNaCl sizes are two published 1.5.0 manylinux wheels (680.1 kB aarch64, 1.1 MB x86_64), not an APK delta.
+- The share dialog's Done button does not stop `tahoe invite`. Expire by quitting Sync or killing that process. `shutdown` is what calls `InviteCodeSession.close`.
+- Ops titles had an em dash. Replaced.
+
+Re-read after those edits: R1 through R8 hold. No further doc change. The share-card QR fact, Chaquopy recommendation, four fail strings, privacy split, and desktop-to-phone E2E are all in the file.
+
+- review-77 | (this commit) | tests: none (re-read only) | result: pass, fixes already in a251f92

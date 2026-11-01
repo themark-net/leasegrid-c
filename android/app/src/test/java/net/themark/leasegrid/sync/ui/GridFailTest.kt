@@ -17,6 +17,19 @@ class GridFailTest {
     }
 
     @Test
+    fun downloadFailureDoesNotNameTheExceptionClass() {
+        val next = downloadFailNext(IllegalStateException("boom"))
+        assertEquals("check network / free space; Retry.", next)
+        assertFalse(next.contains("IllegalStateException"))
+        val model = appModelSource()
+        val start = model.indexOf("fun download(")
+        val end = model.indexOf("fun cancelDownload()", start)
+        val body = model.substring(start, end)
+        assertTrue(body.contains("downloadFailNext(exc)"))
+        assertFalse(body.contains("Retry. (\${"))
+    }
+
+    @Test
     fun oneRetryRerunsTheBlockAndASecondTapDoesNot() {
         val body = runGridBody()
         assertTrue(
@@ -41,19 +54,19 @@ class GridFailTest {
     }
 }
 
-private fun runGridBody(): String {
+private fun appModelSource(): String {
     var dir: java.io.File? = java.io.File(System.getProperty("user.dir") ?: ".")
-    var text = ""
     repeat(6) {
         val here = dir ?: return@repeat
         val candidate = java.io.File(here, "src/main/java/net/themark/leasegrid/sync/ui/AppModel.kt")
-        if (candidate.isFile) {
-            text = candidate.readText()
-            return@repeat
-        }
+        if (candidate.isFile) return candidate.readText()
         dir = here.parentFile
     }
-    if (text.isEmpty()) error("AppModel.kt not found from ${System.getProperty("user.dir")}")
+    error("AppModel.kt not found from ${System.getProperty("user.dir")}")
+}
+
+private fun runGridBody(): String {
+    val text = appModelSource()
     val start = text.indexOf("    private fun runGrid(")
     val end = text.indexOf("    private fun mimeFor(", start)
     return text.substring(start, end)

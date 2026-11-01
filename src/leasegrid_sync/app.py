@@ -268,6 +268,33 @@ def _lock_writer_grace() -> None:
 _LOCK_PIDLESS_MAX_AGE_S = 2.0
 
 
+def _clear_unusable_lock(path: Path) -> None:
+    """Remove an owned lock path Qt cannot take, once it is past the 2s gate.
+
+    A directory, or a file with no permission bits, makes tryLock fail on
+    every launch, and the window then says already running. A young path is
+    left alone so a starter can finish writing. A non-empty directory is left
+    alone. A path owned by someone else is left alone.
+    """
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+    if hasattr(os, "getuid") and st.st_uid != os.getuid():
+        return
+    if time.time() - st.st_mtime < _LOCK_PIDLESS_MAX_AGE_S:
+        return
+    try:
+        if stat.S_ISDIR(st.st_mode):
+            os.rmdir(path)
+        elif stat.S_ISREG(st.st_mode) and (st.st_mode & 0o777) == 0:
+            os.unlink(path)
+    except OSError:
+        return
+
+
 def acquire_instance_lock(home: Path) -> bool:
     """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
 
@@ -288,6 +315,7 @@ def acquire_instance_lock(home: Path) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         return True
+    _clear_unusable_lock(path)
     lock = QLockFile(str(path))
     lock.setStaleLockTime(int(_LOCK_PIDLESS_MAX_AGE_S * 1000))
     if not lock.tryLock(0):

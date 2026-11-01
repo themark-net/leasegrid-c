@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -361,6 +362,76 @@ def test_empty_lock_past_the_age_threshold_relaunches_quickly(tmp_path: Path, mo
     started = time.monotonic()
     _recovered(monkeypatch, home)
     assert time.monotonic() - started < 5
+
+
+def _age_seconds(path: Path, seconds: float) -> None:
+    past = time.time() - seconds
+    os.utime(path, (past, past))
+
+
+def test_old_empty_lock_directory_is_replaced(tmp_path: Path, monkeypatch) -> None:
+    """A directory where the lock file should be is not a live instance.
+
+    Qt cannot lock it, so every launch used to say already running. Past the
+    2s gate an empty directory we own is removed and the launch proceeds.
+    A non-empty directory stays, and the launch still refuses.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.mkdir()
+    _age_seconds(lock, 5)
+    _recovered(monkeypatch, home)
+    assert not lock.is_dir()
+
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    blocked_lock = instance_lock_path(blocked)
+    blocked_lock.mkdir()
+    (blocked_lock / "keep").write_text("keep\n", encoding="utf-8")
+    _age_seconds(blocked_lock, 5)
+    started = time.monotonic()
+    _refused(monkeypatch, blocked)
+    assert time.monotonic() - started < 5
+    assert (blocked_lock / "keep").is_file()
+
+
+def test_old_mode_000_lock_is_replaced_and_a_young_one_is_not(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A mode 000 lock file cannot be read, so it is not a live PID.
+
+    Past 2s it is removed and the launch proceeds. Younger than 2s it stays,
+    so a starter that is still writing is not deleted.
+    """
+    if os.name == "nt":
+        pytest.skip("mode 000 does not hide a file from its owner on Windows")
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    os.chmod(lock, 0)
+    try:
+        _age_seconds(lock, 5)
+        _recovered(monkeypatch, home)
+    finally:
+        if lock.exists():
+            os.chmod(lock, 0o644)
+
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    fresh_lock = instance_lock_path(fresh)
+    fresh_lock.write_bytes(b"")
+    os.chmod(fresh_lock, 0)
+    try:
+        started = time.monotonic()
+        _refused(monkeypatch, fresh)
+        assert time.monotonic() - started < 5
+        assert fresh_lock.exists()
+        assert stat.S_IMODE(fresh_lock.stat().st_mode) == 0
+    finally:
+        if fresh_lock.exists():
+            os.chmod(fresh_lock, 0o644)
 
 
 def test_foreign_host_lock_older_than_stale_time_is_recovered(tmp_path: Path, monkeypatch) -> None:

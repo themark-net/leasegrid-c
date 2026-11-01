@@ -47,3 +47,7 @@ bad recovery file | c64c043 | :app:testDebugUnitTest --tests RecoveryCodecTest |
 legacy copy | 9b7bbed | FolderWriteTest | red: chip was "On friendnet", expected "Not in the shared folder yet"; green: 7 tests, 0 failures
 FlowHost pins | 1a12026 | tests/test_android_invite_copy.py test_appmodel_flowhost_delegates_exactly | red: inviteText = "" failed the pin; green: pass
 banned-word guard | 1a12026 | tests/test_android_invite_copy.py test_syncapp_passes_banned_word_guard | red: Friendnet trust literal listed; green: pass
+generic Retry | d065a2c | :app:testDebugUnitTest --tests GridFailTest | red: card was "could not complete that. IllegalStateException" and Retry did not call runGrid; green: 2 tests, 0 failures
+download class name | 642a416 | GridFailTest.downloadFailureDoesNotNameTheExceptionClass and full :app:testDebugUnitTest | red: expected "Retry." but was "Retry. (IllegalStateException)"; green: 53 tests, 0 failures
+
+state: lane empty | named items and the download class-name gap are pushed. Full Android unit tests 53 passed, 0 failed. Pregate not run: heavy lock held by another lane's sleep. No further gap in AppModel, SyncApp, or FolderWrite that fits without a new product choice.

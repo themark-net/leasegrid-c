@@ -50,3 +50,9 @@ Harden Android invite paste parsing in Invite.kt. Bound or replace the short-cod
 - The ghost banner lives in AppModel and SyncApp. Editing those files would cross a lane. Leave them.
 
 Host at launch: MemAvailable about 55 GiB, 32 cores, load about 3.9. Under the pressure line.
+
+## Items
+
+exits | 7404b94 | none | pushed
+78-long-paste | 97ee7e6 | red first: InviteCopyTest.aHundredKilobytePasteDoesNotOverflowAndStaysAPlainError threw StackOverflowError (Pattern.java). After: :app:testDebugUnitTest --tests InviteCopyTest, 14 tests, 0 failures, 100KB case 0.004s. Python tests/test_android_invite_copy.py 12 functions ok. | pass
+78-ghost | none | already on origin/main: AppModel.learn rethrows CancellationException, keyboard Done uses joinOn (includes busy), SessionFlow.learnOrNull rethrows. Evidence: tests/test_android_invite_copy.py test_learn_rethrows_cancellation_and_done_matches_join_button passed on this tree; SessionFlowTest.aCancelledJoinPaintsNothing. Not re-edited. AppModel.kt and SyncApp.kt stay with lane lg-80. | already done

@@ -1,0 +1,13 @@
+# Autonomous decisions: lg-77-design-1031
+
+One line each. Choice, alternatives, why. Conservative and reversible.
+
+- 2026-10-31 | Lead writes the design doc and does one self review. Alternatives: bundled design skill writer/reviewer loop until zero issues, or a second subagent. Why: the drop-in caps the lane at one review pass of the lead's own and forbids questions. The bundled design skill asks the user and has no iteration cap.
+- 2026-10-31 | No project-map spawn. Alternatives: spawn project-map at start. Why: the owned files are the design doc, this decisions file, the run log, and the handoff. A map would add files outside the lane.
+- 2026-10-31 | Repo skills `write-loop-exits-first` and `repo-handoff-doc-required` were not on disk under ~/.grok/skills or this worktree's .grok/skills. Alternatives: block until the files appear. Why: the drop-in already states both behaviors (exit card before work, handoff in docs/ops/). Follow those. Do not invent skill bodies.
+- 2026-10-31 | Gate recorded as operator pregate plus Reviewer (docs). Alternatives: Tester plus Reviewer. Why: no behavior code. The drop-in scope line says Reviewer (docs). The finish rule adds pregate for docs. This lane does not run scripts/pregate.sh.
+- 2026-10-31 | Recommend short-code redeem first, no camera in that slice. Alternatives: QR-of-join-link first, or both in one slice. Why: the share card QR is the short code (`InviteSharePanel._paint_qr`), and `Invite.parse` already refuses that text. A join-link QR would publish the long-lived address #32 kept behind the advanced checkbox. Option 1 paste stays the recovery.
+- 2026-10-31 | Mailbox client runs in the existing Chaquopy 3.11, then the current `learn(furl)`. Alternatives: a native protocol port, or shipping `tahoe` in the APK. Why: desktop already redeems by shelling out to Tahoe 1.20, which this phone does not have. A native port is a new protocol and needs an ADR. Not invented here.
+- 2026-10-31 | Phone redeem uses Tahoe 1.20's default relay and appid when unset, and the same 120s budget as `WORMHOLE_JOIN_TIMEOUT`. Alternatives: a new phone setting, or the 25s `learn` timeout. Why: the code does not carry the relay, and a short learn timeout would fail live invites. A private relay is a lab inject, not a new screen.
+- 2026-10-31 | Do not edit `docs/design/README.md` or `docs/PENDING-HANDOFF.md`. Alternatives: add an index row. Why: those files are shared status docs. This lane's owned deliverable is the design file plus its ops notes.
+- 2026-10-31 | Do not edit `Invite.kt`. Alternatives: sketch the parse change in code. Why: `bot/lg-78-invite-1031` owns `Invite.kt` for #78 and #80. This lane is design only.

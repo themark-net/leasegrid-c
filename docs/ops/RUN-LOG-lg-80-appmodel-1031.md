@@ -42,3 +42,4 @@ Check before every item: wall clock, MemAvailable, load.
 ## Items
 
 F4 busy gate | f401a80 | :app:testDebugUnitTest --tests GridRunTest | red: older finally cleared busy while the newer job was still running (main=0 io=1); green: 2 tests, 0 failures
+retryFail once | 724982c | :app:testDebugUnitTest --tests RetryOnceTest | red: a second tap ran the action again (pull did not clear); before the wire, retryFail invoked the stored field; green: 3 tests, 0 failures. Targeted Gradle outside the deadlocked heavy lock, decision logged.

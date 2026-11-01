@@ -216,6 +216,30 @@ class InviteCopyTest {
     }
 
     @Test
+    fun dirtyFurlsAreIncompleteAndACleanLinkStillJoins() {
+        val good = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        val cases = listOf(
+            "pb://hash%00hash@127.0.0.1:45001/swissnumswiss",
+            good.replace("hashhash", "hash\uFFFDhash"),
+            "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swiss+numswiss",
+            "pb://hashhashhash@127.0.0.1:45001/swiss\nnumswiss",
+            "pb://hashhashhash@127.0.0.1:45001/",
+            "pb://hashhashhash@127.0.0.1:45001/ab",
+            "leasegrid:join#v=1&i=pb%3A%2F%2Fhash%00hash%40127.0.0.1%3A45001%2Fswissnumswiss",
+            "leasegrid:join#v=1&i=pb%3A%2F%2Fhash%FFhash%40127.0.0.1%3A45001%2Fswissnumswiss",
+        )
+        for (raw in cases) {
+            val exc = failFor(raw)
+            assertEquals(raw.take(48), Invite.MALFORMED_MSG, exc.banner)
+            assertEquals(Invite.NO_NEXT, exc.next)
+            assertFalse(exc.banner, exc.banner.contains("Exception"))
+            assertTrue(exc.banner, bannedWords(exc.banner).isEmpty())
+        }
+        val parsed = Invite.attempt(good, fail = { error(it.banner) }) { it }
+        assertEquals(good, parsed.furl)
+    }
+
+    @Test
     fun aJoinLinkStillReachesJoin() {
         val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"
         var joined: ParsedInvite? = null

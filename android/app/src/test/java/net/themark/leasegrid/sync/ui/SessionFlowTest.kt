@@ -126,6 +126,24 @@ class SessionFlowTest {
     }
 
     @Test
+    fun retryAfterAMalformedPasteJoinsTheCorrectedLink() {
+        val host = Host("pb://hashhashhash@127.0.0.1:45001/")
+        host.answers.add(listOf(server))
+        val flow = SessionFlow(host)
+        flow.join()
+        assertEquals(Invite.MALFORMED_MSG, host.banner!!.message)
+        assertEquals(Invite.NO_NEXT, host.banner!!.next)
+        assertTrue("a broken link must not reach learn", host.learnCalls.isEmpty())
+        assertTrue(host.saved.isEmpty())
+        host.inviteText = link
+        host.retry!!.invoke()
+        assertEquals(listOf(furl), host.learnCalls)
+        assertEquals(1, host.saved.size)
+        assertNull(host.banner)
+        assertClean(host)
+    }
+
+    @Test
     fun retryAfterAParseFailUsesTheFieldAsItIsNow() {
         val host = Host("7-guitarist-revenge")
         host.answers.add(listOf(server))

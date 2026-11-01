@@ -71,4 +71,10 @@ Findings fixed:
 
 Re-read after those edits: R1 through R8 hold. No further doc change. The share-card QR fact, Chaquopy recommendation, four fail strings, privacy split, and desktop-to-phone E2E are all in the file.
 
-- review-77 | (this commit) | tests: none (re-read only) | result: pass, fixes already in a251f92
+- review-77 | b0196ca624f4b2e482788e8365dbc074cfe5a7ed | tests: none (re-read only) | result: pass, fixes already in a251f92
+
+## handoff
+
+- state: lane empty | tests: none (docs only; no suite, pregate not run) | files: design doc, run log, decisions, handoff | err: none
+- Exit: lane empty. Doc plus one review are pushed. No further item fits this lane.
+- Wall at finish: still inside 8 hours from 2026-10-31 19:33 -0700, and before 2026-11-02T02:00Z.

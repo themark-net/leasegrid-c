@@ -177,12 +177,47 @@ def _invite_section(ui: str) -> str:
     return ui[start : ui.index("    FailCard(model)", start)]
 
 
-def test_syncapp_invite_section_passes_banned_word_guard():
-    """#50 surfaces in SyncApp: title, body, field, Join button, import link.
+def _flow_host(model: str) -> str:
+    start = model.index("object : FlowHost {")
+    end = model.index("\n    })", start)
+    return model[start:end]
 
-    Scoped on purpose: older SyncApp copy outside this section (threat card,
-    Folders, write sheet, About) still says "friendnet"; that is a follow-up.
+
+def test_appmodel_flowhost_delegates_exactly():
+    """SessionFlow's fake host does not catch a broken AppModel delegation.
+
+    Tester mutants M4c, J4a, J1c, N4b and N4d survived because these one-liners
+    were untested. The bodies were not in the repo, so each delegation is pinned.
     """
+    host = _flow_host(APP_MODEL.read_text(encoding="utf-8"))
+    # J1c: the setter stores the typed text. Clearing it is a different line.
+    assert "set(value) { this@AppModel.inviteText = value }" in host
+    assert 'inviteText = ""' not in host
+    assert "get() = this@AppModel.session" in host
+    # J4a: launch is runGrid with the same label and block.
+    assert (
+        "override fun launch(label: String, block: suspend () -> Unit) = runGrid(label, block)"
+        in host
+    )
+    # N4b: learn returns the model's result, not null.
+    assert (
+        "override suspend fun learn(furl: String): List<ServerRef>? = this@AppModel.learn(furl)"
+        in host
+    )
+    # N4d: save writes the store, adopts the session, and opens Folders.
+    assert "store.save(next)" in host
+    assert "this@AppModel.session = next" in host
+    assert "place = Place.Folders" in host
+    # M4c: show forwards the Retry action. An empty lambda would drop it.
+    assert (
+        "override fun show(banner: FailBanner, again: () -> Unit) = this@AppModel.show(banner, again)"
+        in host
+    )
+    assert "show(banner, {})" not in host
+
+
+def test_syncapp_invite_section_passes_banned_word_guard():
+    """#50 surfaces in SyncApp: title, body, field, Join button, import link."""
     section = _invite_section(SYNC_APP.read_text(encoding="utf-8"))
     literals = _LITERAL.findall(section)
     assert "Joining…" in literals
@@ -190,6 +225,27 @@ def test_syncapp_invite_section_passes_banned_word_guard():
     # The Join button reads the Invite title (Design: "Join a shared folder").
     assert 'label = if (model.busy) "Joining…" else Invite.TITLE,' in section
     assert _kotlin_const(INVITE.read_text(encoding="utf-8"), "TITLE") == "Join a shared folder"
+
+
+def test_syncapp_passes_banned_word_guard():
+    """Every user-visible literal in SyncApp, not only the Invite section.
+
+    The threat card, empty Folders line, remove sheet, discard sheet, and
+    transport line used to say friendnet. A regression puts the word back.
+    """
+    text = SYNC_APP.read_text(encoding="utf-8")
+    literals = _LITERAL.findall(text)
+    assert not _banned(literals), _banned(literals)
+    joined = (
+        "Joined. Import a recovery key from Leasegrid Sync on your computer to see folder names. "
+        "This phone cannot invent folders."
+    )
+    trust = "Shared folder trust: unpaid by default. This is not Dropbox-the-company and not Filecoin."
+    assert trust in literals
+    assert joined in literals
+    assert "It is not in the shared folder yet." in literals
+    assert "Remove ${sheet.name} from ${sheet.folder} for every Sync computer?" in literals
+    assert "the storage address this phone learned" in text
 
 
 def test_introducer_unreachable_is_never_on_screen():

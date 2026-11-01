@@ -75,3 +75,5 @@ Continuation queue (named "Deferred to v0.1.8" / "v0.1.8 candidates" in docs/HAN
 - lock path is a directory or mode 000 | acee332 | pytest the two new tests plus fresh-empty, aged-empty, and foreign-host: 5 passed. RED before the clear: _run_modes call_count 0 on both new tests | result: pass
 - foreign-host lock at 2s | none | probe tmp/probe-lock.py: foreign-5s ok=True 0.001s | result: already fixed on origin/main
 - state: lane empty | tests: targeted modules above, pregate not run: host busy | files: app.py, test_tester_pages.py, test_sync_early_signal.py, test_sync_instance_lock.py, this log, the decisions file, the handoff | err: none
+- resume 2026-10-31T20:23-0700 | none | pytest tests/test_tester_pages.py tests/test_sync_early_signal.py tests/test_sync_already_running.py tests/test_sync_signal_quit.py tests/test_sync_instance_lock.py: 48 passed in 84.30s | result: lane still empty. No new sourced row is code or docs and specified.
+- state: lane empty | tests: 48 passed in 84.30s, pregate not run: host busy | files: this log, the handoff, the decisions file | err: none

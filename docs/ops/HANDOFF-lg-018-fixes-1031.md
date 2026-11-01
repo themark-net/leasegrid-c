@@ -6,6 +6,8 @@ Run log: [`RUN-LOG-lg-018-fixes-1031.md`](RUN-LOG-lg-018-fixes-1031.md). Decisio
 
 Exit: lane empty. The sourced rows are fixed, parked, or need signing keys. The deferred rows that had a written behavior are fixed or were already on origin/main. What is left needs a design, Windows, or Mark.
 
+Resume 2026-10-31 20:23 PT: the same lists were read again (HANDOFF-v0.1.8 Reviewer B1, v0.1.8 and v0.1.9 Known issues, HANDOFF-v0.1.9, and the v0.1.7 "Deferred to v0.1.8" list). No new row is code or docs, autonomous, and specified. `nice -n 19 .venv/bin/python -m pytest tests/test_tester_pages.py tests/test_sync_early_signal.py tests/test_sync_already_running.py tests/test_sync_signal_quit.py tests/test_sync_instance_lock.py` returned 48 passed in 84.30s. Pregate not run: host busy. `pgrep -f 'Runner[.]Worker'` was not empty, and the heavy lock was held.
+
 ## Item table
 
 | Item | Source | Status at origin/main | Fix SHA | Test |

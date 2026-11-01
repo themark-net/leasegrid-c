@@ -19,8 +19,10 @@ _TAG = re.compile(r"/releases/tag/v(\d+\.\d+\.\d+)")
 # Common "these links work only after the tag" caveat phrasings (PR #71 review
 # T4: "These links work once v0.1.4 is tagged." passed the old guard). This is
 # a keyword guard, not a proof: it catches the phrasings listed in
-# test_caveat_guard_catches_known_rewordings, and a caveat that avoids those
-# words (e.g. "Coming soon") still passes (PR #72 review follow-up 3).
+# test_caveat_guard_catches_known_rewordings. A sentence that avoids those
+# words can still pass (PR #72 review follow-up 3). The three v0.1.8 examples
+# ("Coming soon", "available shortly after release", "may not work until CI
+# publishes them") are in that list.
 _LINK_TARGETS = re.compile(r"\]\([^)]*\)|<https?://[^>]*>|https?://\S+")
 _TAGWORD = r"(?:tag\w*|publish\w*|releas\w*|push\w*|cut)"
 # Up to 60 chars inside one sentence; a dot inside "v0.1.4" does not end it.
@@ -31,6 +33,11 @@ _CAVEAT = (
     re.compile(r"\b(?:until|after|when)\b" + _SPAN + r"\btag\w*\b", re.IGNORECASE),
     re.compile(r"\b404\b"),
     re.compile(r"\bnot\s+(?:yet\s+)?(?:live|available|published|released|tagged|up)\b", re.IGNORECASE),
+    # v0.1.8 candidates the keyword list missed. Each phrase is enough on its own.
+    re.compile(r"\bcoming soon\b", re.IGNORECASE),
+    re.compile(r"\bshortly\b" + _SPAN + r"\b(?:releas\w*|publish\w*)\b", re.IGNORECASE),
+    re.compile(r"\bmay not work\b", re.IGNORECASE),
+    re.compile(r"\buntil\b" + _SPAN + r"\bci\b" + _SPAN + r"\bpublish\w*", re.IGNORECASE),
 )
 
 
@@ -56,6 +63,11 @@ def test_tester_page_has_no_resolve_once_tagged_caveat(page: str) -> None:
         "Downloads return 404 until the tag exists.",
         "Links are not yet live.",
         "They will start working after tagging.",
+        "Coming soon.",
+        "Downloads will be available shortly after release.",
+        "The installers may not work until CI publishes them.",
+        "The build may not work on a new laptop.",
+        "Wait until CI publishes them.",
     ],
 )
 def test_caveat_guard_catches_known_rewordings(caveat: str) -> None:

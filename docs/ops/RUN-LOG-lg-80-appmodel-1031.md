@@ -44,3 +44,6 @@ Check before every item: wall clock, MemAvailable, load.
 F4 busy gate | f401a80 | :app:testDebugUnitTest --tests GridRunTest | red: older finally cleared busy while the newer job was still running (main=0 io=1); green: 2 tests, 0 failures
 retryFail once | 724982c | :app:testDebugUnitTest --tests RetryOnceTest | red: a second tap ran the action again (pull did not clear); before the wire, retryFail invoked the stored field; green: 3 tests, 0 failures. Targeted Gradle outside the deadlocked heavy lock, decision logged.
 bad recovery file | c64c043 | :app:testDebugUnitTest --tests RecoveryCodecTest | red: badRecoveryFileFailsClosed threw IllegalArgumentException "is not a JsonObject"; green: 5 tests, 0 failures
+legacy copy | 9b7bbed | FolderWriteTest | red: chip was "On friendnet", expected "Not in the shared folder yet"; green: 7 tests, 0 failures
+FlowHost pins | 1a12026 | tests/test_android_invite_copy.py test_appmodel_flowhost_delegates_exactly | red: inviteText = "" failed the pin; green: pass
+banned-word guard | 1a12026 | tests/test_android_invite_copy.py test_syncapp_passes_banned_word_guard | red: Friendnet trust literal listed; green: pass

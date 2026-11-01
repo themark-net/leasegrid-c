@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import net.themark.leasegrid.sync.invite.Invite
 import net.themark.leasegrid.sync.invite.InviteFail
+import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.ImportFail
 import net.themark.leasegrid.sync.recovery.RecoveryCodec
 import net.themark.leasegrid.sync.session.Session
@@ -60,6 +61,27 @@ class RecoveryCodecTest {
             error("expected fail")
         } catch (exc: ImportFail) {
             assertTrue(exc.banner.startsWith("could not import"))
+        }
+    }
+
+    @Test
+    fun badRecoveryFileFailsClosed() {
+        // A damaged file must be the import card, never a raw parser exception.
+        // Retry stays available. Nothing here returns a bundle.
+        val samples = listOf(
+            "this is not a recovery file".toByteArray(),
+            """{"leasegrid-recovery":1,"encrypted":false,"bundle":"not-a-bundle"}""".toByteArray(),
+            """{"leasegrid-recovery":1,"encrypted":false,"bundle":{"version":1,"introducer_furl":"pb://hashhashhash@127.0.0.1:1/swissnumswiss","shares":1}}""".toByteArray(),
+            """{"leasegrid-recovery":1,"encrypted":false,"bundle":{"version":1,"introducer_furl":"not-a-link","shares":[2,3,3]}}""".toByteArray(),
+        )
+        for (sample in samples) {
+            try {
+                RecoveryCodec.decode(sample, "")
+                error("expected fail")
+            } catch (exc: ImportFail) {
+                assertEquals(IMPORT_FAIL_MSG, exc.banner)
+                assertTrue(exc.next.contains("Retry"))
+            }
         }
     }
 }

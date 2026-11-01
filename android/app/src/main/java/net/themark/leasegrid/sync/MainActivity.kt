@@ -3,6 +3,8 @@ package net.themark.leasegrid.sync
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,6 +47,9 @@ class MainActivity : ComponentActivity() {
     /** Fingerprint of the last applied dogfood payload. Not Intent identity. */
     private var appliedKey: String? = null
     private var readGeneration = 0
+
+    /** Not decorView: noteIntent runs in onCreate before setContent. */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -113,29 +118,34 @@ class MainActivity : ComponentActivity() {
 
     private fun readRecoveryFile(rawPath: String, attempt: Int, generation: Int) {
         if (generation != readGeneration) return
-        val file = DogfoodIntents.recoveryFile(filesDir, rawPath)
-        val seed = DogfoodIntents.readRecoverySeed(file)
-        if (seed.readable && seed.bytes != null) {
-            model.onPicked(seed.name, seed.bytes)
+        val loaded = DogfoodIntents.loadRecoveryExtra(filesDir, rawPath)
+        if (loaded.bytes != null) {
+            model.onPicked(loaded.name, loaded.bytes)
             model.goImport()
             return
         }
-        if (attempt < 5) {
-            window.decorView.postDelayed(
+        if (!loaded.rejected && attempt < 5) {
+            mainHandler.postDelayed(
                 { readRecoveryFile(rawPath, attempt + 1, generation) },
                 200L * (attempt + 1),
             )
             return
         }
+        val again: () -> Unit = if (loaded.rejected) {
+            ::openRecoveryPicker
+        } else {
+            {
+                model.beginRecoveryImport()
+                val nextGeneration = ++readGeneration
+                readRecoveryFile(rawPath, 0, nextGeneration)
+            }
+        }
         model.goImport()
         model.reportFail(
-            "could not import this recovery key. The file could not be read.",
-            "check the path and storage permission; Retry.",
-        ) {
-            model.beginRecoveryImport()
-            val again = ++readGeneration
-            readRecoveryFile(rawPath, 0, again)
-        }
+            loaded.banner ?: DogfoodIntents.RECOVERY_MISS_BANNER,
+            loaded.next ?: DogfoodIntents.RECOVERY_MISS_NEXT,
+            again,
+        )
     }
 
     private fun inviteQuery(data: Uri?): String? {
@@ -183,11 +193,11 @@ class MainActivity : ComponentActivity() {
             if (bytes.isEmpty()) error("empty file")
             model.onPicked(name, bytes)
             model.goImport()
-        } catch (exc: Exception) {
+        } catch (_: Exception) {
             model.goImport()
             model.reportFail(
-                "could not import this recovery key. The file could not be read.",
-                "check the path and storage permission; Retry. (${exc.javaClass.simpleName})",
+                DogfoodIntents.RECOVERY_MISS_BANNER,
+                DogfoodIntents.RECOVERY_MISS_NEXT,
                 ::openRecoveryPicker,
             )
         }

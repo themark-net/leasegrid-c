@@ -100,7 +100,7 @@ adb shell am start -n net.themark.leasegrid.sync/.MainActivity \
   --es net.themark.leasegrid.sync.EXTRA_RECOVERY_FILE ok-plain.leasegrid-recovery
 ```
 
-An absolute path in `EXTRA_RECOVERY_FILE` is also accepted (`/data/user/0/net.themark.leasegrid.sync/files/…` or any other readable path). A path that is not absolute is resolved under the app files dir. Import does not run by itself.
+An absolute path in `EXTRA_RECOVERY_FILE` is also accepted (`/data/user/0/net.themark.leasegrid.sync/files/…` or any other readable path). A path that is not absolute is resolved under the app files dir and must stay inside it. A name in that folder loads before the first frame, same as an absolute path, so `import_confirm` can enable. `../` or a symlink that leaves the folder is refused with a plain sentence and the bytes are not read. Import does not run by itself.
 
 Cold-start after a data wipe. Seed the file only after `pm clear`, then start. The extra opens Import before the first frame and retries the read if the file is not visible yet. A miss still shows Import with FAIL and Retry — not Welcome.
 

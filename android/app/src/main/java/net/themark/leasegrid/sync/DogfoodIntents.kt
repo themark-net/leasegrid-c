@@ -1,6 +1,7 @@
 package net.themark.leasegrid.sync
 
 import java.io.File
+import java.io.IOException
 
 /**
  * Debug dogfood hooks. Filling an invite this way does not acknowledge the
@@ -34,9 +35,77 @@ object DogfoodIntents {
     /** A recovery extra always opens Import. A missing file still must not stay on Welcome. */
     fun opensImport(recoveryExtra: String?): Boolean = !recoveryExtra?.trim().isNullOrEmpty()
 
+    const val RECOVERY_MISS_BANNER = "could not import this recovery key. The file could not be read."
+    const val RECOVERY_MISS_NEXT = "check the path and storage permission; Retry."
+    const val RECOVERY_REJECT_BANNER =
+        "could not import this recovery key. That path is not in the app files folder."
+    const val RECOVERY_REJECT_NEXT =
+        "pass a file name in the app files folder, or a full path; Retry."
+
+    /**
+     * Path DogfoodIntents will read for [raw].
+     * An absolute path is used as given. A relative path must stay inside [filesDir].
+     * A path that leaves that directory returns a file that is not the outside target.
+     */
     fun recoveryFile(filesDir: File, raw: String): File {
-        val trimmed = raw.trim()
-        return if (trimmed.startsWith("/")) File(trimmed) else File(filesDir, trimmed)
+        return locateRecovery(filesDir, raw.trim()) ?: File(filesDir, "rejected-recovery")
+    }
+
+    /**
+     * First-load result for EXTRA_RECOVERY_FILE.
+     * Non-null [bytes] is what enables import confirm. [rejected] is not retried as a read.
+     */
+    class RecoveryLoad(
+        val opensImport: Boolean,
+        val rejected: Boolean,
+        val name: String,
+        val bytes: ByteArray?,
+        val banner: String?,
+        val next: String?,
+    )
+
+    fun loadRecoveryExtra(filesDir: File, raw: String?): RecoveryLoad {
+        val trimmed = raw?.trim().orEmpty()
+        if (trimmed.isEmpty()) {
+            return RecoveryLoad(false, false, "", null, null, null)
+        }
+        val located = locateRecovery(filesDir, trimmed)
+        if (located == null) {
+            return RecoveryLoad(
+                true,
+                true,
+                "recovery.leasegrid-recovery",
+                null,
+                RECOVERY_REJECT_BANNER,
+                RECOVERY_REJECT_NEXT,
+            )
+        }
+        val seed = readRecoverySeed(located)
+        if (seed.readable && seed.bytes != null) {
+            return RecoveryLoad(true, false, seed.name, seed.bytes, null, null)
+        }
+        val name = seed.name.ifBlank { "recovery.leasegrid-recovery" }
+        return RecoveryLoad(true, false, name, null, RECOVERY_MISS_BANNER, RECOVERY_MISS_NEXT)
+    }
+
+    /** Null when [trimmed] is relative and its canonical path leaves [filesDir]. */
+    fun locateRecovery(filesDir: File, trimmed: String): File? {
+        if (trimmed.isEmpty() || trimmed.indexOf('\u0000') >= 0) return null
+        if (trimmed.startsWith("/")) return File(trimmed)
+        val base = try {
+            filesDir.canonicalFile
+        } catch (_: IOException) {
+            return null
+        }
+        val resolved = try {
+            File(base, trimmed).canonicalFile
+        } catch (_: IOException) {
+            return null
+        }
+        val root = base.path
+        val path = resolved.path
+        if (path != root && !path.startsWith(root + File.separator)) return null
+        return resolved
     }
 
     data class RecoverySeed(val readable: Boolean, val name: String, val bytes: ByteArray?)

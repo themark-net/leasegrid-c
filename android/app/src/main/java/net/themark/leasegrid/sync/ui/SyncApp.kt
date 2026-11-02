@@ -168,7 +168,7 @@ private fun Import(model: AppModel, onPickRecovery: () -> Unit) {
 
 @Composable
 private fun ImportBody(model: AppModel, onPickRecovery: () -> Unit) {
-    TextButton(onClick = { model.goWelcome() }) { Text("←  Import recovery key") }
+    TextButton(onClick = { model.cancelImport() }) { Text("←  Import recovery key") }
     Text("Use a *.leasegrid-recovery file exported from desktop Sync (U4). Same format.")
     Text(SCARY_LOSS, fontWeight = FontWeight.Medium)
     OutlinedButton(onClick = onPickRecovery, modifier = Modifier.fillMaxWidth()) {
@@ -202,7 +202,7 @@ private fun ImportBody(model: AppModel, onPickRecovery: () -> Unit) {
         onClick = { model.importRecovery() },
         label = if (model.busy) "Importing…" else "Import recovery key",
     )
-    OutlinedButton(onClick = { model.goWelcome() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+    OutlinedButton(onClick = { model.cancelImport() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
     FailCard(model)
 }
 

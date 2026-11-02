@@ -70,6 +70,7 @@ internal class AppSeams(
     val scope: CoroutineScope? = null,
     val io: CoroutineContext = Dispatchers.IO,
     val dispatch: ((String, String) -> JsonObject)? = null,
+    val freeBytes: ((File) -> Long)? = null,
 )
 
 class AppModel internal constructor(app: Application, seams: AppSeams) : AndroidViewModel(app) {
@@ -80,6 +81,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     private val testFilesDir = seams.filesDir
     private val store = SessionStore(File(testFilesDir ?: app.filesDir, "leasegrid"))
     private val gridDispatch: (String, String) -> JsonObject = seams.dispatch ?: AndroidGrid(app)::dispatch
+    private val freeBytes: (File) -> Long = seams.freeBytes ?: { dir -> StatFs(dir.absolutePath).availableBytes }
     private val json = Json { ignoreUnknownKeys = true }
     private val board = FolderWriteBoard()
     private val uploads = mutableMapOf<String, Job>()
@@ -140,6 +142,16 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     fun goWelcome() {
         fail = null
         place = Place.Welcome
+    }
+
+    /**
+     * Cancel and the back arrow on the Import screen. A running import stops:
+     * nothing is saved and the phone stays on Welcome (T1).
+     */
+    fun cancelImport() {
+        gridRun.cancel()
+        retries.arm(null)
+        goWelcome()
     }
 
     fun goImport() {
@@ -311,7 +323,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         }
         val dest = pendingFile(folder.cap, name)
         try {
-            val free = StatFs(dest.parentFile!!.absolutePath).availableBytes
+            val free = freeBytes(dest.parentFile!!)
             if (free < bytes.size.toLong() + 4096L) {
                 show(FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)) { }
                 return
@@ -714,7 +726,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     }
 
     private fun pendingFile(folderCap: String, name: String): File {
-        val dir = File(getApplication<Application>().filesDir, "pending")
+        val dir = File(testFilesDir ?: getApplication<Application>().filesDir, "pending")
         val bucket = File(dir, Integer.toHexString(folderCap.hashCode()))
         bucket.mkdirs()
         return File(bucket, safeName(name))

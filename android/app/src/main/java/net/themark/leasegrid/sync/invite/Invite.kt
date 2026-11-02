@@ -70,7 +70,7 @@ object Invite {
     }
 
     fun parse(raw: String): ParsedInvite {
-        val text = raw.trim()
+        val text = stripPaste(raw)
         if (text.isEmpty()) {
             throw InviteFail(EMPTY_MSG, NO_NEXT)
         }
@@ -159,8 +159,20 @@ object Invite {
         return groups >= 2
     }
 
+    /** trim(), plus U+200B or U+FEFF at either end. Chat apps add those on paste. */
+    private fun stripPaste(raw: String): String {
+        var start = 0
+        var end = raw.length
+        while (start < end && isPasteGap(raw[start])) start++
+        while (end > start && isPasteGap(raw[end - 1])) end--
+        return if (start == 0 && end == raw.length) raw else raw.substring(start, end)
+    }
+
+    private fun isPasteGap(ch: Char): Boolean =
+        ch.isWhitespace() || ch == '\u200B' || ch == '\uFEFF'
+
     private fun validateFurl(raw: String): String {
-        val text = raw.trim()
+        val text = stripPaste(raw)
         if (!text.startsWith("pb://")) {
             throw InviteFail(GARBAGE_MSG, NO_NEXT)
         }

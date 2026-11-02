@@ -240,6 +240,43 @@ class InviteCopyTest {
     }
 
     @Test
+    fun invisiblePasteMarksStillParseAndAMarksOnlyPasteAsksForTheLink() {
+        val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"
+        val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        val marked = listOf(
+            "\u200B$link",
+            "\uFEFF$link",
+            "\uFEFF\u200B $link",
+            "$link\u200B",
+            "$link\uFEFF",
+            "\u200B$furl",
+            "leasegrid:join#v=1&i=%E2%80%8Bpb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3",
+            "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss%E2%80%8B&n=2&h=3&t=3",
+        )
+        for (raw in marked) {
+            var joined: ParsedInvite? = null
+            Invite.attempt(raw, fail = { error("${raw.codePointAt(0)}: ${it.banner}") }) { joined = it }
+            assertEquals(furl, joined!!.furl)
+            if (raw.contains("n=2")) {
+                assertEquals(listOf(2, 3, 3), joined!!.shares)
+            } else {
+                assertNull(joined!!.shares)
+            }
+        }
+        val empty = failFor("\u200B\uFEFF")
+        assertEquals(Invite.EMPTY_MSG, empty.banner)
+        assertEquals(Invite.NO_NEXT, empty.next)
+        assertFalse(empty.banner, empty.banner.contains("Exception"))
+        assertTrue(empty.banner, bannedWords(empty.banner).isEmpty())
+        val worm = failFor("\u200B7-guitarist-revenge")
+        assertEquals(Invite.WORMHOLE_MSG, worm.banner)
+        assertEquals(Invite.NO_NEXT, worm.next)
+        var joined: ParsedInvite? = null
+        Invite.attempt(link, fail = { error(it.banner) }) { joined = it }
+        assertEquals(listOf(2, 3, 3), joined!!.shares)
+    }
+
+    @Test
     fun aJoinLinkStillReachesJoin() {
         val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"
         var joined: ParsedInvite? = null

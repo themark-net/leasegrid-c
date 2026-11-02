@@ -123,6 +123,37 @@ class SessionFlowTest {
         // The fake launch maps an escaped throw to "generic"; JOIN_FAILED must not appear.
         assertEquals(FailBanner("generic", ""), host.banner)
         assertTrue(host.saved.isEmpty())
+        // A newer attempt replaces that. The cancelled job must not paint over it.
+        host.learnThrows = null
+        host.answers.add(listOf(server))
+        SessionFlow(host).join()
+        assertNull(host.banner)
+        assertEquals(1, host.saved.size)
+        assertEquals(listOf(furl, furl), host.learnCalls)
+    }
+
+    @Test(timeout = 5000)
+    fun retryAfterAHundredKilobytePasteJoinsTheCorrectedLink() {
+        val target = 100 * 1024
+        val blow = buildString(target) {
+            append('1')
+            while (length + 2 < target) append("-a")
+            append('!')
+        }
+        assertTrue(blow.length > 90 * 1024)
+        val host = Host(blow)
+        SessionFlow(host).join()
+        assertEquals(Invite.GARBAGE_MSG, host.banner!!.message)
+        assertEquals(Invite.NO_NEXT, host.banner!!.next)
+        assertTrue(host.learnCalls.isEmpty())
+        assertTrue(host.saved.isEmpty())
+        assertClean(host)
+        host.inviteText = link
+        host.answers.add(listOf(server))
+        host.retry!!.invoke()
+        assertEquals(listOf(furl), host.learnCalls)
+        assertEquals(1, host.saved.size)
+        assertNull(host.banner)
     }
 
     @Test
@@ -244,6 +275,31 @@ class SessionFlowTest {
         assertNotNull("the save failure reaches the caller's generic fail", thrown)
         assertNull(host.banner)
         assertTrue(host.saved.isEmpty())
+    }
+
+    @Test
+    fun aCancelledImportSavesNothingAndALaterImportSaves() {
+        val host = Host()
+        host.learnThrows = kotlin.coroutines.cancellation.CancellationException("stop")
+        var escaped: Throwable? = null
+        launchNow(onError = { escaped = it }) {
+            SessionFlow(host).finishImport(furl) {
+                Session(introducerFurl = furl, servers = emptyList())
+            }
+        }
+        assertTrue(escaped is kotlin.coroutines.cancellation.CancellationException)
+        assertTrue(host.saved.isEmpty())
+        assertNull(host.banner)
+        host.learnThrows = null
+        host.answers.add(listOf(server))
+        launchNow {
+            SessionFlow(host).finishImport(furl) { learned ->
+                Session(introducerFurl = furl, servers = learned ?: emptyList())
+            }
+        }
+        assertEquals(1, host.saved.size)
+        assertEquals(listOf(server), host.session!!.servers)
+        assertNull(host.banner)
     }
 
     @Test

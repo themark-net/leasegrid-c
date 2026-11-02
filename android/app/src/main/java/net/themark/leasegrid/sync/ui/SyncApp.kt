@@ -56,9 +56,9 @@ import net.themark.leasegrid.sync.recovery.SCARY_LOSS
 
 private val THREAT = listOf(
     "Shared folder trust: unpaid by default. This is not Dropbox-the-company and not Filecoin.",
-    "No storage proofs — dead nodes are dropped. This phone does not offer storage.",
-    "Transport honesty — the invite may claim I2P or Tor. Reads may use LAN or WAN.",
-    "Recovery — lose the recovery key and your devices and access can be gone forever. Import the same U4 recovery key. There is no reset password.",
+    "No storage proofs: dead nodes are dropped. This phone does not offer storage.",
+    "Transport honesty: the invite may claim I2P or Tor. Reads may use LAN or WAN.",
+    "Recovery: lose the recovery key and your devices and access can be gone forever. Import the same U4 recovery key. There is no reset password.",
 )
 
 @Composable
@@ -456,7 +456,7 @@ private fun FailCard(model: AppModel) {
     val banner = model.fail ?: return
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("FAIL — ${banner.message}", fontWeight = FontWeight.SemiBold)
+            Text("FAIL: ${banner.message}", fontWeight = FontWeight.SemiBold)
             failNextLine(banner.next)?.let { Text(it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { model.retryFail() }) { Text("Retry") }

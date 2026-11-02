@@ -65,13 +65,84 @@ def _fun_body(text: str, signature: str) -> str:
     return text[start:end]
 
 
+# Em dash and en dash. A colon is the plain stand-in on the phone.
+_DASH = re.compile("[\u2014\u2013]")
+# JSON field name. It is not copy. Anything else that squashes to the word is.
+_CODE_INTRODUCER_KEYS = frozenset({"introducer_furl"})
+
+
+def _joined_literals(source: str) -> list[str]:
+    """Literal contents. `"a" + "b"` with only whitespace around + is one piece."""
+    pieces: list[str] = []
+    ends: list[int] = []
+    for match in _LITERAL.finditer(source):
+        content = match.group(1)
+        gap = source[ends[-1] : match.start()] if pieces else ""
+        if pieces and re.fullmatch(r"\s*\+\s*", gap):
+            pieces[-1] = pieces[-1] + content
+            ends[-1] = match.end()
+        else:
+            pieces.append(content)
+            ends.append(match.end())
+    return pieces
+
+
+def _squash_introducer(text: str) -> str:
+    """Drop the breaks a split 'introducer' hides behind."""
+    text = text.replace("\\n", "\n").replace("\\r", "\n").replace("\\t", " ")
+    text = re.sub(r"-\s*", "", text)
+    text = re.sub(r"\s+", "", text)
+    return text.lower()
+
+
 def _banned(literals: list[str]) -> list[str]:
-    return [item for item in literals if item not in _CODE_OK and _FORBIDDEN.search(item)]
+    hits = []
+    for item in literals:
+        if item in _CODE_OK or item in _CODE_INTRODUCER_KEYS:
+            continue
+        split = "introducer" in _squash_introducer(item)
+        if _DASH.search(item) or _FORBIDDEN.search(item) or split:
+            hits.append(item)
+    return hits
+
+
+def _banned_source(source: str) -> list[str]:
+    return _banned(_joined_literals(source))
 
 
 def test_banned_word_guard_catches_each_word():
-    for bad in ("the furl", "pb://x", "Introducer", "wormhole", "this friendnet", "could not join", "Could Not Join"):
+    samples = (
+        "the furl",
+        "pb://x",
+        "Introducer",
+        "wormhole",
+        "this friendnet",
+        "could not join",
+        "Could Not Join",
+        "em \u2014 dash",
+        "en \u2013 dash",
+    )
+    for bad in samples:
         assert _banned([bad]) == [bad], bad
+
+
+def test_split_introducer_misses_the_exact_scan_and_the_guard_catches_it():
+    """K3c splits the word. The old per-literal scan misses it. The guard does not."""
+    samples = (
+        '"Intro" + "ducer"',
+        '"intro-" +\n"ducer"',
+        '"INTRO" + "DUCER"',
+        '"intro " + " ducer"',
+        '"intro-\\nducer"',
+    )
+    for sample in samples:
+        exact = [
+            item
+            for item in _LITERAL.findall(sample)
+            if re.search(r"introducer", item, re.IGNORECASE)
+        ]
+        assert exact == [], sample
+        assert _banned_source(sample), sample
 
 
 def test_invite_kt_user_strings_pass_banned_word_guard():
@@ -79,7 +150,7 @@ def test_invite_kt_user_strings_pass_banned_word_guard():
     literals = _LITERAL.findall(text)
     assert any("join link" in item for item in literals)
     assert 'startsWith("pb://")' in text
-    assert not _banned(literals)
+    assert not _banned_source(text)
     # Every InviteFail goes through a named constant (no inline copy).
     assert not re.search(r'InviteFail\(\s*"', text)
 
@@ -92,10 +163,10 @@ def test_learn_failure_strings_pass_banned_word_guard():
     """
     model = APP_MODEL.read_text(encoding="utf-8")
     learn = _fun_body(model, "    private suspend fun learn(")
-    assert not _banned(_LITERAL.findall(learn))
+    assert not _banned_source(learn)
     assert "show(" not in learn and "FailBanner" not in learn
     flow = SESSION_FLOW.read_text(encoding="utf-8")
-    assert not _banned(_LITERAL.findall(flow))
+    assert not _banned_source(flow)
     # The import screen's learn() fail uses the same pair; no inline introducer copy anywhere.
     assert "introducer yet" not in model
     assert "Introducer is unreachable" not in model
@@ -221,21 +292,22 @@ def test_syncapp_invite_section_passes_banned_word_guard():
     section = _invite_section(SYNC_APP.read_text(encoding="utf-8"))
     literals = _LITERAL.findall(section)
     assert "Joining…" in literals
-    assert not _banned(literals)
+    assert not _banned_source(section)
     # The Join button reads the Invite title (Design: "Join a shared folder").
     assert 'label = if (model.busy) "Joining…" else Invite.TITLE,' in section
     assert _kotlin_const(INVITE.read_text(encoding="utf-8"), "TITLE") == "Join a shared folder"
 
 
 def test_syncapp_passes_banned_word_guard():
-    """Every user-visible literal in SyncApp, not only the Invite section.
+    """Every string literal in SyncApp.kt, not only the Invite section.
 
     The threat card, empty Folders line, remove sheet, discard sheet, and
     transport line used to say friendnet. A regression puts the word back.
+    Chips and recovery copy live in other files and are not this scan.
     """
     text = SYNC_APP.read_text(encoding="utf-8")
     literals = _LITERAL.findall(text)
-    assert not _banned(literals), _banned(literals)
+    assert not _banned_source(text), _banned_source(text)
     joined = (
         "Joined. Import a recovery key from Leasegrid Sync on your computer to see folder names. "
         "This phone cannot invent folders."
@@ -249,11 +321,18 @@ def test_syncapp_passes_banned_word_guard():
 
 
 def test_introducer_unreachable_is_never_on_screen():
-    """The grid's "Introducer is unreachable" text only reaches Log.w (#50 B2)."""
+    """The grid's introducer text only reaches Log.w (#50 B2).
+
+    A contiguous phrase search misses K3c. This scan joins concatenated
+    literals and ignores case, whitespace, and a break hyphen.
+    """
     main_java = INVITE.parents[5]  # android/app/src/main/java
-    hits = [
-        str(path.relative_to(main_java))
-        for path in main_java.rglob("*.kt")
-        if "introducer is unreachable" in path.read_text(encoding="utf-8").lower()
-    ]
+    hits = []
+    for path in main_java.rglob("*.kt"):
+        found = [
+            item
+            for item in _banned_source(path.read_text(encoding="utf-8"))
+            if "introducer" in _squash_introducer(item)
+        ]
+        hits.extend(f"{path.relative_to(main_java)}: {item}" for item in found)
     assert hits == [], hits

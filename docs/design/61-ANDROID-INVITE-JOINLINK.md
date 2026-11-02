@@ -15,6 +15,8 @@ Strings:
 - Folders refresh failed: Couldn't reach your computer. Next: Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.
 - Folders import failed after save: Saved on this phone. Couldn't reach your computer to finish. (Next is the same as refresh.)
 
-Tests: the banned-word guard covers every user-visible string. The desktop label test pins 'Share invite' and 'Show full join link (advanced)'. Pasting a short code shows its own message, with no Next line and no join attempt. With a fake unreachable desktop, the failure pair shows and Retry rejoins. Recover: if a desktop label drifts, the pin test fails before release.
+Tests: the banned-word guard scans string literals in Invite.kt, SessionFlow.kt, AppModel.learn(), and every string literal in SyncApp.kt. The desktop label test pins 'Share invite' and 'Show full join link (advanced)'. Pasting a short code shows its own message, with no Next line and no join attempt. With a fake unreachable desktop, the failure pair shows and Retry rejoins. Recover: if a desktop label drifts, the pin test fails before release.
 
-Guard scope: Invite.kt, SessionFlow.kt, AppModel.learn(), and every string literal in SyncApp.kt. Phone chips say "Not in the shared folder yet" and "In the shared folder". Design packs 55-59 still use the older word; the phone follows this note.
+Guard scope: string literals in Invite.kt, SessionFlow.kt, AppModel.learn(), and every string literal in SyncApp.kt. Phone chips say "Not in the shared folder yet" and "In the shared folder". Design packs 55-59 still use the older word; the phone follows this note.
+
+Cancelling a recovery import during learn() discards it and saves nothing, so a cancel has no side effects and the user can import again. If the computer or network can't be reached, the save is kept, which matches "Saved on this phone...".

@@ -83,7 +83,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     var pickedName by mutableStateOf("")
     var pickedBytes by mutableStateOf<ByteArray?>(null)
 
-    private var retry: (() -> Unit)? = null
+    private val retries = RetryOnce()
 
     private val gridRun = GridRun(
         scope = viewModelScope,
@@ -158,7 +158,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissFail() {
         fail = null
-        retry = null
+        retries.arm(null)
     }
 
     /** In-app FAIL. Does not write a session. [again] is the Retry action. */
@@ -167,7 +167,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun retryFail() {
-        val action = retry
+        val action = retries.pull()
         fail = null
         action?.invoke()
     }
@@ -499,7 +499,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             return
         }
         fail = null
-        retry = null
+        retries.arm(null)
         val armed = ensureAuthor(folder)
         val existing = board.tokenOf(armed.cap, name)
         val item = if (existing == null) {
@@ -580,7 +580,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             rememberFolder(armed.copy(phoneDmd = dmd, authorSeedB64 = seed))
             if (!board.acknowledge(armed.cap, name, token)) return@launch
             fail = null
-            retry = null
+            retries.arm(null)
             val landedCap = result.raw["cap"]?.jsonPrimitive?.contentOrNull ?: ""
             val landedSize = result.raw["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: size
             val here = place as? Place.Folder
@@ -789,7 +789,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     private fun show(banner: FailBanner, again: (() -> Unit)?) {
         fail = banner
-        retry = again
+        retries.arm(again)
     }
 
     private fun safeName(name: String): String {

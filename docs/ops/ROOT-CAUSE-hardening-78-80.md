@@ -1,0 +1,123 @@
+# Root cause, hardening #78 and #80
+
+Base `7ce07856`. Each section is the note written before the fix.
+
+## #78 long paste overflows the short-code check
+
+Symptom: a ~100 KB paste shaped like a short code, then one bad character, throws `StackOverflowError` from `Pattern` instead of a plain banner. Retry never runs.
+
+Cause: `Invite.kt:12` `Regex("^[0-9]{1,3}(-[a-z0-9]+){2,}$")` backtracks on each `-a` group. `Invite.kt:71` calls `wormhole.matches` on the whole paste.
+
+Fix: drop the regex. A linear scan, and pastes longer than 256 characters are not short codes. The banner is `GARBAGE_MSG` with no Next line. Retry reads the field again.
+
+## #78 cancelled join paints over a newer attempt
+
+Symptom: a join cancelled inside `learn()` could be reported as "Couldn't reach your computer." on top of a newer attempt.
+
+Cause: already fixed on this base. `AppModel.kt` `learn` (the `CancellationException` branch) rethrows. `SessionFlow.kt:83` rethrows the same way, so `finishImport` / `join` do not call `show`. `SessionFlowTest.aCancelledJoinPaintsNothing` covers the join path. This lane only extends that test so a later successful join is not left on the failure card.
+
+Fix: no production change. Keep the rethrow. Add the newer-attempt assertions.
+
+## #80 F1 dirty or short join link
+
+Symptom: a paste with `%00`, U+FFFD, a `+` that decodes to a space, an embedded newline, or an empty/short swissnum is treated as a usable furl. `learn()` runs, or the failure is not `MALFORMED_MSG`.
+
+Cause: `Invite.kt:132` `validateFurl` only checks the `pb://` prefix, one slash, and `rest.length < 12`. `fromFragment` (`Invite.kt:106`) already decodes the fragment, so `+` is a space and `%00` is a NUL before this check. Those characters are then ignored.
+
+Fix: reject `%00`, U+FFFD, whitespace, and C0/C1 controls. Require the swissnum (after the last slash, before `#`) to be at least 8 characters. Return `MALFORMED_MSG` and do not call `learn()`. `swissnumswiss` (13) still joins.
+
+## #80 F2 zero-width paste marks
+
+Symptom: a join link with a leading or trailing U+200B or U+FEFF is "That isn't a join link." A paste of only those marks is not the empty-field message.
+
+Cause: `Invite.kt:67` and `Invite.kt:133` use `trim()`. `trim` does not remove U+200B or U+FEFF.
+
+Fix: `stripPaste` strips whitespace and those two marks from both ends, in `parse` and in `validateFurl`. A mark in the middle stays. Marks-only is `EMPTY_MSG`. Retry with the real link calls `learn()`.
+
+## #80 F4 busy cleared by a stale job
+
+Symptom: an older grid job's `finally` sets `busy = false` while a newer join is still running. The phone looks idle.
+
+Cause: `AppModel.kt:784` always clears `busy` in `finally`. `download`, `remove`, and `beginRecoveryImport` share that same `job`.
+
+Fix: one `GridRun` ticket. `launch` and `cancel` bump the ticket before the old job is cancelled. `finally` clears `busy` only when the ticket is still current. `cancel` clears `busy` immediately.
+
+## #80 Retry runs twice
+
+Symptom: a second tap of Retry runs the same action again.
+
+Cause: `AppModel.kt:163` `retryFail` reads `retry` and invokes it. The field is still set, so the next tap runs it too.
+
+Fix: `RetryOnce.pull` clears the slot before the action runs. `dismissFail` and a finished upload clear it. A later failure can arm a new action.
+
+## #80 damaged recovery file escapes the import card
+
+Symptom: a bundle that is not an object, or shares that are not an array, throws `IllegalArgumentException` ("is not a JsonObject" / json array). The screen shows the generic card, not the import card.
+
+Cause: `RecoveryCodec.kt:64` `envelope["bundle"]?.jsonObject` throws when `bundle` is a string. `RecoveryCodec.kt:100` `data["shares"]?.jsonArray` throws when `shares` is a number. Neither throw is `ImportFail`.
+
+Fix: those shapes throw `ImportFail` with `IMPORT_FAIL_MSG` and a Retry next line. Nothing is imported.
+
+## #80 phone strings say friendnet
+
+Symptom: the threat card, empty Folders line, remove sheet, discard line, settings transport line, forget-downloads, and the write chips say "friendnet".
+
+Cause: `SyncApp.kt:58` ("Friendnet trust — …"), `SyncApp.kt:228`, `SyncApp.kt:352`, `SyncApp.kt:367`, `SyncApp.kt:414`, `AppModel.kt:467`, `FolderWrite.kt:8` `PENDING`, `FolderWrite.kt:9` `LANDED`.
+
+Fix: shared-folder wording. Chips are "Not in the shared folder yet" and "In the shared folder". They do not say the file is on the computer. Design packs 55-59 stay as they are.
+
+## #80 FlowHost one-liners and the SyncApp guard
+
+Symptom: clearing `inviteText`, returning null from `learn`, or dropping the Retry lambda in the `FlowHost` object changes nothing a test sees. The banned-word guard only reads the Invite section of `SyncApp.kt`, so the threat card can say friendnet again.
+
+Cause: `AppModel.kt:91` delegations are one line each and were not pinned. `tests/test_android_invite_copy.py` `_invite_section` stops at the welcome fail card.
+
+Fix: pin the five delegations (mutants M4c, J4a, J1c, N4b, N4d). Scan every string literal in `SyncApp.kt`.
+
+## #80 generic grid card names the class and Retry does nothing
+
+Symptom: an unexpected grid failure shows "could not complete that. IllegalStateException". Retry dismisses the card and does not run the block again.
+
+Cause: `AppModel.kt:780` puts `exc.javaClass.simpleName` on the card. `AppModel.kt:783` arms `{ }`.
+
+Fix: the card is "could not complete that." The class goes to the log. Retry calls `runGrid(label, block)` once. A second tap does not, because `pull` already cleared it.
+
+## #80 download next line names the class
+
+Symptom: a failed download's next line is "Retry. (IllegalStateException)".
+
+Cause: `AppModel.kt:420` appends `exc.javaClass.simpleName` to the next line.
+
+Fix: the next line is "check network / free space; Retry." The class is logged. Retry still calls `download`.
+
+## Em dash and en dash in guarded literals
+
+Symptom: the banned-word guard accepts U+2014 and U+2013. The threat card and the fail title still use an em dash, including the lines the friendnet edit did not rewrite.
+
+Cause: `tests/test_android_invite_copy.py` `_FORBIDDEN` has no dash. After the friendnet edit, `SyncApp.kt` still has em dashes on the storage-proofs, transport, and recovery threat lines, and on `FAIL — ${banner.message}`.
+
+Fix: `_banned` flags U+2014 and U+2013. Those literals use a colon instead.
+
+## Design 61 overclaims the guard
+
+Symptom: the Tests line says the guard covers every user-visible string. It does not. Chips live in `FolderWrite.kt`. Recovery copy lives in `RecoveryCodec.kt`.
+
+Cause: `docs/design/61-ANDROID-INVITE-JOINLINK.md` line 18. The guard scope line under it names the real files, and the Tests line does not match it.
+
+Fix: the Tests line states the same scan as the guard scope line: string literals in `Invite.kt`, `SessionFlow.kt`, `AppModel.learn()`, and every string literal in `SyncApp.kt`.
+
+## Introducer split evades the scan (mutant K3c)
+
+Symptom: the introducer check matches the contiguous word inside one literal. `"Intro" + "ducer"` and `"intro-\nducer"` are not caught.
+
+Cause: `_LITERAL.findall` splits the concatenation into two literals. `_FORBIDDEN` then searches each one for `introducer`. A newline or hyphen inside one literal also breaks the contiguous match. `test_introducer_unreachable_is_never_on_screen` looks for the exact phrase "introducer is unreachable".
+
+Fix: join literals that are only separated by `+`, then drop whitespace, a break hyphen, and `\n` escapes before looking for `introducer`. The per-literal exact scan still misses the samples. The new scan catches them.
+
+## Recovery import cancel, already implemented
+
+Symptom: the design note did not say what a cancel during import does.
+
+Cause: behavior is already on this base. `SessionFlow.kt:83` rethrows `CancellationException` before `finishImport` reaches `save`. An unreachable learn returns null, and `finishImport` still saves, then shows `IMPORT_SAVED_MSG`.
+
+Fix: no production change. Record the PM sentence in design 61. A behavior test locks cancel-saves-nothing and a later import.

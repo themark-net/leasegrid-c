@@ -155,3 +155,79 @@ Symptom: mutant K9 (`GridRun.cancel` does not clear busy) survived. No test chec
 Cause: `GridRunTest` only covered the stale-ticket finally and a clean finish.
 
 Fix: no production change. `GridRunTest.cancelClearsBusyWhileTheJobIsStillRunning` and `.busyClearsAfterAnErrorAndTheErrorReachesTheHandler` lock both.
+
+## Tester pass on 2be4d7e
+
+Tester FAILed 2be4d7e with its own list. Tester's mutant bodies are not in the repo. Each mutant below is my own patch written from Tester's one-line description; `tmp/mut2.py` on the box holds them, and the handoff has the table.
+
+### Tester B2: double tap and swallowed error handler (R2, R3, R4, F4e, F4f)
+
+Symptom: Tester mutants R2, R3, R4 (a double tap on Retry runs the action twice) and F4e, F4f (the error handler is swallowed) survived 2be4d7e.
+
+Cause: same as Reviewer B2. Nothing ran the real `AppModel`. The Reviewer B2 fix (`AppSeams` and `AppModelRetryTest`) came after 2be4d7e.
+
+Fix: no further production change. `AppModelRetryTest` and `AppModelFlowTest` drive the real model. My versions of each mutant go red (handoff table).
+
+### Tester B3: class names through the bridge at every call site
+
+Symptom: Tester asked for proof that a class name never reaches the screen through `AppModel.kt` lines 252, 432, 576 and 632 (2be4d7e numbering: folder load, download, add, remove) when the bridge fails, and flagged `lg_tahoe.py:404`.
+
+Cause: the Python fix (Reviewer B3) covered `leasegrid_read.dispatch`. `lg_tahoe.fetch_share` still put the last storage error on the next line as `(...)`. That text comes from any server and can carry a class name or a second sentence. On the Kotlin side only the download site had a test.
+
+Fix: `fetch_share` logs the last error to the `lg_tahoe` logger and returns the plain next line. A pytest makes `fetch_share` fail with a refusal whose text names `ConnectionRefusedError` and checks the copy and the log. `AppModelFlowTest` makes the bridge throw an exception whose text names `FileNotFoundError`, `Errno` and a furl at all four sites (folder load, download, add, remove) and checks the card has none of them.
+
+### Tester T1: Cancel during an import did not cancel it
+
+Symptom: design 61 line 22 said cancelling an import saves nothing. On the Import screen, Cancel and the back arrow called `goWelcome()`. Cancel stayed enabled while busy. The import kept running, saved, and moved the phone from Welcome to Folders.
+
+Cause: the sentence described `SessionFlow`'s own cancellation (a newer job cancels the older). No UI control cancelled the job.
+
+Fix: new `AppModel.cancelImport()` cancels the grid job, clears Retry, and goes to Welcome. Cancel and the back arrow call it, so Cancel stays enabled while busy on purpose. `withContext` checks for cancellation when the decode returns, so `finishImport` and `save` never run. `AppModelFlowTest.cancelOnImportStopsTheImportSavesNothingAndStaysOnWelcome` queues the decode, cancels, drains, and checks: Welcome, no session, nothing in the store, no grid call, busy off. Design 61 now says what the buttons do.
+
+### Tester S1: a hostile recovery file could crash the phone
+
+Symptom: a deeply nested JSON file, a file with huge scrypt `n`, `r` or `p`, or a huge file could end in an Error (stack overflow or out of memory) or a very long hang instead of the import card.
+
+Cause: `RecoveryCodec.decode` parsed any depth, passed any scrypt params straight to BouncyCastle (memory is 128 * r * n bytes), and defaulted a non-integer `n` to 2^15. `MainActivity` read the whole picked file with `readBytes()`. A catch of `Exception` does not catch an `Error`.
+
+Fix: `decode` rejects files over 1 MiB (`MAX_RECOVERY_BYTES`). A depth scan (brackets inside strings do not count) rejects nesting over 32 before parsing, for the envelope and the decrypted bundle. scrypt `n` must be a power of two in 2..2^20, `r` in 1..32, `p` in 1..16, and 128 * r * n at most 64 MiB; a present but non-integer value is a bad file. Desktop writes n=2^15, r=8, p=1 (32 MiB), which still imports. New `readAtMost` reads a stream up to a cap and throws `TooLarge` past it. `MainActivity` uses it for the recovery file (1 MiB) and an added file (64 MiB), and `DogfoodIntents.readRecoverySeed` uses it too. A too large recovery file shows the import card; a too large added file shows "could not read this file." with "pick a file under 64 MB.". The class name is dropped from both read failure next lines and logged.
+
+### Tester S2: marks inside the link
+
+Symptom: U+200C, U+200D and U+2060 were not stripped, and U+200B or U+FEFF inside the link (Reviewer follow-up 4) made it MALFORMED.
+
+Cause: `stripPaste` trimmed only the ends, and only U+200B and U+FEFF.
+
+Fix: `stripPaste` drops U+200B, U+200C, U+200D, U+2060 and U+FEFF anywhere, then trims. None of them can be part of a furl or a join link.
+
+### Tester S3 and S4: one furl check
+
+Symptom: the recovery file's furl was only checked for `pb://`. `validateFurl` accepted an empty tub id (`pb://@host/swiss`) and a furl with no location (`pb://tub/swiss`, `pb://tub@/swiss`).
+
+Cause: two checks grew separately, and `validateFurl` never split the authority.
+
+Fix: `validateFurl` is `internal` and `RecoveryCodec.parseBundle` calls it (an `InviteFail` becomes the import card). An empty tub id is MALFORMED. No `@` or nothing after it is NO_ADDRESS ("That link is missing your computer's address."), which is the advice that fits.
+
+### Tester S5: source grep and constant tests
+
+Symptom: `GridFailTest` asserted two constant strings. The FlowHost delegation pins used substring matches, so a longer line still passed (Reviewer follow-up 2). `unexpectedGridCard` had no red-first.
+
+Fix: `GridFailTest` is deleted; `AppModelFlowTest` checks the same copy through the real model when the bridge throws. The pins in `tests/test_android_invite_copy.py` now match whole stripped lines. Behavior tests through the real model (join saves what learn returned, Retry after a failed join) kill N4b, N4d, J1c and M4c on their own. A mutant that puts the class name back into `unexpectedGridCard` goes red.
+
+### Tester mutants on Invite and recovery (H78b, H78d, H78e, F1e, F1i, C3, C4)
+
+Cause: no test sat exactly at the 256 short code cap, used a C1 control, hid a short swiss number behind `#`, or broke a recovery bundle's shares or folders one field at a time.
+
+Fix: tests only. A short code of exactly 256 chars is a short code; 257 is not. U+0080, U+0090, U+009C and U+009F are MALFORMED. `pb://tub@host/ab#swissnumswissnum` is MALFORMED. Recovery shares must be three ints with 1 <= n <= h <= t <= 256 (new check, desktop writes [2,3,3]); a blank name, a cap without `URI:`, or a missing field is the import card.
+
+### Tester A5, A6, A8, A9, U8
+
+Cause: nothing checked that `cancelDownload` stops the job, and the copy guard read only `AppModel.learn()`, so friendnet or a dash in any other AppModel banner passed.
+
+Fix: `AppModelFlowTest.cancelDownloadStopsItAndItNeverLandsOnReady`. The copy guard now scans every literal in `AppModel.kt` and `MainActivity.kt`. Both files pass today.
+
+### Introducer E5 to E12: spellings the guard missed
+
+Cause: the guard read raw literals. It saw `"a" + "b"` joins only.
+
+Fix: the guard now reads what `Text()` would show: `\uXXXX` escapes decoded, soft hyphen and zero-width marks removed, common Cyrillic look-alikes folded to Latin, `${"x"}` templates unwrapped, literals joined across `+`, `.plus(` and `append(` in `buildString`, and runs of 4 or more char literals joined. It checks introducer, friendnet and wormhole on the squashed text. Not caught: a word split across variables (`val a = "intro"`; `Text(a + b)`) and text built at run time. That is a handoff follow-up.

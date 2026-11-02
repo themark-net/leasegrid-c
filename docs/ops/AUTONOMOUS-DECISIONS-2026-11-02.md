@@ -17,3 +17,4 @@ Recovery-import cancel: record the PM sentence in design 61 and lock it with `aC
 No Gradle in this worktree | install an Android SDK to run unit tests here | nimo has no SDK; the handoff lists each Kotlin test and the file to restore from `7ce07856`
 Worker: Hermes `-z` on nimo returned "no final response" 3 times in a row, so Grok Build headless did the work | do it by hand | Mark's direction this week is Hermes, then Build
 Kotlin verification on the box (JDK 17, SDK 34): 61 tests green; red-first by restoring each production file from `7ce07856` or reverting the guard line | trust the lane handoffs' nimo runs | nimo has no Android SDK
+Reviewer B1: write quoted old em dashes as the text 'U+2014' | paraphrase the quoted strings | a code point keeps the quote exact and has no dash

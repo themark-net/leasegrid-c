@@ -34,7 +34,7 @@ Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) a
 
 Python, against `git show 7ce07856:tests/test_android_invite_copy.py` loaded from `/tmp/lg-red-78-80/`. `/usr/bin/python3` has no pytest. The red run used `/home/mark/tahoe-venv/bin/pytest /tmp/lg-red-78-80/test_red_expectations.py` (that venv was not modified). 2 failed:
 
-- `test_em_dash_and_en_dash_are_banned`: `AssertionError: assert [] == ['trust — unpaid']`
+- `test_em_dash_and_en_dash_are_banned`: `AssertionError: assert [] == ['trust U+2014 unpaid']`
 - `test_split_introducer_is_caught_by_the_new_scan`: `AssertionError: "Intro" + "ducer"` then `assert []` from `old._banned(['Intro', 'ducer'])`
 
 The per-literal scan also misses `"intro-" + "ducer"`, `"INTRO" + "DUCER"`, `"intro " + " ducer"`, and `"intro-\nducer"`. En dash fails the same way as the em dash; the first assertion stopped the test.
@@ -96,7 +96,7 @@ Body: `JOIN_FAILED_NEXT` tells the user to copy the join link again after any fa
 
 Title: Design packs 55-59 still say friendnet and use an em dash in FAIL
 
-Body: Phone chips are "Not in the shared folder yet" and "In the shared folder". The phone fail title is "FAIL:". `docs/design/55` through `59`, and tester pages that quote them, still say "On friendnet", "Not on friendnet yet", and "FAIL —". Align those packs with the phone, or record that they keep the older wording. This branch did not edit them.
+Body: Phone chips are "Not in the shared folder yet" and "In the shared folder". The phone fail title is "FAIL:". `docs/design/55` through `59`, and tester pages that quote them, still say "On friendnet", "Not on friendnet yet", and "FAIL U+2014". Align those packs with the phone, or record that they keep the older wording. This branch did not edit them.
 
 Title: Android file-read failures still append the exception class
 

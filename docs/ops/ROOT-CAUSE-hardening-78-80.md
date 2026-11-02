@@ -62,7 +62,7 @@ Fix: those shapes throw `ImportFail` with `IMPORT_FAIL_MSG` and a Retry next lin
 
 Symptom: the threat card, empty Folders line, remove sheet, discard line, settings transport line, forget-downloads, and the write chips say "friendnet".
 
-Cause: `SyncApp.kt:58` ("Friendnet trust — …"), `SyncApp.kt:228`, `SyncApp.kt:352`, `SyncApp.kt:367`, `SyncApp.kt:414`, `AppModel.kt:467`, `FolderWrite.kt:8` `PENDING`, `FolderWrite.kt:9` `LANDED`.
+Cause: `SyncApp.kt:58` ("Friendnet trust U+2014 ..."), `SyncApp.kt:228`, `SyncApp.kt:352`, `SyncApp.kt:367`, `SyncApp.kt:414`, `AppModel.kt:467`, `FolderWrite.kt:8` `PENDING`, `FolderWrite.kt:9` `LANDED`.
 
 Fix: shared-folder wording. Chips are "Not in the shared folder yet" and "In the shared folder". They do not say the file is on the computer. Design packs 55-59 stay as they are.
 
@@ -94,7 +94,7 @@ Fix: the next line is "check network / free space; Retry." The class is logged. 
 
 Symptom: the banned-word guard accepts U+2014 and U+2013. The threat card and the fail title still use an em dash, including the lines the friendnet edit did not rewrite.
 
-Cause: `tests/test_android_invite_copy.py` `_FORBIDDEN` has no dash. After the friendnet edit, `SyncApp.kt` still has em dashes on the storage-proofs, transport, and recovery threat lines, and on `FAIL — ${banner.message}`.
+Cause: `tests/test_android_invite_copy.py` `_FORBIDDEN` has no dash. After the friendnet edit, `SyncApp.kt` still has em dashes on the storage-proofs, transport, and recovery threat lines, and on `FAIL U+2014 ${banner.message}` (em dash written as its code point).
 
 Fix: `_banned` flags U+2014 and U+2013. Those literals use a colon instead.
 
@@ -121,3 +121,11 @@ Symptom: the design note did not say what a cancel during import does.
 Cause: behavior is already on this base. `SessionFlow.kt:83` rethrows `CancellationException` before `finishImport` reaches `save`. An unreachable learn returns null, and `finishImport` still saves, then shows `IMPORT_SAVED_MSG`.
 
 Fix: no production change. Record the PM sentence in design 61. A behavior test locks cancel-saves-nothing and a later import.
+
+## Reviewer B1: dash characters on added doc lines
+
+Symptom: Reviewer found U+2014 on four added lines: HANDOFF lines 37 and 99, ROOT-CAUSE lines 65 and 97. Each one quotes an old string that had an em dash.
+
+Cause: the dash ban was applied to guarded Kotlin literals, not to the docs that quote the old literals. Nobody grepped the added doc lines.
+
+Fix: write the dash as its code point, `U+2014`, in those quotes. `git diff 7ce07856 | grep -P '^\+.*[\x{2013}\x{2014}]'` is empty after the fix.

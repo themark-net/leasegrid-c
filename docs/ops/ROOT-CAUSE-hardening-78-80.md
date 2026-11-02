@@ -139,3 +139,11 @@ Cause: the Kotlin `catch` in `AppModel.download` only runs if `AndroidGrid.dispa
 Fix: both branches return the plain copy and log `dispatch <op> failed: <Class>` to the `leasegrid_read` logger. The log line has the op and the class only, never the payload, so no furl reaches it. `android/pytests/test_dispatch_copy.py` makes the real function fail (a download whose folder is missing, and a timeout that is not a number) and checks the returned copy.
 
 Not changed: `lg_intro.py` puts a class name on the learn next line. `AppModel.learn()` only logs that result and never shows it, so it does not reach the screen. `lg_tahoe.py:404` appends the last storage error message (copy text, not a class) to the download next line. That is listed as a follow-up.
+
+## Reviewer B2: "Retry runs exactly once" had no behavior test
+
+Symptom: Reviewer mutant K15 (`retryFail` arms the action again after `pull`, so a double tap runs it twice) and mutant K16 (the `runGrid` error handler is swallowed, so there is no card and no Retry) both survived all 61 Kotlin tests.
+
+Cause: the Retry tests never ran `AppModel`. `GridFailTest` checked the text of `AppModel.kt` and ran a local copy of the retry logic. `RetryOnceTest.appModelPullsTheRetryBeforeItRuns` looked for `retries.pull()` in the source. `AppModel` could not be built in a JVM test: it took the grid, `viewModelScope`, `Dispatchers.IO`, and the files dir from Android with no way to swap them.
+
+Fix: `AppModel` gets an internal constructor that takes `AppSeams` (files dir, scope, IO context, grid dispatch). The public `AppModel(app)` passes the defaults, which are the old values, so the app is unchanged. `AppModelRetryTest` builds a real `AppModel` with a fake grid, makes a folder load and a download fail, checks the card and its Next line, taps Retry twice, and counts grid calls. The source-text tests and the local copy are deleted.

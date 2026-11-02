@@ -14,6 +14,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.SecureRandom
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -42,6 +44,7 @@ import net.themark.leasegrid.sync.session.ServerRef
 import net.themark.leasegrid.sync.session.Session
 import net.themark.leasegrid.sync.session.SessionStore
 import java.io.File
+import kotlin.coroutines.CoroutineContext
 
 data class ChildRow(val name: String, val kind: String, val cap: String, val size: Int)
 
@@ -58,9 +61,25 @@ sealed class Place {
 
 private const val TAG = "LeasegridSync"
 
-class AppModel(app: Application) : AndroidViewModel(app) {
-    private val store = SessionStore(File(app.filesDir, "leasegrid"))
-    private val grid = AndroidGrid(app)
+/**
+ * Test seam for JVM unit tests. Production uses [AppSeams] with no arguments:
+ * the app's files dir, viewModelScope, Dispatchers.IO and the embedded Python grid.
+ */
+internal class AppSeams(
+    val filesDir: File? = null,
+    val scope: CoroutineScope? = null,
+    val io: CoroutineContext = Dispatchers.IO,
+    val dispatch: ((String, String) -> JsonObject)? = null,
+)
+
+class AppModel internal constructor(app: Application, seams: AppSeams) : AndroidViewModel(app) {
+    constructor(app: Application) : this(app, AppSeams())
+
+    private val io = seams.io
+    private val scope: CoroutineScope = seams.scope ?: viewModelScope
+    private val testFilesDir = seams.filesDir
+    private val store = SessionStore(File(testFilesDir ?: app.filesDir, "leasegrid"))
+    private val gridDispatch: (String, String) -> JsonObject = seams.dispatch ?: AndroidGrid(app)::dispatch
     private val json = Json { ignoreUnknownKeys = true }
     private val board = FolderWriteBoard()
     private val uploads = mutableMapOf<String, Job>()
@@ -86,7 +105,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     private val retries = RetryOnce()
 
     private val gridRun = GridRun(
-        scope = viewModelScope,
+        scope = scope,
         setBusy = { busy = it },
         setFail = { fail = it },
     )
@@ -199,7 +218,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         val phrase = passphrase
         runGrid("Importing…") {
             val bundle = try {
-                withContext(Dispatchers.IO) { RecoveryCodec.decode(bytes, phrase) }
+                withContext(io) { RecoveryCodec.decode(bytes, phrase) }
             } catch (exc: ImportFail) {
                 show(FailBanner(exc.banner, exc.next)) { importRecovery() }
                 return@runGrid
@@ -232,7 +251,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             return
         }
         runGrid("Loading…") {
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(io) {
                 dispatch(
                 "list",
                 buildJsonObject {
@@ -397,7 +416,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         place = Place.Downloading(name, cap)
         gridRun.launch {
             val dest = File(downloadsDir(), safeName(name))
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(io) {
                 try {
                     dispatch(
                         "download",
@@ -513,7 +532,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         val token = board.tokenOf(armed.cap, name) ?: item.token
         val key = uploadKey(armed.cap, name)
         uploads.remove(key)?.cancel()
-        val upload = viewModelScope.launch {
+        val upload = scope.launch {
             val ticker = launch {
                 var mark = 0.12f
                 while (isActive) {
@@ -531,7 +550,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                 touch()
                 show(FailBanner(WriteCopy.ADD_FAIL, WriteCopy.ADD_NEXT)) { retryUpload(name) }
             }
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(io) {
                 try {
                     dispatch(
                         "put",
@@ -601,7 +620,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     private fun removeLanded(folder: FolderRef, name: String, current: Session) {
         gridRun.launch {
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(io) {
                 try {
                     dispatch(
                         "remove",
@@ -716,6 +735,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun downloadsDir(): File {
+        testFilesDir?.let { return File(it, "Download").apply { mkdirs() } }
         val context = getApplication<Application>()
         val ext = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         val dir = ext ?: File(context.filesDir, "Download")
@@ -726,7 +746,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     /** Null on any failure. Never shows a banner: SessionFlow owns the copy (#50). */
     private suspend fun learn(furl: String): List<ServerRef>? {
         val result = try {
-            withContext(Dispatchers.IO) {
+            withContext(io) {
                 dispatch("learn", buildJsonObject {
                     put("furl", furl)
                     put("timeout", 25)
@@ -755,7 +775,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun dispatch(op: String, payload: String): GridResult {
-        val raw = grid.dispatch(op, payload)
+        val raw = gridDispatch(op, payload)
         val ok = raw["ok"]?.jsonPrimitive?.contentOrNull == "true" ||
             raw["ok"]?.toString() == "true"
         val message = raw["message"]?.jsonPrimitive?.contentOrNull

@@ -61,19 +61,37 @@ object RecoveryCodec {
         }
         val encrypted = envelope["encrypted"]?.jsonPrimitive?.booleanOrNull == true
         val bundle = if (!encrypted) {
-            envelope["bundle"]?.jsonObject ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+            plaintextBundle(envelope)
         } else {
             decryptBundle(envelope, passphrase)
         }
-        return parseBundle(bundle)
+        return try {
+            parseBundle(bundle)
+        } catch (exc: ImportFail) {
+            throw exc
+        } catch (_: Exception) {
+            // A damaged shape (shares as a number, a folder that is not an object)
+            // used to escape as a raw parser exception and hit the generic card.
+            throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+        }
+    }
+
+    /** A bundle that is missing or not an object is a bad file, not a crash. */
+    private fun plaintextBundle(envelope: JsonObject): JsonObject {
+        val raw = envelope["bundle"] ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+        return try {
+            raw.jsonObject
+        } catch (_: Exception) {
+            throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+        }
     }
 
     private fun decryptBundle(envelope: JsonObject, passphrase: String): JsonObject {
-        val kdf = envelope["kdf"]?.jsonObject ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
-        if (kdf["name"]?.jsonPrimitive?.contentOrNull != "scrypt") {
-            throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
-        }
         try {
+            val kdf = envelope["kdf"]?.jsonObject ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+            if (kdf["name"]?.jsonPrimitive?.contentOrNull != "scrypt") {
+                throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+            }
             val salt = b64(kdf["salt"]?.jsonPrimitive?.contentOrNull ?: "")
             val n = kdf["n"]?.jsonPrimitive?.intOrNull ?: (1 shl 15)
             val r = kdf["r"]?.jsonPrimitive?.intOrNull ?: 8

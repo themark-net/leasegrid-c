@@ -4,7 +4,7 @@ Branch: `build/hardening-78-80`
 Base: `origin/main` @ `7ce0785691b925c4b2f0ef06f7cd3c7d2796386a`
 Worktree: `~/DEVELOP/leasegrid-c/tmp/hardening-78-80`
 Date: 2026-11-02
-Not a release. No push. No PR. No merge. Issues cited: #78 and #80 only.
+Not a release. Pushed to `build/hardening-78-80` and `feat/hardening-78-80` (CI). No PR. No merge. Issues cited: #78 and #80 only.
 
 Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) and `bot/lg-80-appmodel-1031` (`f401a80`, `724982c`, `c64c043`, `9b7bbed`, `1a12026`, `d065a2c`, `642a416`) are on this branch. Lane drop-ins, run logs, lane handoffs, lane decision files, and `.gitignore` edits were not taken.
 
@@ -102,10 +102,32 @@ Title: Android file-read failures still append the exception class
 
 Body: `MainActivity.readAddedFile` and `readRecovery` put `exc.javaClass.simpleName` on the Next line. Download and the generic grid card no longer do this (#80). Log the class and keep the plain next line. Left out of this branch because it was not one of the listed #78 or #80 items.
 
+## Box verification (Gradle, 2026-11-02)
+
+Run on the box (JDK 17, Android SDK 34) from a clone at `1250037`, via `android/./gradlew --no-daemon :app:compileDebugKotlin :app:testDebugUnitTest :app:assembleDebug`.
+
+- Base `7ce07856`: BUILD SUCCESSFUL, **44 tests, 0 failures**.
+- This branch: BUILD SUCCESSFUL, **61 tests, 0 failures, 0 errors, 0 skipped**; debug APK assembled.
+
+Kotlin red-first, each run with only the named change on top of this branch, then restored:
+
+| Change | Red tests (61 run) |
+| --- | --- |
+| `Invite.kt` from `7ce07856` | 6: `InviteCopyTest.aHundredKilobytePasteDoesNotOverflowAndStaysAPlainError` (StackOverflowError), `.dirtyFurlsAreIncompleteAndACleanLinkStillJoins`, `.invisiblePasteMarksStillParseAndAMarksOnlyPasteAsksForTheLink` ("That isn't a join link" for U+200B), `SessionFlowTest.retryAfterAHundredKilobytePasteJoinsTheCorrectedLink`, `.retryAfterAMalformedPasteJoinsTheCorrectedLink`, `.aMarkedPasteJoinsAndAMarksOnlyPasteRecoversOnRetry` |
+| `RecoveryCodec.kt` from `7ce07856` | 1: `RecoveryCodecTest.badRecoveryFileFailsClosed` (raw "is not a JsonObject") |
+| `FolderWrite.kt` from `7ce07856` | 2: `FolderWriteTest.pendingStaysNotOnFriendnetUntilAcknowledge`, `.silenceShowsExistingFailAndDoesNotSayOnFriendnet` ("Not on friendnet yet") |
+| `AppModel.kt` from `7ce07856` | 3: `GridFailTest.downloadFailureDoesNotNameTheExceptionClass`, `.oneRetryRerunsTheBlockAndASecondTapDoesNot`, `RetryOnceTest.appModelPullsTheRetryBeforeItRuns` |
+| `GridRun.kt` finally clears busy unconditionally (base behavior) | 1: `GridRunTest.cancelledJobDoesNotClearBusyWhileANewerJobRuns` ("older finally cleared busy while the newer job was still running") |
+| `RetryOnce.pull` does not clear the slot (base behavior) | 3: `RetryOnceTest.aSecondTapDoesNotRunTheActionAgain`, `.aNewFailureCanBeRetriedAfterTheFirstTap`, `GridFailTest.oneRetryRerunsTheBlockAndASecondTapDoesNot` |
+
+Not red by a file restore: `GridFailTest.unexpectedCardDoesNotNameTheExceptionClass` tests `unexpectedGridCard()` in the new `GridRun.kt` (the base had the class-name text inline in `runGrid`, which `D` covers). `SessionFlowTest.aCancelledJoinPaintsNothing` and `.aCancelledImportSavesNothingAndALaterImportSaves` lock behavior already shipped in `4ab71a0`.
+
+nimo `scripts/ci-local.sh` re-run on `1250037`: **619 passed, 5 xfailed, 0 failed**, ci-local PASS.
+
 ## Gate
 
-Tester and Reviewer. Runtime changes are in `Invite.kt`, `AppModel.kt`, `GridRun.kt`, `RetryOnce.kt`, `RecoveryCodec.kt`, `SyncApp.kt`, and `FolderWrite.kt`. Kotlin unit tests were not executed in this worktree. Python ci-local passed, counts above.
+Tester and Reviewer. Runtime changes are in `Invite.kt`, `AppModel.kt`, `GridRun.kt`, `RetryOnce.kt`, `RecoveryCodec.kt`, `SyncApp.kt`, and `FolderWrite.kt`. Kotlin unit tests ran on the box (61/0 failures, red-first table above). Python ci-local passed, counts above.
 
 ## Next
 
-Tester and Reviewer on `build/hardening-78-80`. Run `:app:testDebugUnitTest` where an Android SDK exists. Do not push from this lane.
+Tester and Reviewer on `build/hardening-78-80`. Implementation by Grok Build headless on nimo (Hermes `-z` produced no response three times; see decisions). Do not merge until Tester and Reviewer pass.

@@ -177,6 +177,44 @@ class InviteCopyTest {
         assertTrue(parsed > 0)
     }
 
+    @Test(timeout = 5000)
+    fun aHundredKilobytePasteDoesNotOverflowAndStaysAPlainError() {
+        // Near-miss for ^[0-9]{1,3}(-[a-z0-9]+){2,}$: many "-a" groups, then a char
+        // that cannot finish the match. The old regex overflows the stack on this.
+        val target = 100 * 1024
+        val blow = buildString(target) {
+            append('1')
+            while (length + 2 < target) append("-a")
+            append('!')
+        }
+        assertTrue(blow.length > 90 * 1024)
+        val result = try {
+            Invite.attempt(blow, fail = { it }) { error("a huge paste must not join") }
+        } catch (err: Throwable) {
+            throw AssertionError("paste threw ${err.javaClass.simpleName}", err)
+        }
+        assertEquals(Invite.GARBAGE_MSG, result.banner)
+        assertEquals(Invite.NO_NEXT, result.next)
+        assertFalse(result.banner, result.banner.contains("Exception"))
+        assertTrue(result.banner, bannedWords(result.banner).isEmpty())
+        // Recover: the parser still accepts a real short code and a real join link.
+        assertEquals(Invite.WORMHOLE_MSG, failFor("7-guitarist-revenge-alpha").banner)
+        val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"
+        var joined: ParsedInvite? = null
+        Invite.attempt(link, fail = { error(it.banner) }) { joined = it }
+        assertEquals(listOf(2, 3, 3), joined!!.shares)
+    }
+
+    @Test(timeout = 5000)
+    fun aHundredKilobyteJoinLinkStillParses() {
+        val base = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3&note="
+        val link = base + "a".repeat(100 * 1024)
+        var joined: ParsedInvite? = null
+        Invite.attempt(link, fail = { error(it.banner) }) { joined = it }
+        assertEquals("pb://hashhashhash@127.0.0.1:45001/swissnumswiss", joined!!.furl)
+        assertEquals(listOf(2, 3, 3), joined!!.shares)
+    }
+
     @Test
     fun aJoinLinkStillReachesJoin() {
         val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"

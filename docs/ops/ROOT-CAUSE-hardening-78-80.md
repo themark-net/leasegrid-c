@@ -147,3 +147,11 @@ Symptom: Reviewer mutant K15 (`retryFail` arms the action again after `pull`, so
 Cause: the Retry tests never ran `AppModel`. `GridFailTest` checked the text of `AppModel.kt` and ran a local copy of the retry logic. `RetryOnceTest.appModelPullsTheRetryBeforeItRuns` looked for `retries.pull()` in the source. `AppModel` could not be built in a JVM test: it took the grid, `viewModelScope`, `Dispatchers.IO`, and the files dir from Android with no way to swap them.
 
 Fix: `AppModel` gets an internal constructor that takes `AppSeams` (files dir, scope, IO context, grid dispatch). The public `AppModel(app)` passes the defaults, which are the old values, so the app is unchanged. `AppModelRetryTest` builds a real `AppModel` with a fake grid, makes a folder load and a download fail, checks the card and its Next line, taps Retry twice, and counts grid calls. The source-text tests and the local copy are deleted.
+
+## Reviewer follow-up 1: cancel and error do not prove busy clears
+
+Symptom: mutant K9 (`GridRun.cancel` does not clear busy) survived. No test checked busy after an error either.
+
+Cause: `GridRunTest` only covered the stale-ticket finally and a clean finish.
+
+Fix: no production change. `GridRunTest.cancelClearsBusyWhileTheJobIsStillRunning` and `.busyClearsAfterAnErrorAndTheErrorReachesTheHandler` lock both.

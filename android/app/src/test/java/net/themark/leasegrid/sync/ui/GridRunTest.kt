@@ -63,6 +63,40 @@ class GridRunTest {
         assertTrue(ran)
         assertFalse(busy)
     }
+
+    @Test
+    fun cancelClearsBusyWhileTheJobIsStillRunning() {
+        val main = QueueDispatcher()
+        val io = QueueDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + main)
+        var busy = false
+        val run = GridRun(scope, setBusy = { busy = it }, setFail = {})
+        run.launch {
+            withContext(io) {
+                suspendCancellableCoroutine<Unit> { }
+            }
+        }
+        assertTrue(main.runNext())
+        assertTrue(busy)
+        run.cancel()
+        assertFalse("cancel left the spinner on", busy)
+        io.drain()
+        main.drain()
+        assertFalse("the cancelled job turned busy back on", busy)
+    }
+
+    @Test
+    fun busyClearsAfterAnErrorAndTheErrorReachesTheHandler() {
+        val main = QueueDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + main)
+        var busy = false
+        var seen: Exception? = null
+        val run = GridRun(scope, setBusy = { busy = it }, setFail = {})
+        run.launch(onError = { seen = it }) { throw IllegalStateException("boom") }
+        main.drain()
+        assertTrue("the error did not reach the handler: $seen", seen is IllegalStateException)
+        assertFalse("busy stayed on after the error", busy)
+    }
 }
 
 /** Records dispatched blocks so the test chooses which job resumes. */

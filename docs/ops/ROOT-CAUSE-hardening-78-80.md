@@ -88,7 +88,7 @@ Symptom: a failed download's next line is "Retry. (IllegalStateException)".
 
 Cause: `AppModel.kt:420` appends `exc.javaClass.simpleName` to the next line.
 
-Fix: the next line is "check network / free space; Retry." The class is logged. Retry still calls `download`.
+Fix: when `AndroidGrid.dispatch` throws, the Kotlin next line is "check network / free space; Retry." and the class is logged. Retry still calls `download`. This fix covered only that Kotlin catch. Python `dispatch` does not throw, and its own fallback still added the class. See "Reviewer B3" below.
 
 ## Em dash and en dash in guarded literals
 

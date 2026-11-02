@@ -24,11 +24,14 @@ Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) a
 | #80 friendnet copy | `113878a` | Phone strings say shared folder. Chips: "Not in the shared folder yet" and "In the shared folder". |
 | #80 FlowHost pins and SyncApp guard | `d1dc8c7` | Cleared invite text, a null learn, or a dropped Retry action fails the pin. The guard reads every SyncApp.kt literal. |
 | #80 generic grid Retry | `e213a26` | The card says "could not complete that." Retry runs the block once. |
-| #80 download next line | `4f0c011` | The next line is "check network / free space; Retry." The class name is not on it. |
+| #80 download next line | `4f0c011` (Kotlin catch), `370bb84` (Python dispatch) | The next line is "check network / free space; Retry." with no class name, both when the grid call throws (Kotlin) and when `leasegrid_read.dispatch` returns its `OSError` fallback (Python). The last-resort message is "could not complete that." The class goes to the log. |
 | #80 em dash and en dash | `58c64ee` | The guard flags U+2014 and U+2013. Remaining threat lines and the fail title use a colon. |
 | #80 split Introducer (K3c) | `58c64ee` | "Intro" + "ducer" and "intro-\nducer" fail the guard. |
 | Design 61 scope and PM sentence | `58c64ee` | The Tests line names the same files as the guard scope. The cancel-import sentence is in the note. |
 | Import cancel lock | `550907e` | Cancelling learn() during import saves nothing. A later import still saves. |
+| Reviewer B1 dashes in docs | `f34d3da` | No added line in the branch diff has U+2014 or U+2013. Quoted old strings write the dash as `U+2014`. |
+| Reviewer B2 Retry through AppModel | `ea6acea` | `AppModelRetryTest` builds the real `AppModel` (internal `AppSeams` constructor, fake grid). A failed folder load or download shows the card and its Retry. Two taps run the grid call once. |
+| Reviewer follow-up 1 busy | `a72ed33` | Cancel clears busy at once. Busy clears after an error. |
 
 ## Red-first evidence
 
@@ -41,7 +44,7 @@ The per-literal scan also misses `"intro-" + "ducer"`, `"INTRO" + "DUCER"`, `"in
 
 Green on this branch: `.venv/bin/python -m pytest tests/test_android_invite_copy.py -q` → `15 passed in 0.02s`.
 
-Kotlin was not compiled here (no Android SDK, no Gradle). Each test below goes red if the named production file is restored from `7ce07856`. `GridRun.kt` and `RetryOnce.kt` do not exist on that base. Restoring `AppModel.kt` from `7ce07856` is the same behavior: `finally` always clears busy, and `retryFail` does not clear the action. The new test classes then fail to compile until those types are deleted, which is the red state.
+Kotlin cannot compile on nimo (no Android SDK), so Kotlin ran on the box; counts are in "Box verification" below. Each test below goes red if the named production file is restored from `7ce07856`. `GridRun.kt` and `RetryOnce.kt` do not exist on that base. Restoring `AppModel.kt` from `7ce07856` is the same behavior: `finally` always clears busy, and `retryFail` does not clear the action. The new test classes then fail to compile until those types are deleted, which is the red state.
 
 | Test | Production file restored from `7ce07856` |
 | --- | --- |
@@ -53,12 +56,11 @@ Kotlin was not compiled here (no Android SDK, no Gradle). Each test below goes r
 | `SessionFlowTest.aMarkedPasteJoinsAndAMarksOnlyPasteRecoversOnRetry` | `Invite.kt` |
 | `GridRunTest.cancelledJobDoesNotClearBusyWhileANewerJobRuns` | `AppModel.kt` `runGrid` finally, or delete the ticket check in `GridRun.kt` |
 | `RetryOnceTest.aSecondTapDoesNotRunTheActionAgain` | `AppModel.kt` `retryFail` (the field stays set) |
-| `RetryOnceTest.appModelPullsTheRetryBeforeItRuns` | `AppModel.kt` |
 | `RecoveryCodecTest.badRecoveryFileFailsClosed` | `RecoveryCodec.kt` (`bundle` jsonObject, `shares` jsonArray) |
 | `FolderWriteTest.pendingStaysNotOnFriendnetUntilAcknowledge` | `FolderWrite.kt` `PENDING` / `LANDED` |
 | `GridFailTest.unexpectedCardDoesNotNameTheExceptionClass` | `AppModel.kt` `runGrid` card text |
-| `GridFailTest.oneRetryRerunsTheBlockAndASecondTapDoesNot` | `AppModel.kt` `runGrid` Retry lambda |
-| `GridFailTest.downloadFailureDoesNotNameTheExceptionClass` | `AppModel.kt` download next line |
+| `GridFailTest.downloadFailureDoesNotNameTheExceptionClass` | `GridRun.kt` `downloadFailNext` |
+| `AppModelRetryTest` (4 tests) | mutants K15 and K16, see "Reviewer fixes" below |
 
 Already green on `7ce07856` (behavior shipped in `4ab71a0`, not a red fix): `SessionFlowTest.aCancelledJoinPaintsNothing` and `SessionFlowTest.aCancelledImportSavesNothingAndALaterImportSaves`. `InviteCopyTest.aHundredKilobyteJoinLinkStillParses` is also green on the base: that paste does not match the short-code regex, so it does not overflow. It stays so a long real link still parses after the length cap.
 
@@ -78,13 +80,21 @@ Already green on `7ce07856` (behavior shipped in `4ab71a0`, not a red fix): `Ses
 - Recovery file. A bundle that is not an object, or shares that are not an array, is `ImportFail` with the import message and a Retry next line. The file is not imported.
 - Copy. A friendnet chip or a friendnet sentence in SyncApp fails `FolderWriteTest` or the SyncApp guard. An em dash or en dash in a guarded literal fails the same guard.
 - Generic grid failure. The class name is logged, not shown. Retry runs the block once. A second tap does not.
-- Download. The next line does not name the class. Retry still starts the same download.
+- Download. The next line does not name the class, whether the grid call throws (Kotlin catch) or Python `dispatch` returns its `OSError` fallback. Python logs `dispatch <op> failed: <Class>` with no payload. Retry still starts the same download, once per tap.
 - Introducer. A split of the word across `+`, a line break, case, or whitespace fails the guard. The JSON key `introducer_furl` is still allowed.
 - Import cancel. Cancellation during learn() saves nothing. The user can import again. If the computer cannot be reached, the save is kept and the screen shows "Saved on this phone. Couldn't reach your computer to finish."
 
 ## Follow-up issues to file
 
 Do not implement these on this branch. They are product or design forks, or they were outside the listed items.
+
+Title: Android download next line appends the last storage error text
+
+Body: `lg_tahoe.py:404` builds "check network / free space; Retry. (<last error>)". The text in parentheses is another copy line (for example "could not download this file. Network error or not enough free space."), not a class name, so it repeats the message. Decide whether the next line should drop it. Found during Reviewer B3; not changed here.
+
+Title: Python learn next line names the exception class
+
+Body: `lg_intro.py:177` and `:194` put `type(exc).__name__` on the learn next line. `AppModel.learn()` only logs that result and never shows it, so it is not on screen today. If a later change shows learn's copy, drop the class there first.
 
 Title: Android import-saved banner: decide whether "Saved on this phone." stands alone
 
@@ -100,7 +110,7 @@ Body: Phone chips are "Not in the shared folder yet" and "In the shared folder".
 
 Title: Android file-read failures still append the exception class
 
-Body: `MainActivity.readAddedFile` and `readRecovery` put `exc.javaClass.simpleName` on the Next line. Download and the generic grid card no longer do this (#80). Log the class and keep the plain next line. Left out of this branch because it was not one of the listed #78 or #80 items.
+Body: `MainActivity.readAddedFile` and `readRecovery` put `exc.javaClass.simpleName` on the Next line. Download (Kotlin catch and Python `dispatch` fallback) and the generic grid card no longer do this (#80). Log the class and keep the plain next line. Left out of this branch because it was not one of the listed #78 or #80 items.
 
 ## Box verification (Gradle, 2026-11-02)
 
@@ -116,13 +126,43 @@ Kotlin red-first, each run with only the named change on top of this branch, the
 | `Invite.kt` from `7ce07856` | 6: `InviteCopyTest.aHundredKilobytePasteDoesNotOverflowAndStaysAPlainError` (StackOverflowError), `.dirtyFurlsAreIncompleteAndACleanLinkStillJoins`, `.invisiblePasteMarksStillParseAndAMarksOnlyPasteAsksForTheLink` ("That isn't a join link" for U+200B), `SessionFlowTest.retryAfterAHundredKilobytePasteJoinsTheCorrectedLink`, `.retryAfterAMalformedPasteJoinsTheCorrectedLink`, `.aMarkedPasteJoinsAndAMarksOnlyPasteRecoversOnRetry` |
 | `RecoveryCodec.kt` from `7ce07856` | 1: `RecoveryCodecTest.badRecoveryFileFailsClosed` (raw "is not a JsonObject") |
 | `FolderWrite.kt` from `7ce07856` | 2: `FolderWriteTest.pendingStaysNotOnFriendnetUntilAcknowledge`, `.silenceShowsExistingFailAndDoesNotSayOnFriendnet` ("Not on friendnet yet") |
-| `AppModel.kt` from `7ce07856` | 3: `GridFailTest.downloadFailureDoesNotNameTheExceptionClass`, `.oneRetryRerunsTheBlockAndASecondTapDoesNot`, `RetryOnceTest.appModelPullsTheRetryBeforeItRuns` |
+| `AppModel.kt` from `7ce07856` | 3: `GridFailTest.downloadFailureDoesNotNameTheExceptionClass`, `.oneRetryRerunsTheBlockAndASecondTapDoesNot`, `RetryOnceTest.appModelPullsTheRetryBeforeItRuns` (these three read source text; Reviewer B2 deleted the last two and the source read in the first) |
 | `GridRun.kt` finally clears busy unconditionally (base behavior) | 1: `GridRunTest.cancelledJobDoesNotClearBusyWhileANewerJobRuns` ("older finally cleared busy while the newer job was still running") |
 | `RetryOnce.pull` does not clear the slot (base behavior) | 3: `RetryOnceTest.aSecondTapDoesNotRunTheActionAgain`, `.aNewFailureCanBeRetriedAfterTheFirstTap`, `GridFailTest.oneRetryRerunsTheBlockAndASecondTapDoesNot` |
 
 Not red by a file restore: `GridFailTest.unexpectedCardDoesNotNameTheExceptionClass` tests `unexpectedGridCard()` in the new `GridRun.kt` (the base had the class-name text inline in `runGrid`, which `D` covers). `SessionFlowTest.aCancelledJoinPaintsNothing` and `.aCancelledImportSavesNothingAndALaterImportSaves` lock behavior already shipped in `4ab71a0`.
 
 nimo `scripts/ci-local.sh` re-run on `1250037`: **619 passed, 5 xfailed, 0 failed**, ci-local PASS.
+
+## Reviewer fixes (second pass, 2026-11-02)
+
+Reviewer FAIL on `2be4d7e`: B1 dashes in docs, B2 tautological Retry tests (K15 and K16 survived), B3 false class-name claim. Root causes are in `docs/ops/ROOT-CAUSE-hardening-78-80.md` under "Reviewer B1", "Reviewer B2", "Reviewer B3", and "Reviewer follow-up 1".
+
+| Blocker | Commit | Files |
+| --- | --- | --- |
+| B1 | `f34d3da` | This file (lines 37, 99), `ROOT-CAUSE-hardening-78-80.md` (lines 65, 97): the quoted em dash is written as `U+2014`. `git diff 7ce07856` has no added line with U+2014 or U+2013. |
+| B3 | `370bb84` | `android/app/src/main/python/leasegrid_read.py`: the `OSError` and last-resort fallbacks return plain copy and log the class. New `android/pytests/test_dispatch_copy.py` (3 tests). |
+| B2 | `ea6acea` | `AppModel.kt`: internal `AppSeams` constructor; `AppModel(app)` passes today's values. New `AppModelRetryTest.kt` (4 tests). Deleted `GridFailTest.oneRetryRerunsTheBlockAndASecondTapDoesNot`, `RetryOnceTest.appModelPullsTheRetryBeforeItRuns`, and the source read in `GridFailTest.downloadFailureDoesNotNameTheExceptionClass`. |
+| Follow-up 1 | `a72ed33` | `GridRunTest.kt`: 2 tests. |
+
+Red-first, Python (nimo, `.venv/bin/python -m pytest android/pytests/test_dispatch_copy.py`, before the `leasegrid_read.py` change): 2 failed, 1 passed.
+
+- `test_a_download_that_cannot_be_written_does_not_name_the_class`: `assert 'check networ...otFoundError)' == 'check networ...space; Retry.'`
+- `test_an_unexpected_failure_does_not_name_the_class`: `assert 'could not co...t. ValueError' == 'could not complete that.'`
+- `test_the_log_line_keeps_only_the_class_not_the_payload` was green before the fix (nothing was logged). It guards the new log line against a furl or the payload.
+
+After the fix: 3 passed.
+
+Red-first, Kotlin (box, mutants applied by hand on top of the B2 tree, then reverted with `git checkout`):
+
+| Mutant | Red tests (65 run) |
+| --- | --- |
+| K15: `retryFail` calls `retries.arm(action)` after `pull` | 3: `AppModelRetryTest.aFolderLoadThatThrowsShowsTheCardAndADoubleTapRetriesOnce` ("a second Retry tap ran the folder load again expected:<2> but was:<3>"), `.aDownloadThatFailsShowsTheCardAndADoubleTapRetriesOnce` (2 vs 3), `.aDownloadWhoseGridCallThrowsDoesNotNameTheClassAndRetriesOnce` (2 vs 3) |
+| K16: the `runGrid` onError `show(...)` line removed | 2: `AppModelRetryTest.aFolderLoadThatThrowsShowsTheCardAndADoubleTapRetriesOnce` ("a grid failure showed no fail card, so there is no Retry"), `.dismissThenRetryDoesNothing` |
+| K9: `GridRun.cancel` does not call `setBusy(false)` | 1: `GridRunTest.cancelClearsBusyWhileTheJobIsStillRunning` ("cancel left the spinner on") |
+| none (reverted) | 0 of 65 |
+
+`GridRunTest.busyClearsAfterAnErrorAndTheErrorReachesTheHandler` locks behavior that was already correct; no mutant in this pass targets it.
 
 ## Gate
 

@@ -17,6 +17,7 @@ APP_PY = Path(__file__).resolve().parents[1] / "src" / "leasegrid_sync" / "app.p
 APP_MODEL = INVITE.parents[1] / "ui" / "AppModel.kt"
 SESSION_FLOW = INVITE.parents[1] / "ui" / "SessionFlow.kt"
 SYNC_APP = INVITE.parents[1] / "ui" / "SyncApp.kt"
+MAIN_ACTIVITY = INVITE.parents[1] / "MainActivity.kt"
 
 # Exact tokens the code still uses. Any other literal that names them is copy.
 _CODE_OK = frozenset({"pb://", "furl"})
@@ -71,24 +72,63 @@ _DASH = re.compile("[\u2014\u2013]")
 _CODE_INTRODUCER_KEYS = frozenset({"introducer_furl"})
 
 
+# `${"x"}` inside a literal is the text x. Unwrapped first, so the outer literal stays one piece.
+_TEMPLATE_LITERAL = re.compile(r'\$\{\s*"((?:\\.|[^"\\$])*)"\s*\}')
+# What may sit between two literals that still build one string on screen:
+# `+`, `.plus(`, or `buildString { append("a"); append("b") }`.
+_JOIN_GAP = re.compile(r"\s*(\+|\)?\s*\.plus\(|\)\s*;?\s*(\.\s*)?append\()\s*")
+# `'i', 'n', 't'` joined with joinToString / concatToString / String(...).
+_CHAR_RUN = re.compile(r"(?:'(?:\\.|[^'\\])'\s*,\s*){3,}'(?:\\.|[^'\\])'")
+_CHAR = re.compile(r"'((?:\\.|[^'\\]))'")
+
+
+def _unwrap_templates(source: str) -> str:
+    previous = None
+    while previous != source:
+        previous = source
+        source = _TEMPLATE_LITERAL.sub(lambda m: m.group(1), source)
+    return source
+
+
 def _joined_literals(source: str) -> list[str]:
-    """Literal contents. `"a" + "b"` with only whitespace around + is one piece."""
+    """Literal contents, joined where Kotlin builds one string from several pieces."""
+    source = _unwrap_templates(source)
     pieces: list[str] = []
     ends: list[int] = []
     for match in _LITERAL.finditer(source):
         content = match.group(1)
         gap = source[ends[-1] : match.start()] if pieces else ""
-        if pieces and re.fullmatch(r"\s*\+\s*", gap):
+        if pieces and _JOIN_GAP.fullmatch(gap):
             pieces[-1] = pieces[-1] + content
             ends[-1] = match.end()
         else:
             pieces.append(content)
             ends.append(match.end())
+    for run in _CHAR_RUN.finditer(source):
+        pieces.append("".join(_CHAR.findall(run.group(0))))
     return pieces
+
+
+# Invisible in a Text(): soft hyphen and the zero-width marks.
+_INVISIBLE = re.compile("[\u00ad\u200b\u200c\u200d\u2060\ufeff]")
+# Cyrillic letters drawn the same as Latin ones.
+_LOOKALIKE = str.maketrans(
+    "\u0430\u0435\u043e\u0440\u0441\u0443\u0445\u0456\u0458\u0501\u04bb\u043a\u043c\u0442\u043d\u0432\u0433"
+    "\u0410\u0415\u041e\u0420\u0421\u0423\u0425\u0406\u0408\u041a\u041c\u0422\u041d\u0412",
+    "aeopcyxijdhkmthbr" "AEOPCYXIJKMTHB",
+)
+
+
+def _normalize(text: str) -> str:
+    """What the user would read: escapes decoded, invisible marks gone, look-alikes folded."""
+    text = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
+    text = _INVISIBLE.sub("", text)
+    return text.translate(_LOOKALIKE)
 
 
 def _squash_introducer(text: str) -> str:
     """Drop the breaks a split 'introducer' hides behind."""
+    text = _normalize(text)
     text = text.replace("\\n", "\n").replace("\\r", "\n").replace("\\t", " ")
     text = re.sub(r"-\s*", "", text)
     text = re.sub(r"\s+", "", text)
@@ -100,8 +140,10 @@ def _banned(literals: list[str]) -> list[str]:
     for item in literals:
         if item in _CODE_OK or item in _CODE_INTRODUCER_KEYS:
             continue
-        split = "introducer" in _squash_introducer(item)
-        if _DASH.search(item) or _FORBIDDEN.search(item) or split:
+        squashed = _squash_introducer(item)
+        split = any(word in squashed for word in ("introducer", "friendnet", "wormhole"))
+        shown = _normalize(item)
+        if _DASH.search(shown) or _FORBIDDEN.search(shown) or split:
             hits.append(item)
     return hits
 
@@ -248,10 +290,11 @@ def _invite_section(ui: str) -> str:
     return ui[start : ui.index("    FailCard(model)", start)]
 
 
-def _flow_host(model: str) -> str:
+def _flow_host(model: str) -> list[str]:
+    """The FlowHost object's lines, stripped. A pin must equal a whole line, not a prefix."""
     start = model.index("object : FlowHost {")
     end = model.index("\n    })", start)
-    return model[start:end]
+    return [line.strip() for line in model[start:end].splitlines()]
 
 
 def test_appmodel_flowhost_delegates_exactly():
@@ -263,8 +306,8 @@ def test_appmodel_flowhost_delegates_exactly():
     host = _flow_host(APP_MODEL.read_text(encoding="utf-8"))
     # J1c: the setter stores the typed text. Clearing it is a different line.
     assert "set(value) { this@AppModel.inviteText = value }" in host
-    assert 'inviteText = ""' not in host
-    assert "get() = this@AppModel.session" in host
+    assert not any('inviteText = ""' in line for line in host)
+    assert "override val session: Session? get() = this@AppModel.session" in host
     # J4a: launch is runGrid with the same label and block.
     assert (
         "override fun launch(label: String, block: suspend () -> Unit) = runGrid(label, block)"
@@ -284,7 +327,7 @@ def test_appmodel_flowhost_delegates_exactly():
         "override fun show(banner: FailBanner, again: () -> Unit) = this@AppModel.show(banner, again)"
         in host
     )
-    assert "show(banner, {})" not in host
+    assert not any("show(banner, {})" in line for line in host)
 
 
 def test_syncapp_invite_section_passes_banned_word_guard():
@@ -336,3 +379,47 @@ def test_introducer_unreachable_is_never_on_screen():
         ]
         hits.extend(f"{path.relative_to(main_java)}: {item}" for item in found)
     assert hits == [], hits
+
+
+def test_appmodel_and_mainactivity_pass_banned_word_guard():
+    """U8: every literal in AppModel.kt and MainActivity.kt, not only learn().
+
+    A8 and A9 put friendnet or a dash into an AppModel banner. The old scan
+    read learn()'s body only, so both survived.
+    """
+    for path in (APP_MODEL, MAIN_ACTIVITY):
+        hits = _banned_source(path.read_text(encoding="utf-8"))
+        assert hits == [], (path.name, hits)
+
+
+def test_guard_sees_through_hidden_spellings():
+    """E6-E12: what Text() shows, however the source spells it."""
+    samples = (
+        'Text("${"Intro"}ducer is down")',  # template
+        'Text("Intr\u043educer is down")',  # Cyrillic o
+        'Text("Intr\\u006Fducer is down")',  # \u escape in source
+        'Text("Intro\u00adducer is down")',  # soft hyphen
+        'Text("Intro\\u00ADducer is down")',  # soft hyphen escape
+        'Text(buildString { append("Intro"); append("ducer") })',  # buildString
+        'Text(buildString {\n append("Intro")\n append("ducer")\n})',
+        'Text("Intro".plus("ducer"))',
+        "Text(listOf('i', 'n', 't', 'r', 'o', 'd', 'u', 'c', 'e', 'r').joinToString(\"\"))",  # char join
+        'Text("Intro\u200bducer is down")',  # zero-width space
+        'Text("on friend\u200bnet")',
+        'Text("worm\u00adhole code")',
+        'Text("em \\u2014 dash")',
+        'Text("this fri\u0435ndnet")',
+    )
+    for sample in samples:
+        assert _banned_source(sample), sample
+
+
+def test_guard_still_passes_plain_copy():
+    clean = (
+        'Text("Join a shared folder")',
+        'put("introducer_furl", furl)',
+        'Text("Intro: tap Join")',
+        "listOf('a', 'b', 'c', 'd').joinToString(\"\")",
+    )
+    for sample in clean:
+        assert _banned_source(sample) == [], sample

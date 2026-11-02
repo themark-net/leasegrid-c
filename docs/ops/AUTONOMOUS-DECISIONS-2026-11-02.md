@@ -37,3 +37,5 @@ Tester C3/C4: recovery shares must satisfy 1 <= n <= h <= t <= 256 | size check 
 Tester S5: delete GridFailTest and keep the FlowHost pins as whole-line matches next to the new behavior tests | delete the pins | the pins are cheap, and whole lines fix Reviewer follow-up 2
 Tester E5 to E12: normalize the scanned text in the guard (escapes, soft hyphen, zero-width, Cyrillic look-alikes, templates, +, .plus, append, char runs); a word split across variables stays a follow-up | a Kotlin compiler plugin or a device string dump | the guard stays a fast pytest; variables need data flow
 Tester U8: the copy guard scans every literal in AppModel.kt and MainActivity.kt | only the banners | both files pass, and a log tag or JSON key that is not copy does not trip it today
+
+- 2026-11-02 Reviewer B1 at fac8cd9: HANDOFF:82 rewritten to match stripPaste; stale :74/:75 counts dated to 2be4d7e; :31 and :213 claims narrowed to what tests cover. Docs only.

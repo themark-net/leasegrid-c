@@ -28,7 +28,7 @@ Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) a
 | #80 em dash and en dash | `58c64ee` | The guard flags U+2014 and U+2013. Remaining threat lines and the fail title use a colon. |
 | #80 split Introducer (K3c) | `58c64ee` | "Intro" + "ducer" and "intro-\nducer" fail the guard. |
 | Design 61 scope and PM sentence | `58c64ee` | The Tests line names the same files as the guard scope. The cancel-import sentence is in the note. |
-| Import cancel lock | `550907e`, Tester T1 `65ce6e9` | Cancel and the back arrow on the import screen call `cancelImport()`: the running import stops, nothing is saved, Retry is cleared, and the screen goes to Welcome. A later import still saves. |
+| Import cancel lock | `550907e`, Tester T1 `65ce6e9` | Cancel and the back arrow on the import screen call `cancelImport()`: the running import stops, nothing is saved, and the screen goes to Welcome. A later import still saves. |
 | Reviewer B1 dashes in docs | `f34d3da` | No added line in the branch diff has U+2014 or U+2013. Quoted old strings write the dash as `U+2014`. |
 | Reviewer B2 Retry through AppModel | `ea6acea` | `AppModelRetryTest` builds the real `AppModel` (internal `AppSeams` constructor, fake grid). A failed folder load or download shows the card and its Retry. Two taps run the grid call once. |
 | Reviewer follow-up 1 busy | `a72ed33` | Cancel clears busy at once. Busy clears after an error. |
@@ -71,15 +71,15 @@ Already green on `7ce07856` (behavior shipped in `4ab71a0`, not a red fix): `Ses
 
 ## Tests and counts
 
-- `.venv/bin/python -m pytest tests/test_android_invite_copy.py -q` → **15 passed**, 0 failed, 0 skipped, 0 xfailed, 0.02s. `/usr/bin/python3 -m pytest` cannot run: `No module named pytest`. The venv is the one `scripts/ci-local.sh` uses on this linked worktree.
-- `scripts/ci-local.sh` (detached, log was `tmp/ci-local.log`, deleted after the count was copied here) → **PASS**. Pytest: **619 passed, 5 xfailed, 0 failed, 0 skipped**, 4 warnings, 143.20s. Ruff passed. Semgrep scan: 0 findings. Gradle was not run.
+- At the earlier pin 2be4d7e: `.venv/bin/python -m pytest tests/test_android_invite_copy.py -q` → **15 passed**, 0 failed, 0 skipped, 0 xfailed, 0.02s. `/usr/bin/python3 -m pytest` cannot run: `No module named pytest`. The venv is the one `scripts/ci-local.sh` uses on this linked worktree.
+- At the earlier pin 2be4d7e: `scripts/ci-local.sh` (detached, log was `tmp/ci-local.log`, deleted after the count was copied here) → **PASS**. Pytest: **619 passed, 5 xfailed, 0 failed, 0 skipped**, 4 warnings, 143.20s. Ruff passed. Semgrep scan: 0 findings. Gradle was not run.
 
 ## How it fails and how it recovers
 
 - Long paste. Before: `StackOverflowError` in the short-code regex. After: `GARBAGE_MSG`, no Next line. Replace the field and tap Retry. learn() runs for the corrected link. A real short code still shows `WORMHOLE_MSG`. A ~100 KB well-formed join link still parses.
 - Cancelled join. learn() rethrows `CancellationException`. SessionFlow does not call show(), so the failure card is not painted over a newer attempt. The newer join can save.
 - Dirty link. The banner is `MALFORMED_MSG`. learn() is not called. Replace the field and tap Retry. The corrected link joins.
-- Paste marks. Leading and trailing U+200B and U+FEFF are stripped, including a mark percent-encoded onto either end. A mark in the middle stays. Marks only: `EMPTY_MSG`. Retry with the real link calls learn().
+- Paste marks. U+200B, U+200C, U+200D, U+2060 and U+FEFF are dropped anywhere in the paste (`stripPaste`, Invite.kt), including a mark percent-encoded onto either end, so a marked link still joins. Marks only: `EMPTY_MSG`. Retry with the real link calls learn().
 - Busy. An older finally no longer clears busy under a newer job. The current job still clears busy when it finishes. Cancel clears busy immediately.
 - Retry. The action is taken out of the slot before it runs. A second tap does nothing. A new failure can arm a new action.
 - Recovery file. A bundle that is not an object, or shares that are not an array, is `ImportFail` with the import message and a Retry next line. The file is not imported.
@@ -210,7 +210,7 @@ Mutants, each applied by hand on the box on top of this branch, run, then revert
 | S2 old | marks stripped only at the ends | killed | 1 test |
 | S3 old | recovery furl skips `validateFurl` | killed | 1 test |
 | S4 old | empty tub id or missing location accepted | killed | 2 tests |
-| S1 depth, scrypt, size, read | each cap removed | killed | 1, 1, 1, 2 tests |
+| S1 depth, scrypt, size, read | whole cap check removed (individual scrypt bounds untested, follow-up) | killed | 1, 1, 1, 2 tests |
 | C3, C3b, C4 | shares size check, shares order check, folders check removed | killed | 1 test each |
 | A8 | "friendnet" in an `AppModel.kt` banner | killed by the new guard (1 failed, 17 passed); survived the old guard (15 passed) | `test_appmodel_and_mainactivity_pass_banned_word_guard` |
 | A9 | em dash in an `AppModel.kt` banner | killed by the new guard (1 failed, 17 passed); survived the old guard | same |

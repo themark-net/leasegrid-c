@@ -465,7 +465,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         dir.listFiles()?.forEach { it.delete() }
         show(
             FailBanner(
-                "downloads on this phone were removed. Folders on the friendnet are unchanged.",
+                "downloads on this phone were removed. Shared folders are unchanged.",
                 "Download again when you need a file.",
             ),
             null,

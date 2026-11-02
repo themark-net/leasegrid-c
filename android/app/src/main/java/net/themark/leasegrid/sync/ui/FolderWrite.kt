@@ -2,11 +2,12 @@ package net.themark.leasegrid.sync.ui
 
 /**
  * Slice B write rules for the folder that is already open.
- * Docs: design/55–59. The chip cannot say On friendnet before acknowledge.
+ * Docs: design/55-59. The chip cannot say the file is in the shared folder before acknowledge.
+ * It also must not say the file is on your computer.
  */
 object WriteCopy {
-    const val PENDING = "Not on friendnet yet"
-    const val LANDED = "On friendnet"
+    const val PENDING = "Not in the shared folder yet"
+    const val LANDED = "In the shared folder"
     const val ADD = "Add file"
     const val READ_ONLY =
         "You can download from this folder. Adding files is not available here."
@@ -89,7 +90,7 @@ fun showPendingProgress(row: VisibleFile): Boolean =
     row.chip == Chip.Pending && !row.failed
 
 /**
- * Remove is a friendnet delete. A read-only folder does not offer it.
+ * Remove deletes the file from the shared folder. A read-only folder does not offer it.
  * Download/Open stay. Pending rows use Cancel, not Remove.
  */
 fun rowActions(writable: Boolean, row: VisibleFile): List<String> {
@@ -129,7 +130,7 @@ sealed class StageAdd {
 }
 
 /**
- * Pending rows stay Not on friendnet yet until [acknowledge].
+ * Pending rows stay [WriteCopy.PENDING] until [acknowledge].
  * Discard drops a pending row. Remove is a separate confirm for a landed file.
  */
 class FolderWriteBoard {
@@ -214,7 +215,7 @@ class FolderWriteBoard {
 
     /**
      * No read-back yet. Marks the pending row failed once [elapsedMs]
-     * reaches [ADD_SILENCE_MS]. Does not change the chip to On friendnet.
+     * reaches [ADD_SILENCE_MS]. Does not change the chip to [WriteCopy.LANDED].
      * Returns false while the row is still inside the budget, or already gone.
      */
     fun noteSilence(folderCap: String, name: String, token: Long, elapsedMs: Long): Boolean {
@@ -230,7 +231,7 @@ class FolderWriteBoard {
         return true
     }
 
-    /** Drops a pending row that never landed. Not a friendnet remove. */
+    /** Drops a pending row that never landed. Not a shared-folder remove. */
     fun abandon(folderCap: String, name: String, token: Long): Boolean {
         val item = pending[key(folderCap, name)] ?: return false
         if (item.token != token) return false
@@ -238,7 +239,7 @@ class FolderWriteBoard {
         return true
     }
 
-    /** Drops the pending row. Only the server listing may then say On friendnet. */
+    /** Drops the pending row. Only the server listing may then say [WriteCopy.LANDED]. */
     fun acknowledge(folderCap: String, name: String, token: Long): Boolean {
         val item = pending[key(folderCap, name)] ?: return false
         if (item.token != token) return false
@@ -259,7 +260,7 @@ class FolderWriteBoard {
         sheet = WriteSheet.Discard(folderCap, name)
     }
 
-    /** Local only. Does not describe a friendnet delete. */
+    /** Local only. Does not describe a shared-folder delete. */
     fun confirmDiscard(): PendingFile? {
         val discard = sheet as? WriteSheet.Discard ?: return null
         sheet = null

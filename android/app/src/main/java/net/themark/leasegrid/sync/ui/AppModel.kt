@@ -417,10 +417,11 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                 } catch (exc: CancellationException) {
                     throw exc
                 } catch (exc: Exception) {
+                    Log.w(TAG, "download failed: ${exc.javaClass.simpleName}")
                     GridResult(
                         false,
                         "could not download this file. Network error or not enough free space.",
-                        "check network / free space; Retry. (${exc.javaClass.simpleName})",
+                        downloadFailNext(exc),
                         buildJsonObject {},
                     )
                 }

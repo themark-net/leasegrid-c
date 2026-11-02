@@ -17,6 +17,12 @@ internal fun unexpectedGridCard(exc: Exception): FailBanner {
     )
 }
 
+/** Download failure next-step. The exception class is for the log, not this line. */
+@Suppress("UNUSED_PARAMETER")
+internal fun downloadFailNext(exc: Exception): String {
+    return "check network / free space; Retry."
+}
+
 /**
  * One grid coroutine at a time.
  *

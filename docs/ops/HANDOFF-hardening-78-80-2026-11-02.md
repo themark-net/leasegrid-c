@@ -164,6 +164,12 @@ Red-first, Kotlin (box, mutants applied by hand on top of the B2 tree, then reve
 
 `GridRunTest.busyClearsAfterAnErrorAndTheErrorReachesTheHandler` locks behavior that was already correct; no mutant in this pass targets it.
 
+Counts at `50e888f` (code identical to this commit; this commit only adds these lines):
+
+- Box Gradle (JDK 17, SDK 34), `./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug`: BUILD SUCCESSFUL, **65 tests, 0 failures, 0 errors, 0 skipped** (was 61: minus 2 deleted source-text tests, plus 4 `AppModelRetryTest`, plus 2 `GridRunTest`). Debug APK assembled.
+- nimo `.venv/bin/python -m pytest tests/test_android_invite_copy.py android/pytests/test_dispatch_copy.py -q`: **18 passed** (15 + 3).
+- nimo `scripts/ci-local.sh`: **619 passed, 5 xfailed, 0 failed**, ci-local PASS. `android/pytests` is outside its `testpaths`, so the 3 new tests are counted only in the line above.
+
 ## Gate
 
 Tester and Reviewer. Runtime changes are in `Invite.kt`, `AppModel.kt`, `GridRun.kt`, `RetryOnce.kt`, `RecoveryCodec.kt`, `SyncApp.kt`, and `FolderWrite.kt`. Kotlin unit tests ran on the box (61/0 failures, red-first table above). Python ci-local passed, counts above.

@@ -15,6 +15,9 @@ object WriteCopy {
     const val ADD_NEXT = "check network; Retry."
     const val READ_FAIL = "could not read this file."
     const val READ_NEXT = "pick it again."
+    // A phone reads the whole file into memory before it adds it.
+    const val ADD_MAX_BYTES = 64 shl 20
+    const val TOO_BIG_NEXT = "pick a file under 64 MB."
     const val SPACE_FAIL = "not enough free space."
     const val SPACE_NEXT = "free space; Retry."
     const val REMOVE_FAIL = "could not remove this file."

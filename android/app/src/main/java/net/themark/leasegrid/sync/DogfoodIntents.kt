@@ -44,7 +44,9 @@ object DogfoodIntents {
     fun readRecoverySeed(file: File): RecoverySeed {
         return try {
             if (!file.isFile) return RecoverySeed(false, file.name, null)
-            val bytes = file.readBytes()
+            val bytes = file.inputStream().use {
+                net.themark.leasegrid.sync.ui.readAtMost(it, net.themark.leasegrid.sync.recovery.MAX_RECOVERY_BYTES)
+            }
             if (bytes.isEmpty()) RecoverySeed(false, file.name, null)
             else RecoverySeed(true, file.name, bytes)
         } catch (_: Exception) {

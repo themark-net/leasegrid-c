@@ -9,6 +9,8 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.themark.leasegrid.sync.invite.Invite
+import net.themark.leasegrid.sync.invite.InviteFail
 import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.Cipher
@@ -26,6 +28,15 @@ const val IMPORT_FAIL_NEXT =
 const val SCARY_LOSS =
     "Loss of your recovery key and this device can mean TOTAL LOSS of access. " +
         "There is no reset password. Leasegrid cannot recover it for you."
+
+/** A desktop recovery file is a few KB. Anything past 1 MiB is not one. */
+const val MAX_RECOVERY_BYTES = 1 shl 20
+
+/** Desktop nests 4 deep. A deeper file is not one, and it must not overflow the parser's stack. */
+internal const val MAX_RECOVERY_DEPTH = 32
+
+/** scrypt memory is 128 * r * n bytes. Desktop uses n=2^15, r=8 (32 MiB). Cap at 64 MiB. */
+internal const val MAX_SCRYPT_BYTES = 64L shl 20
 
 class ImportFail(val banner: String, val next: String) : Exception(banner)
 
@@ -45,13 +56,14 @@ object RecoveryCodec {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun decode(data: ByteArray, passphrase: String): RecoveryBundle {
+        if (data.size > MAX_RECOVERY_BYTES) throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         val text = try {
             data.toString(Charsets.UTF_8)
         } catch (_: Exception) {
             throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         }
         val envelope = try {
-            json.parseToJsonElement(text).jsonObject
+            parseShallow(text).jsonObject
         } catch (_: Exception) {
             throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         }
@@ -93,13 +105,14 @@ object RecoveryCodec {
                 throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
             }
             val salt = b64(kdf["salt"]?.jsonPrimitive?.contentOrNull ?: "")
-            val n = kdf["n"]?.jsonPrimitive?.intOrNull ?: (1 shl 15)
-            val r = kdf["r"]?.jsonPrimitive?.intOrNull ?: 8
-            val p = kdf["p"]?.jsonPrimitive?.intOrNull ?: 1
+            val n = kdfInt(kdf, "n", 1 shl 15)
+            val r = kdfInt(kdf, "r", 8)
+            val p = kdfInt(kdf, "p", 1)
+            if (!scryptParamsOk(n, r, p)) throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
             val key = scryptKey(passphrase, salt, n, r, p)
             val token = envelope["ciphertext"]?.jsonPrimitive?.contentOrNull ?: ""
             val plain = fernetDecrypt(key, token)
-            return json.parseToJsonElement(plain.toString(Charsets.UTF_8)).jsonObject
+            return parseShallow(plain.toString(Charsets.UTF_8)).jsonObject
         } catch (exc: ImportFail) {
             throw exc
         } catch (_: Exception) {
@@ -111,13 +124,19 @@ object RecoveryCodec {
         if (data["version"]?.jsonPrimitive?.intOrNull != RECOVERY_VERSION) {
             throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         }
-        val furl = data["introducer_furl"]?.jsonPrimitive?.contentOrNull ?: ""
-        if (!furl.startsWith("pb://")) {
+        val furl = try {
+            Invite.validateFurl(data["introducer_furl"]?.jsonPrimitive?.contentOrNull ?: "")
+        } catch (_: InviteFail) {
+            // The same check a pasted link gets (S3). A recovery file shows recovery copy.
             throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         }
         val sharesEl = data["shares"]?.jsonArray ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         if (sharesEl.size != 3) throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         val shares = sharesEl.map { it.jsonPrimitive.intOrNull ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT) }
+        val (needed, happy, total) = shares
+        if (needed < 1 || needed > happy || happy > total || total > 256) {
+            throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+        }
         val folders = mutableListOf<FolderCap>()
         val rawFolders = data["folders"]?.jsonArray
         if (rawFolders != null) {
@@ -134,6 +153,50 @@ object RecoveryCodec {
         }
         val nickname = data["nickname"]?.jsonPrimitive?.contentOrNull ?: "leasegrid-sync"
         return RecoveryBundle(furl, shares, nickname, folders)
+    }
+
+    /** Parse only after a depth check: a deep file would throw StackOverflowError, an Error. */
+    private fun parseShallow(text: String) =
+        if (depthOver(text, MAX_RECOVERY_DEPTH)) {
+            throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+        } else {
+            json.parseToJsonElement(text)
+        }
+
+    /** True when [text] nests arrays or objects deeper than [max]. Brackets in strings do not count. */
+    internal fun depthOver(text: String, max: Int): Boolean {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (ch in text) {
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    ch == '\\' -> escaped = true
+                    ch == '"' -> inString = false
+                }
+                continue
+            }
+            when (ch) {
+                '"' -> inString = true
+                '[', '{' -> if (++depth > max) return true
+                ']', '}' -> depth--
+            }
+        }
+        return false
+    }
+
+    /** Absent means the desktop default. Present but not an int is a bad file. */
+    private fun kdfInt(kdf: JsonObject, key: String, default: Int): Int {
+        val el = kdf[key] ?: return default
+        return el.jsonPrimitive.intOrNull ?: throw ImportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+    }
+
+    /** n a power of two in 2..2^20, r and p small, and the memory under [MAX_SCRYPT_BYTES]. */
+    internal fun scryptParamsOk(n: Int, r: Int, p: Int): Boolean {
+        if (n < 2 || n > (1 shl 20) || n and (n - 1) != 0) return false
+        if (r !in 1..32 || p !in 1..16) return false
+        return 128L * r * n <= MAX_SCRYPT_BYTES
     }
 
     private fun scryptKey(passphrase: String, salt: ByteArray, n: Int, r: Int, p: Int): ByteArray {

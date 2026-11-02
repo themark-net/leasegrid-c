@@ -84,6 +84,104 @@ class RecoveryCodecTest {
             }
         }
     }
+
+    private fun assertImportCard(sample: ByteArray, passphrase: String = "") {
+        try {
+            RecoveryCodec.decode(sample, passphrase)
+            error("expected the import card")
+        } catch (exc: ImportFail) {
+            assertEquals(IMPORT_FAIL_MSG, exc.banner)
+            assertTrue(exc.next.contains("Retry"))
+        }
+    }
+
+    private fun plain(bundle: String) =
+        """{"leasegrid-recovery":1,"encrypted":false,"bundle":$bundle}""".toByteArray()
+
+    private fun bundle(furl: String = "pb://hashhashhash@127.0.0.1:1/swissnumswiss", shares: String = "[2,3,3]", folders: String = "[]") =
+        """{"version":1,"introducer_furl":"$furl","shares":$shares,"folders":$folders}"""
+
+    @Test
+    fun deeplyNestedJsonIsTheImportCardNotACrash() {
+        val deep = "[".repeat(200_000) + "]".repeat(200_000)
+        assertImportCard(plain(deep))
+        assertImportCard(plain(bundle(folders = deep)))
+        assertImportCard(("{\"a\":".repeat(100_000) + "1" + "}".repeat(100_000)).toByteArray())
+        // Brackets inside strings are not nesting: a normal file still imports.
+        val named = bundle(folders = """[{"name":"[[[[{{{{","collective_dircap":"URI:DIR2:x:y"}]""")
+        assertEquals("[[[[{{{{", RecoveryCodec.decode(plain(named), "").folders.single().name)
+    }
+
+    @Test(timeout = 10_000)
+    fun hugeScryptParamsAreTheImportCardAndFailFast() {
+        val salt = java.util.Base64.getEncoder().encodeToString(ByteArray(16))
+        fun envelope(kdf: String) =
+            """{"leasegrid-recovery":1,"encrypted":true,"kdf":{"name":"scrypt","salt":"$salt",$kdf},"ciphertext":"x"}""".toByteArray()
+        val bad = listOf(
+            "\"n\":${1 shl 30},\"r\":8,\"p\":1",
+            "\"n\":${1 shl 21},\"r\":1,\"p\":1",
+            "\"n\":${1 shl 17},\"r\":8,\"p\":1",
+            "\"n\":${1 shl 15},\"r\":100000,\"p\":1",
+            "\"n\":${1 shl 15},\"r\":8,\"p\":100000",
+            "\"n\":${(1 shl 15) + 1},\"r\":8,\"p\":1",
+            "\"n\":0,\"r\":8,\"p\":1",
+            "\"n\":-32768,\"r\":8,\"p\":1",
+            "\"n\":\"lots\",\"r\":8,\"p\":1",
+            "\"n\":1e30,\"r\":8,\"p\":1",
+        )
+        for (kdf in bad) assertImportCard(envelope(kdf), "correct horse")
+    }
+
+    @Test
+    fun theDesktopScryptParamsStillImport() {
+        val bundle = RecoveryCodec.decode(fixture("ok-pass.leasegrid-recovery"), "correct horse")
+        assertEquals("pb://hashhashhash@127.0.0.1:45001/swissnumswiss", bundle.introducerFurl)
+    }
+
+    @Test
+    fun aRecoveryFileOverTheSizeCapIsTheImportCard() {
+        val ok = fixture("ok-plain.leasegrid-recovery")
+        val padded = String(ok).replaceFirst("{", "{\"pad\":\"" + "x".repeat(1 shl 20) + "\",").toByteArray()
+        assertTrue(padded.size > (1 shl 20))
+        assertImportCard(padded)
+        val justUnder = String(ok).replaceFirst("{", "{\"pad\":\"" + "x".repeat((1 shl 20) - ok.size - 16) + "\",").toByteArray()
+        assertTrue(justUnder.size <= (1 shl 20))
+        assertEquals("Photos", RecoveryCodec.decode(justUnder, "").folders.single().name)
+    }
+
+    @Test
+    fun aRecoveryFurlGetsTheSameCheckAsAPastedLink() {
+        val bad = listOf(
+            "pb://@127.0.0.1:1/swissnumswiss",
+            "pb://hashhashhash/swissnumswiss",
+            "pb://hashhashhash@127.0.0.1:1/ab",
+            "pb://hashhashhash@127.0.0.1:1/ab#swissnumswiss",
+            "pb://hash%00hash@127.0.0.1:1/swissnumswiss",
+            "pb://hash\\u0090hash@127.0.0.1:1/swissnumswiss",
+            "pb://x",
+        )
+        for (furl in bad) assertImportCard(plain(bundle(furl = furl)))
+        val marked = bundle(furl = "\\u200Bpb://hashhashhash@127.0.0.1:1/swissnumswiss")
+        assertEquals("pb://hashhashhash@127.0.0.1:1/swissnumswiss", RecoveryCodec.decode(plain(marked), "").introducerFurl)
+    }
+
+    @Test
+    fun badSharesAndFoldersAreTheImportCard() {
+        for (shares in listOf("[2,3]", "[2,3,3,3]", "[0,3,3]", "[4,3,3]", "[2,4,3]", "[2,3,300]")) {
+            assertImportCard(plain(bundle(shares = shares)))
+        }
+        val badFolders = listOf(
+            """[{"name":"","collective_dircap":"URI:DIR2:x:y"}]""",
+            """[{"name":"Photos","collective_dircap":"not-a-cap"}]""",
+            """[{"collective_dircap":"URI:DIR2:x:y"}]""",
+            """[{"name":"Photos"}]""",
+            """["Photos"]""",
+        )
+        for (folders in badFolders) assertImportCard(plain(bundle(folders = folders)))
+        val good = RecoveryCodec.decode(plain(bundle(folders = """[{"name":"Photos","collective_dircap":"URI:DIR2:x:y"}]""")), "")
+        assertEquals(listOf(2, 3, 3), good.shares)
+        assertEquals("URI:DIR2:x:y", good.folders.single().collective)
+    }
 }
 
 class InviteTest {

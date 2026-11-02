@@ -7,8 +7,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
+import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
+import net.themark.leasegrid.sync.recovery.MAX_RECOVERY_BYTES
 import net.themark.leasegrid.sync.ui.AppModel
 import net.themark.leasegrid.sync.ui.SyncApp
+import net.themark.leasegrid.sync.ui.TooLarge
+import net.themark.leasegrid.sync.ui.WriteCopy
+import net.themark.leasegrid.sync.ui.readAtMost
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -146,14 +152,14 @@ class MainActivity : ComponentActivity() {
     private fun readAddedFile(folder: net.themark.leasegrid.sync.session.FolderRef, uri: Uri) {
         val name = queryDisplayName(uri) ?: uri.lastPathSegment ?: "file"
         try {
-            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            val bytes = contentResolver.openInputStream(uri)?.use { readAtMost(it, WriteCopy.ADD_MAX_BYTES) }
                 ?: error("empty stream")
             model.onFilePicked(folder, name, bytes)
+        } catch (_: TooLarge) {
+            model.reportFail(WriteCopy.READ_FAIL, WriteCopy.TOO_BIG_NEXT)
         } catch (exc: Exception) {
-            model.reportFail(
-                "could not read this file.",
-                "pick it again. (${exc.javaClass.simpleName})",
-            )
+            android.util.Log.w("LeasegridSync", "add read failed: ${exc.javaClass.simpleName}")
+            model.reportFail(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)
         }
     }
 
@@ -175,19 +181,24 @@ class MainActivity : ComponentActivity() {
             val bytes = when (uri.scheme) {
                 "file", null -> {
                     val path = uri.path ?: error("no path")
-                    File(path).readBytes()
+                    File(path).inputStream().use { readAtMost(it, MAX_RECOVERY_BYTES) }
                 }
-                else -> contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                else -> contentResolver.openInputStream(uri)?.use { readAtMost(it, MAX_RECOVERY_BYTES) }
                     ?: error("empty stream")
             }
             if (bytes.isEmpty()) error("empty file")
             model.onPicked(name, bytes)
             model.goImport()
+        } catch (_: TooLarge) {
+            // Bigger than any recovery file: the same card as a corrupt one.
+            model.goImport()
+            model.reportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT, ::openRecoveryPicker)
         } catch (exc: Exception) {
+            android.util.Log.w("LeasegridSync", "recovery read failed: ${exc.javaClass.simpleName}")
             model.goImport()
             model.reportFail(
                 "could not import this recovery key. The file could not be read.",
-                "check the path and storage permission; Retry. (${exc.javaClass.simpleName})",
+                "check the path and storage permission; Retry.",
                 ::openRecoveryPicker,
             )
         }

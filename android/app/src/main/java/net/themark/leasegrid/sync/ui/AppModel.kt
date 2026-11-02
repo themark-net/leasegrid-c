@@ -765,12 +765,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     private fun runGrid(label: String, block: suspend () -> Unit) {
         gridRun.launch(onError = { exc ->
-            show(
-                FailBanner(
-                    "could not complete that. ${exc.javaClass.simpleName}",
-                    "Retry. If it repeats, check the network and the invite.",
-                ),
-            ) { }
+            Log.w(TAG, "grid failed: ${exc.javaClass.simpleName}")
+            show(unexpectedGridCard(exc)) { runGrid(label, block) }
         }, block)
         if (label.isEmpty()) return
     }

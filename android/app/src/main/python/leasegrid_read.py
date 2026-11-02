@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from typing import Any
 
 from lg_intro import learn_servers
 from lg_tahoe import ReadFail, StorageServer, download_file, list_folder_view
 from lg_write import WriteFail, put_file, remove_file, shares_tuple
+
+# Exception classes go here, never into the message or next line the phone shows.
+_log = logging.getLogger("leasegrid_read")
 
 
 def dispatch(op: str, payload: str) -> str:
@@ -51,18 +55,20 @@ def dispatch(op: str, payload: str) -> str:
     except (ReadFail, WriteFail) as exc:
         return json.dumps({"ok": False, "message": exc.message, "next": exc.next_hint})
     except OSError as exc:
+        _log.warning("dispatch %s failed: %s", op, exc.__class__.__name__)
         return json.dumps(
             {
                 "ok": False,
                 "message": "could not download this file. Network error or not enough free space.",
-                "next": "check network / free space; Retry. (%s)" % exc.__class__.__name__,
+                "next": "check network / free space; Retry.",
             }
         )
     except Exception as exc:  # last-resort operate-or-FAIL, still in-app
+        _log.warning("dispatch %s failed: %s", op, exc.__class__.__name__)
         return json.dumps(
             {
                 "ok": False,
-                "message": "could not complete that. %s" % exc.__class__.__name__,
+                "message": "could not complete that.",
                 "next": "Retry. If it repeats, check the network and the invite.",
             }
         )

@@ -18,3 +18,5 @@ No Gradle in this worktree | install an Android SDK to run unit tests here | nim
 Worker: Hermes `-z` on nimo returned "no final response" 3 times in a row, so Grok Build headless did the work | do it by hand | Mark's direction this week is Hermes, then Build
 Kotlin verification on the box (JDK 17, SDK 34): 61 tests green; red-first by restoring each production file from `7ce07856` or reverting the guard line | trust the lane handoffs' nimo runs | nimo has no Android SDK
 Reviewer B1: write quoted old em dashes as the text 'U+2014' | paraphrase the quoted strings | a code point keeps the quote exact and has no dash
+Reviewer B3: drop the class name from the two leasegrid_read.dispatch fallbacks and log it instead | narrow the handoff claim to the Kotlin catch | the Python change is two strings plus a log call, and dispatch is the path real failures take
+Reviewer B3: the new pytest lives in android/pytests/test_dispatch_copy.py, run by explicit path | put it in tests/ | tests/test_android_slice_a.py bans importing the phone reader from desktop tests, and android/ is in norecursedirs

@@ -129,3 +129,13 @@ Symptom: Reviewer found U+2014 on four added lines: HANDOFF lines 37 and 99, ROO
 Cause: the dash ban was applied to guarded Kotlin literals, not to the docs that quote the old literals. Nobody grepped the added doc lines.
 
 Fix: write the dash as its code point, `U+2014`, in those quotes. `git diff 7ce07856 | grep -P '^\+.*[\x{2013}\x{2014}]'` is empty after the fix.
+
+## Reviewer B3: the download next line still names the class
+
+Symptom: Reviewer reproduced a failed download whose next line is "check network / free space; Retry. (FileNotFoundError)". The handoff said the class name was gone.
+
+Cause: the Kotlin `catch` in `AppModel.download` only runs if `AndroidGrid.dispatch` throws. `leasegrid_read.dispatch` never raises across the boundary. It returns JSON, and the phone shows its `message` and `next` as they are. `leasegrid_read.py:58` (the `OSError` branch) appended `(%s)` with the class name. `leasegrid_read.py:65` (the last-resort branch) put the class name on the message: "could not complete that. ValueError". The earlier Kotlin fix changed a path that real failures do not take.
+
+Fix: both branches return the plain copy and log `dispatch <op> failed: <Class>` to the `leasegrid_read` logger. The log line has the op and the class only, never the payload, so no furl reaches it. `android/pytests/test_dispatch_copy.py` makes the real function fail (a download whose folder is missing, and a timeout that is not a number) and checks the returned copy.
+
+Not changed: `lg_intro.py` puts a class name on the learn next line. `AppModel.learn()` only logs that result and never shows it, so it does not reach the screen. `lg_tahoe.py:404` appends the last storage error message (copy text, not a class) to the download next line. That is listed as a follow-up.

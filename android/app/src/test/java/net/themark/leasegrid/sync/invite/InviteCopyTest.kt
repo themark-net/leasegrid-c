@@ -284,6 +284,76 @@ class InviteCopyTest {
         assertEquals(listOf(2, 3, 3), joined!!.shares)
     }
 
+    private fun furlOf(raw: String): String =
+        Invite.attempt(raw, fail = { error("${raw.take(40)}: ${it.banner}") }) { it.furl }
+
+    @Test
+    fun invisibleMarksInsideTheLinkAreDroppedAndItJoins() {
+        val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        for (mark in listOf('\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF')) {
+            val inSwiss = furl.replace("swissnum", "swiss${mark}num")
+            val inTub = furl.replace("hashhash", "hash${mark}hash")
+            val inLink = "leasegrid:join#v=1&i=${furl.replace("127.0", "127$mark.0")}&n=2&h=3&t=3"
+            for (raw in listOf(inSwiss, inTub, inLink, "$mark$furl$mark")) {
+                assertEquals(mark.code.toString(16), furl, furlOf(raw))
+            }
+        }
+        val marksOnly = failFor("\u200C\u200D\u2060")
+        assertEquals(Invite.EMPTY_MSG, marksOnly.banner)
+    }
+
+    @Test
+    fun aFurlWithNoTubIdIsIncompleteAndNoLocationAsksForTheAddress() {
+        val cut = listOf(
+            "pb://@127.0.0.1:45001/swissnumswiss",
+            "leasegrid:join#v=1&i=pb://@127.0.0.1:45001/swissnumswiss",
+        )
+        for (raw in cut) {
+            assertEquals(raw, Invite.MALFORMED_MSG, failFor(raw).banner)
+        }
+        val noPlace = listOf(
+            "pb://hashhashhash/swissnumswiss",
+            "pb://hashhashhash@/swissnumswiss",
+            "leasegrid:join#v=1&i=pb://hashhashhash@/swissnumswiss&n=2&h=3&t=3",
+        )
+        for (raw in noPlace) {
+            val exc = failFor(raw)
+            assertEquals(raw, Invite.NO_ADDRESS_MSG, exc.banner)
+            assertEquals(Invite.NO_NEXT, exc.next)
+        }
+        assertEquals("pb://h@127.0.0.1:1/swissnumswiss", furlOf("pb://h@127.0.0.1:1/swissnumswiss"))
+    }
+
+    @Test
+    fun aShortCodeAtTheLengthCapIsAShortCodeAndOneOverIsNot() {
+        val atCap = "7-" + "a".repeat(126) + "-" + "b".repeat(127)
+        assertEquals(256, atCap.length)
+        assertEquals(Invite.WORMHOLE_MSG, failFor(atCap).banner)
+        val over = atCap + "b"
+        assertEquals(Invite.GARBAGE_MSG, failFor(over).banner)
+        assertEquals(Invite.GARBAGE_MSG, failFor(over + "b".repeat(100_000)).banner)
+    }
+
+    @Test
+    fun c1ControlCharactersMakeTheLinkIncomplete() {
+        val good = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        for (ch in listOf('\u0080', '\u0090', '\u009C', '\u009F')) {
+            val raw = good.replace("swissnum", "swiss${ch}num")
+            assertEquals(ch.code.toString(16), Invite.MALFORMED_MSG, failFor(raw).banner)
+        }
+        assertEquals(good, furlOf(good))
+    }
+
+    @Test
+    fun aShortSwissNumHiddenBehindAFragmentIsIncomplete() {
+        val raw = "pb://hashhashhash@127.0.0.1:45001/ab#swissnumswissnum"
+        assertEquals(Invite.MALFORMED_MSG, failFor(raw).banner)
+        val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/ab%23swissnumswissnum"
+        assertEquals(Invite.MALFORMED_MSG, failFor(link).banner)
+        val ok = "pb://hashhashhash@127.0.0.1:45001/swissnum#tail"
+        assertEquals(ok, furlOf(ok))
+    }
+
     @Test
     fun linkFailBannersNameTheDesktopLabel() {
         for (raw in listOf("7-guitarist-revenge", "not-a-code", "https://example.test/tahoe", "leasegrid:join", "pb://short")) {

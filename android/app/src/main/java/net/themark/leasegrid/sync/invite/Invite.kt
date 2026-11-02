@@ -159,19 +159,24 @@ object Invite {
         return groups >= 2
     }
 
-    /** trim(), plus U+200B or U+FEFF at either end. Chat apps add those on paste. */
+    /**
+     * Drop the invisible marks chat apps add on paste (U+200B, U+200C, U+200D,
+     * U+2060, U+FEFF) anywhere in the text, then trim(). None of them is ever
+     * part of a join link, so a mark inside the link is noise, not damage.
+     */
     private fun stripPaste(raw: String): String {
-        var start = 0
-        var end = raw.length
-        while (start < end && isPasteGap(raw[start])) start++
-        while (end > start && isPasteGap(raw[end - 1])) end--
-        return if (start == 0 && end == raw.length) raw else raw.substring(start, end)
+        val unmarked = if (raw.any(::isPasteMark)) raw.filterNot(::isPasteMark) else raw
+        return unmarked.trim()
     }
 
-    private fun isPasteGap(ch: Char): Boolean =
-        ch.isWhitespace() || ch == '\u200B' || ch == '\uFEFF'
+    private fun isPasteMark(ch: Char): Boolean =
+        ch == '\u200B' || ch == '\u200C' || ch == '\u200D' || ch == '\u2060' || ch == '\uFEFF'
 
-    private fun validateFurl(raw: String): String {
+    /**
+     * The one furl check, for a pasted link and a recovery file alike.
+     * Throws [InviteFail] with the advice for what is wrong.
+     */
+    internal fun validateFurl(raw: String): String {
         val text = stripPaste(raw)
         if (!text.startsWith("pb://")) {
             throw InviteFail(GARBAGE_MSG, NO_NEXT)
@@ -185,6 +190,15 @@ object Invite {
         val slash = rest.lastIndexOf('/')
         if (slash < 0 || rest.length < 12) {
             throw InviteFail(MALFORMED_MSG, NO_NEXT)
+        }
+        // pb://TUBID@LOCATION/SWISS. No tub id is a cut link; no location is no address.
+        val authority = rest.substring(0, slash)
+        val at = authority.indexOf('@')
+        if (at == 0) {
+            throw InviteFail(MALFORMED_MSG, NO_NEXT)
+        }
+        if (at < 0 || at == authority.lastIndex) {
+            throw InviteFail(NO_ADDRESS_MSG, NO_NEXT)
         }
         val swiss = rest.substring(slash + 1).substringBefore('#')
         if (swiss.length < MIN_SWISSNUM) {

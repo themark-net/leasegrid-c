@@ -62,7 +62,6 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     private val store = SessionStore(File(app.filesDir, "leasegrid"))
     private val grid = AndroidGrid(app)
     private val json = Json { ignoreUnknownKeys = true }
-    private var job: Job? = null
     private val board = FolderWriteBoard()
     private val uploads = mutableMapOf<String, Job>()
 
@@ -85,6 +84,12 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     var pickedBytes by mutableStateOf<ByteArray?>(null)
 
     private var retry: (() -> Unit)? = null
+
+    private val gridRun = GridRun(
+        scope = viewModelScope,
+        setBusy = { busy = it },
+        setFail = { fail = it },
+    )
 
     // Join, refresh and import-finish live in SessionFlow (pure JVM, tested there).
     // The pasted text stays in inviteText on every fail (#50).
@@ -131,7 +136,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         pickedBytes = null
         passphrase = ""
         fail = null
-        busy = false
+        // Bump the ticket so this import's finish cannot clear a later join's busy.
+        gridRun.cancel()
         place = Place.Import
     }
 
@@ -389,10 +395,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     fun download(name: String, cap: String, parent: FolderRef? = null) {
         val current = session ?: return
         place = Place.Downloading(name, cap)
-        job?.cancel()
-        job = viewModelScope.launch {
-            busy = true
-            fail = null
+        gridRun.launch {
             val dest = File(downloadsDir(), safeName(name))
             val result = withContext(Dispatchers.IO) {
                 try {
@@ -422,7 +425,6 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
-            busy = false
             if (!result.ok || !dest.isFile) {
                 if (dest.exists() && dest.length() == 0L) dest.delete()
                 place = if (parent != null) Place.Folder(parent, (place as? Place.Folder)?.children ?: emptyList()) else Place.Folders
@@ -434,8 +436,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelDownload() {
-        job?.cancel()
-        busy = false
+        gridRun.cancel()
         place = Place.Folders
     }
 
@@ -598,9 +599,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun removeLanded(folder: FolderRef, name: String, current: Session) {
-        job?.cancel()
-        job = viewModelScope.launch {
-            busy = true
+        gridRun.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
                     dispatch(
@@ -628,7 +627,6 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                     GridResult(false, WriteCopy.REMOVE_FAIL, WriteCopy.REMOVE_NEXT, buildJsonObject {})
                 }
             }
-            busy = false
             if (!result.ok) {
                 show(FailBanner(result.message.ifBlank { WriteCopy.REMOVE_FAIL }, result.next)) {
                     val again = addTarget() ?: folder
@@ -766,25 +764,14 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun runGrid(label: String, block: suspend () -> Unit) {
-        job?.cancel()
-        job = viewModelScope.launch {
-            busy = true
-            fail = null
-            try {
-                block()
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                show(
-                    FailBanner(
-                        "could not complete that. ${exc.javaClass.simpleName}",
-                        "Retry. If it repeats, check the network and the invite.",
-                    ),
-                ) { }
-            } finally {
-                busy = false
-            }
-        }
+        gridRun.launch(onError = { exc ->
+            show(
+                FailBanner(
+                    "could not complete that. ${exc.javaClass.simpleName}",
+                    "Retry. If it repeats, check the network and the invite.",
+                ),
+            ) { }
+        }, block)
         if (label.isEmpty()) return
     }
 

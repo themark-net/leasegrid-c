@@ -17,7 +17,7 @@ Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) a
 | #78 Retry after that paste | `550907e` | Retry, after the field is replaced, joins the corrected link. |
 | #78 cancel ghost banner | base `4ab71a0`; test `550907e` | A cancelled join does not paint "Couldn't reach your computer." A later join still saves. |
 | #80 F1 dirty or short link | `db08dcc` | NUL, U+FFFD, a `+` that becomes a space, a newline, or a swissnum under 8 characters shows "That join link is incomplete." learn() is not called. |
-| #80 F2 zero-width marks | `fa1a5c7` | Leading or trailing U+200B or U+FEFF still joins. Marks only: "Paste the join link first." |
+| #80 F2 zero-width marks | `fa1a5c7`, Tester S2 `56c8fe9` | U+200B, U+200C, U+200D, U+2060 and U+FEFF are dropped anywhere in the paste, so a marked link still joins. Marks only: "Paste the join link first." |
 | #80 F4 busy ticket | `ea9b803` | A cancelled grid job clears busy only if it is still the current job. |
 | #80 Retry once | `df11bea` | A second Retry tap does not run the action again. |
 | #80 bad recovery file | `608a679` | A damaged recovery file shows the import card, with Retry. |
@@ -28,10 +28,16 @@ Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) a
 | #80 em dash and en dash | `58c64ee` | The guard flags U+2014 and U+2013. Remaining threat lines and the fail title use a colon. |
 | #80 split Introducer (K3c) | `58c64ee` | "Intro" + "ducer" and "intro-\nducer" fail the guard. |
 | Design 61 scope and PM sentence | `58c64ee` | The Tests line names the same files as the guard scope. The cancel-import sentence is in the note. |
-| Import cancel lock | `550907e` | Cancelling learn() during import saves nothing. A later import still saves. |
+| Import cancel lock | `550907e`, Tester T1 `65ce6e9` | Cancel and the back arrow on the import screen call `cancelImport()`: the running import stops, nothing is saved, Retry is cleared, and the screen goes to Welcome. A later import still saves. |
 | Reviewer B1 dashes in docs | `f34d3da` | No added line in the branch diff has U+2014 or U+2013. Quoted old strings write the dash as `U+2014`. |
 | Reviewer B2 Retry through AppModel | `ea6acea` | `AppModelRetryTest` builds the real `AppModel` (internal `AppSeams` constructor, fake grid). A failed folder load or download shows the card and its Retry. Two taps run the grid call once. |
 | Reviewer follow-up 1 busy | `a72ed33` | Cancel clears busy at once. Busy clears after an error. |
+| Tester root causes and decisions | `bb640f3` | `ROOT-CAUSE-hardening-78-80.md` section "Tester pass on 2be4d7e"; 14 lines in `AUTONOMOUS-DECISIONS-2026-11-02.md`. |
+| Tester B3 `lg_tahoe.py:404` | `46c51ec` | A failed share fetch shows "check network / free space; Retry." with nothing after it. The last error goes to the log. |
+| Tester S2, S4 | `56c8fe9` | Invisible marks anywhere are dropped. `pb://@host/swiss` is "That join link is incomplete." `pb://tubid/swiss` and `pb://tubid@/swiss` ask for the address. |
+| Tester S1, S3 | `cdeba16` | A recovery file over 1 MiB, nested deeper than 32, or with scrypt n, r, p over the caps (n a power of two up to 2^20, r up to 32, p up to 16, 128*r*n up to 64 MiB) shows the import card. The recovery furl goes through the same `validateFurl` as a pasted link. Shares need 1 <= needed <= happy <= total <= 256. An added file over 64 MB shows "pick a file under 64 MB." |
+| Tester T1, B3 call sites, S5 | `65ce6e9` | Import Cancel stops the import. A bridge that throws at folder load, download, add or remove shows a card with no class name, no `pb://`, no `Errno`. `MainActivity` file reads log the class and keep a plain next line. `GridFailTest` (constant tests) is deleted. |
+| Tester U8, E5 to E12, S5 pins | `b962390` | The copy guard also reads `AppModel.kt` and `MainActivity.kt`, and sees through `\u` escapes, invisible marks, Cyrillic look-alikes, string templates, `+`, `.plus`, `append`, and char runs. FlowHost pins match whole lines. |
 
 ## Red-first evidence
 
@@ -58,8 +64,7 @@ Kotlin cannot compile on nimo (no Android SDK), so Kotlin ran on the box; counts
 | `RetryOnceTest.aSecondTapDoesNotRunTheActionAgain` | `AppModel.kt` `retryFail` (the field stays set) |
 | `RecoveryCodecTest.badRecoveryFileFailsClosed` | `RecoveryCodec.kt` (`bundle` jsonObject, `shares` jsonArray) |
 | `FolderWriteTest.pendingStaysNotOnFriendnetUntilAcknowledge` | `FolderWrite.kt` `PENDING` / `LANDED` |
-| `GridFailTest.unexpectedCardDoesNotNameTheExceptionClass` | `AppModel.kt` `runGrid` card text |
-| `GridFailTest.downloadFailureDoesNotNameTheExceptionClass` | `GridRun.kt` `downloadFailNext` |
+| `AppModelFlowTest` (9 tests; replaced `GridFailTest`, deleted by Tester S5) | mutants in "Tester fixes" below |
 | `AppModelRetryTest` (4 tests) | mutants K15 and K16, see "Reviewer fixes" below |
 
 Already green on `7ce07856` (behavior shipped in `4ab71a0`, not a red fix): `SessionFlowTest.aCancelledJoinPaintsNothing` and `SessionFlowTest.aCancelledImportSavesNothingAndALaterImportSaves`. `InviteCopyTest.aHundredKilobyteJoinLinkStillParses` is also green on the base: that paste does not match the short-code regex, so it does not overflow. It stays so a long real link still parses after the length cap.
@@ -88,10 +93,6 @@ Already green on `7ce07856` (behavior shipped in `4ab71a0`, not a red fix): `Ses
 
 Do not implement these on this branch. They are product or design forks, or they were outside the listed items.
 
-Title: Android download next line appends the last storage error text
-
-Body: `lg_tahoe.py:404` builds "check network / free space; Retry. (<last error>)". The text in parentheses is another copy line (for example "could not download this file. Network error or not enough free space."), not a class name, so it repeats the message. Decide whether the next line should drop it. Found during Reviewer B3; not changed here.
-
 Title: Python learn next line names the exception class
 
 Body: `lg_intro.py:177` and `:194` put `type(exc).__name__` on the learn next line. `AppModel.learn()` only logs that result and never shows it, so it is not on screen today. If a later change shows learn's copy, drop the class there first.
@@ -108,9 +109,13 @@ Title: Design packs 55-59 still say friendnet and use an em dash in FAIL
 
 Body: Phone chips are "Not in the shared folder yet" and "In the shared folder". The phone fail title is "FAIL:". `docs/design/55` through `59`, and tester pages that quote them, still say "On friendnet", "Not on friendnet yet", and "FAIL U+2014". Align those packs with the phone, or record that they keep the older wording. This branch did not edit them.
 
-Title: Android file-read failures still append the exception class
+Title: Android copy guard cannot follow a word split across variables or built at run time
 
-Body: `MainActivity.readAddedFile` and `readRecovery` put `exc.javaClass.simpleName` on the Next line. Download (Kotlin catch and Python `dispatch` fallback) and the generic grid card no longer do this (#80). Log the class and keep the plain next line. Left out of this branch because it was not one of the listed #78 or #80 items.
+Body: `tests/test_android_invite_copy.py` normalizes each file (escapes, invisible marks, Cyrillic look-alikes, templates, `+`, `.plus`, `append`, char runs) before it looks for "introducer", "friendnet" or a dash. `val a = "Intro"; val b = "ducer"; "$a$b"` and text built from data at run time still pass (Tester E5). Catching that needs data flow (a compiler plugin or a device string dump). Decision line in `AUTONOMOUS-DECISIONS-2026-11-02.md`.
+
+Title: Tester mutant bodies for the 2be4d7e pass are not in the repo
+
+Body: The Tester FAIL named mutants (N4b, H78b/d/e, F1e, F1i, F4b, F4c, K9, A5, A6, A8, A9, C3, C4, R2 to R4, F4e, F4f) but not their diffs. This branch killed its own version of each (table in "Tester fixes" below). Tester should re-run the original bodies on `b962390` or later and file any survivor.
 
 ## Box verification (Gradle, 2026-11-02)
 
@@ -170,9 +175,56 @@ Counts at `50e888f` (code identical to this commit; this commit only adds these 
 - nimo `.venv/bin/python -m pytest tests/test_android_invite_copy.py android/pytests/test_dispatch_copy.py -q`: **18 passed** (15 + 3).
 - nimo `scripts/ci-local.sh`: **619 passed, 5 xfailed, 0 failed**, ci-local PASS. `android/pytests` is outside its `testpaths`, so the 3 new tests are counted only in the line above.
 
+## Tester fixes (third pass, 2026-11-02)
+
+Tester FAIL on `2be4d7e`. Root causes: `docs/ops/ROOT-CAUSE-hardening-78-80.md` section "Tester pass on 2be4d7e". Commits `bb640f3`, `46c51ec`, `56c8fe9`, `cdeba16`, `65ce6e9`, `b962390` (rows in "Done").
+
+Red-first:
+
+- Python B3 (box pytest, `android/pytests/test_dispatch_copy.py`, before the `lg_tahoe.py` change): 1 failed, 3 passed. `test_fetch_share_keeps_the_server_error_off_the_next_line` saw the last error in parentheses on the next line. After: 4 passed.
+- Python guard: `test_guard_sees_through_hidden_spellings` has 14 samples (escapes, zero-width, soft hyphen, Cyrillic, template, `.plus`, `append`, char run, and others). Each passed the old guard. After: 18 passed in `tests/test_android_invite_copy.py`.
+- Kotlin S1 depth: `RecoveryCodecTest.deeplyNestedJson...` on the old codec threw `StackOverflowError`. The other new Kotlin tests went red through the mutants below.
+
+Mutants, each applied by hand on the box on top of this branch, run, then reverted (`tmp/mut2.py`, not committed). The Tester mutant bodies were not in the repo, so these are this branch's versions of each name:
+
+| Mutant | What it changes | Result | Killed by |
+| --- | --- | --- | --- |
+| T1 old | import Cancel only goes to Welcome | killed | `AppModelFlowTest` cancel import |
+| A5 | `cancelDownload` does not call `gridRun.cancel()` | killed | `AppModelFlowTest` cancelDownload |
+| A6 | `cancelDownload` does not return to Folders | killed | `AppModelFlowTest` cancelDownload |
+| R2 | `RetryOnce.pull` does not clear the slot | killed | 6 tests |
+| R3 | `retryFail` re-arms after pull | killed | 4 tests |
+| R4 | `dismissFail` does not disarm | killed | `dismissThenRetryDoesNothing` |
+| F4e | `GridRun` onError call removed | killed | 4 tests |
+| F4f | `runGrid` show removed | killed | 3 tests |
+| F4b | finally does not clear busy | killed | 7 tests |
+| F4c | finally clears busy without the ticket check | killed | `GridRunTest` stale ticket |
+| K9 | `cancel` does not `setBusy(false)` | killed | 3 tests |
+| N4b | learn delegation returns null | killed | 2 tests |
+| N4d | learned servers not saved | killed | 2 tests |
+| J1c | invite text getter returns "" | killed | 2 tests |
+| M4c | show with an empty Retry | killed | 1 test |
+| GCls | class name back in `unexpectedGridCard` | killed | 2 tests |
+| H78b, H78d, H78e | Invite length, regex and trim changes | killed | 1 test each |
+| F1e, F1i | `validateFurl` control-char and short-swiss checks | killed | 2 tests each |
+| S2 old | marks stripped only at the ends | killed | 1 test |
+| S3 old | recovery furl skips `validateFurl` | killed | 1 test |
+| S4 old | empty tub id or missing location accepted | killed | 2 tests |
+| S1 depth, scrypt, size, read | each cap removed | killed | 1, 1, 1, 2 tests |
+| C3, C3b, C4 | shares size check, shares order check, folders check removed | killed | 1 test each |
+| A8 | "friendnet" in an `AppModel.kt` banner | killed by the new guard (1 failed, 17 passed); survived the old guard (15 passed) | `test_appmodel_and_mainactivity_pass_banned_word_guard` |
+| A9 | em dash in an `AppModel.kt` banner | killed by the new guard (1 failed, 17 passed); survived the old guard | same |
+| E5 | "Intro" and "ducer" in two variables | not killed | follow-up above; needs data flow |
+
+Counts at `b962390`:
+
+- Box Gradle (JDK 17, SDK 34), `:app:testDebugUnitTest :app:assembleDebug`: BUILD SUCCESSFUL, **86 tests, 0 failures, 0 errors, 0 skipped** (InviteCopyTest 21, SessionFlowTest 13, RecoveryCodecTest 11, InviteTest 10, AppModelFlowTest 9, FolderWriteTest 7, AppModelRetryTest 4, GridRunTest 4, BoundedReadTest 3, RetryOnceTest 2, SessionStoreTest 2). Debug APK assembled.
+- nimo `.venv/bin/python -m pytest tests/test_android_invite_copy.py android/pytests -q`: **30 passed, 2 skipped** (the 2 skips are the live-grid tests).
+- nimo `scripts/ci-local.sh`: **622 passed, 5 xfailed, 0 failed**, 139.90s, ci-local PASS (was 619; plus the 3 new guard tests). `android/pytests` is outside its `testpaths`.
+
 ## Gate
 
-Tester and Reviewer. Runtime changes are in `Invite.kt`, `AppModel.kt`, `GridRun.kt`, `RetryOnce.kt`, `RecoveryCodec.kt`, `SyncApp.kt`, and `FolderWrite.kt`. Kotlin unit tests ran on the box (61/0 failures, red-first table above). Python ci-local passed, counts above.
+Tester and Reviewer. Runtime changes are in `Invite.kt`, `AppModel.kt`, `GridRun.kt`, `RetryOnce.kt`, `RecoveryCodec.kt`, `SyncApp.kt`, and `FolderWrite.kt`. Kotlin unit tests ran on the box (86/0 failures after the Tester pass, red-first tables above). `MainActivity.kt`, `BoundedRead.kt`, `lg_tahoe.py` and `leasegrid_read.py` also changed. Python ci-local passed, counts above.
 
 ## Next
 

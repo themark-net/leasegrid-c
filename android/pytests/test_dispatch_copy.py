@@ -59,3 +59,28 @@ def test_the_log_line_keeps_only_the_class_not_the_payload(caplog):
         leasegrid_read.dispatch("learn", payload)
     assert "test-only-secret" not in caplog.text
     assert "soon" not in caplog.text
+
+
+def test_fetch_share_keeps_the_server_error_off_the_next_line(monkeypatch, caplog):
+    """lg_tahoe used to append the last server error to next as "(...)".
+
+    That text can name an exception class or repeat a sentence. It goes to the log.
+    """
+    import lg_tahoe
+
+    def refuse(*_args, **_kwargs):
+        raise lg_tahoe.ReadFail("ConnectionRefusedError: [Errno 111] refused", "x")
+
+    monkeypatch.setattr(lg_tahoe, "_http_get", refuse)
+    server = lg_tahoe.StorageServer("pb://test-only@127.0.0.1:1/swissnumswiss")
+    caplog.set_level(logging.WARNING, logger="lg_tahoe")
+    try:
+        lg_tahoe.fetch_share([server], "immutable", b"\x00" * 16, 0, timeout=0.1)
+    except lg_tahoe.ReadFail as exc:
+        reply = {"message": exc.message, "next": exc.next_hint}
+    else:
+        raise AssertionError("fetch_share should fail")
+    _no_class_name(reply)
+    assert reply["next"] == "check network / free space; Retry."
+    assert "ConnectionRefusedError" in caplog.text
+    assert "swissnumswiss" not in caplog.text

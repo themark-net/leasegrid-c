@@ -9,12 +9,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import socket
 import ssl
 import struct
 from dataclasses import dataclass
 from typing import Callable, Optional
 from urllib.parse import unquote
+
+# The last per-server error goes here, never onto the phone's next line.
+_log = logging.getLogger("lg_tahoe")
 
 from lg_fec import decode_blocks
 
@@ -398,10 +402,10 @@ def fetch_share(
                 return _http_get(host, port, tubid, path, swiss, timeout)
             except ReadFail as exc:
                 errors.append(exc.message)
-    hint = errors[-1] if errors else "no storage servers"
+    _log.warning("fetch_share failed: %s", errors[-1] if errors else "no storage servers")
     raise ReadFail(
         "could not download this file. Network error or not enough free space.",
-        "check network / free space; Retry. (%s)" % hint,
+        "check network / free space; Retry.",
     )
 
 

@@ -185,7 +185,7 @@ Red-first:
 - Python guard: `test_guard_sees_through_hidden_spellings` has 14 samples (escapes, zero-width, soft hyphen, Cyrillic, template, `.plus`, `append`, char run, and others). Each passed the old guard. After: 18 passed in `tests/test_android_invite_copy.py`.
 - Kotlin S1 depth: `RecoveryCodecTest.deeplyNestedJson...` on the old codec threw `StackOverflowError`. The other new Kotlin tests went red through the mutants below.
 
-Mutants, each applied by hand on the box on top of this branch, run, then reverted (`tmp/mut2.py`, not committed). The Tester mutant bodies were not in the repo, so these are this branch's versions of each name:
+Mutants, each applied by hand on the box on top of this branch, run, then reverted (`tmp/mut2.py`, not committed). The Tester mutant bodies were not in the repo, so these are this branch's rebuilt versions of each name. In this table only E5 survives, but that is not Tester's result: Tester's own 75-mutant run at `e6039095` killed 66, with 9 survivors (E5, N4b, H78e, F4b, F4e, F4f, A5, C3, C4), tracked in [#85](https://github.com/themark-net/leasegrid-c/issues/85). Rebuilt mutants:
 
 | Mutant | What it changes | Result | Killed by |
 | --- | --- | --- | --- |

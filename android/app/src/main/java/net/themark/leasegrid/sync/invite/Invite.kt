@@ -13,6 +13,10 @@ object Invite {
     // The old regex overflowed the stack on a few KB of "-a" groups (#78).
     private const val SHORT_CODE_MAX = 256
 
+    // Foolscap swissnums are longer than this. The fixture swissnumswiss is 13
+    // and must still parse. Empty and cut-short values are an incomplete link (#80 F1).
+    private const val MIN_SWISSNUM = 8
+
     const val ACK_MSG = "Read the four points above first."
     const val ACK_NEXT = "check “I understand the four points above.”, then Join."
 
@@ -160,10 +164,27 @@ object Invite {
         if (!text.startsWith("pb://")) {
             throw InviteFail(GARBAGE_MSG, NO_NEXT)
         }
+        // %00 is a NUL when the paste was not decoded yet. A join URL is decoded
+        // first, so the same byte arrives as a control character or U+FFFD.
+        if (text.contains("%00", ignoreCase = true) || text.any { rejectedInFurl(it) }) {
+            throw InviteFail(MALFORMED_MSG, NO_NEXT)
+        }
         val rest = text.removePrefix("pb://")
-        if (!rest.contains("/") || rest.length < 12) {
+        val slash = rest.lastIndexOf('/')
+        if (slash < 0 || rest.length < 12) {
+            throw InviteFail(MALFORMED_MSG, NO_NEXT)
+        }
+        val swiss = rest.substring(slash + 1).substringBefore('#')
+        if (swiss.length < MIN_SWISSNUM) {
             throw InviteFail(MALFORMED_MSG, NO_NEXT)
         }
         return text
+    }
+
+    private fun rejectedInFurl(ch: Char): Boolean {
+        if (ch == '\uFFFD') return true
+        if (ch.isWhitespace()) return true
+        val code = ch.code
+        return code <= 0x1F || code == 0x7F || code in 0x80..0x9F
     }
 }

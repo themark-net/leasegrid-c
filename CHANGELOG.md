@@ -5,6 +5,9 @@
 - Desktop recovery import rejects a file over 1 MiB before parsing. Export refuses to write a key over that cap and leaves any file already there. A cut-off file, or one whose numbers are not numbers, fails with the import sentence and a next step.
 - sync-ui.log drops furls, invite codes, capabilities, and passphrase values (the rest of that line) before they are written. The exception class stays.
 - A folder that already has files on disk shows Syncing until Magic Folder lists them. An empty folder stays Idle. A conflict stays Conflict.
+- On Linux and macOS, a second Ctrl-C, SIGTERM, or SIGHUP while a refused second launch is already closing is ignored, so that launch still exits 0. The first signal still closes the box. Windows is unchanged.
+- Clearing the Join field while a replace question is open, then handing a new invite, drops the older pending invite. A later Yes cannot apply it.
+- Android: when Join fails because the computer could not be reached, the next line no longer says to paste the join link. Paste advice stays on a link that is empty, cut off, or not a join link ([#82](https://github.com/themark-net/leasegrid-c/issues/82)).
 
 ## 0.1.10 (2026-11-02)
 

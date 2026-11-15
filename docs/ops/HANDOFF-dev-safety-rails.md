@@ -56,4 +56,4 @@ GitHub checks on `22879c0`: `test (windows-2022)` success, and all other test jo
 | semgrep path comments | Headers say `tools/semgrep`. | `77205cd` | doc-only, no RED. `semgrep --test tools/semgrep` 8/8 |
 | changelog | `CHANGELOG.md` Unreleased: latest invite wins; Ctrl-C, SIGTERM, or SIGHUP exits 0. | `2c3dce8` | doc-only, no RED |
 
-Final ci-local: ruff clean, semgrep 8/8 and 0 findings, pytest 606 passed, 5 xfailed, 4 warnings in 143.77s. prove-red receipt exit 0, all six cases RED, `git diff` clean. Nothing skipped. Not pushed.
+Final ci-local: ruff clean, semgrep 8/8 and 0 findings, pytest 606 passed, 5 xfailed, 4 warnings in 143.77s. prove-red receipt exit 0, all six cases RED, `git diff` clean. Nothing skipped. Pushed and merged as #75 (7e73a64), shipped in v0.1.8.

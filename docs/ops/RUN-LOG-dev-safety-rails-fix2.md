@@ -46,7 +46,7 @@ sigterm-no-handler        RED
 - G ruff pin: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 142.41s, ruff 0.17.1 | files: pyproject.toml. dev extra is `ruff==0.17.1`. ci-local and `.github/workflows/ci.yml` install `.[dev]` and do not pip-install an unpinned ruff. doc-only/config, no RED.
 - H semgrep path comments: DONE | `semgrep --test tools/semgrep` 8/8; ci-local 606 passed, 5 xfailed, 4 warnings in 142.19s | files: tools/semgrep/leasegrid-systems.yml, leasegrid-systems.py, shell-portability.sh. doc-only, no RED.
 - I changelog: DONE | ci-local 606 passed, 5 xfailed, 4 warnings in 143.53s | files: CHANGELOG.md. Release-note tests read `docs/release-notes/v<version>.md`, not a directory listing, so a top-level CHANGELOG.md does not change them. doc-only, no RED.
-- J handoff: DONE | final ci-local ruff clean, semgrep 8/8 and 0 findings, pytest 606 passed, 5 xfailed, 4 warnings in 143.77s. prove-red `docs/ops/prove-red-dev-safety-rails.py` exit 0, all six RED, `git diff` clean. No item SKIPPED. Not pushed.
+- J handoff: DONE | final ci-local ruff clean, semgrep 8/8 and 0 findings, pytest 606 passed, 5 xfailed, 4 warnings in 143.77s. prove-red `docs/ops/prove-red-dev-safety-rails.py` exit 0, all six RED, `git diff` clean. No item SKIPPED. Pushed and merged as #75 (7e73a64), shipped in v0.1.8.
 
 ```
 name                      result

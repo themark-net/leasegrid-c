@@ -1927,6 +1927,16 @@ def _directory_has_file(path: str) -> bool:
     return False
 
 
+def _same_directory(left: str, right: Path) -> bool:
+    """True when both paths are the same directory. A blank path is not."""
+    if not left or not str(left).strip():
+        return False
+    try:
+        return Path(left).expanduser().resolve() == right.expanduser().resolve()
+    except OSError:
+        return False
+
+
 def _folder_is_missing(path: str) -> bool:
     """True when a folder path was set and that directory is gone.
 
@@ -2291,14 +2301,17 @@ class MagicFolderCtl:
             return "FAIL", self._refresh_http_message(exc).message
         if _folder_is_missing(local_path):
             return "Missing", "not on this computer"
+        conflicts = self._conflict_relpaths(name, recent)
+        if conflicts:
+            if len(conflicts) == 1:
+                return "Conflict", conflicts[0]
+            return "Conflict", "%s and %d more" % (conflicts[0], len(conflicts) - 1)
         nfiles = len(files) if isinstance(files, list) else 0
         last = ""
         if isinstance(recent, list) and recent:
             item = recent[0]
             if isinstance(item, dict):
                 last = str(item.get("relpath") or "")
-                if item.get("conflicted"):
-                    return "Conflict", last
         if nfiles == 0:
             # Idle is an added folder with nothing in it yet. Files already on
             # disk, before Magic Folder's scan lists them, are still syncing.
@@ -2308,6 +2321,35 @@ class MagicFolderCtl:
         if last:
             return "Up to date", "%d files · last %s" % (nfiles, last)
         return "Up to date", "%d files" % nfiles
+
+    def _conflict_relpaths(self, name: str, recent: Any) -> list[str]:
+        """Paths that are in conflict now.
+
+        The newest recent change can be a different file, and a conflict can
+        sit outside the five changes Sync asks for. ``/conflicts`` is the
+        whole set. A daemon without that call still sets ``conflicted`` on
+        each recent change, so every item counts.
+        """
+        found: list[str] = []
+        try:
+            data = self._http_get("/v1/magic-folder/%s/conflicts" % quote(name, safe=""))
+        except SyncError:
+            data = None
+        if isinstance(data, dict):
+            for rel, authors in data.items():
+                if not authors:
+                    continue
+                text = str(rel)
+                if text and text not in found:
+                    found.append(text)
+        if isinstance(recent, list):
+            for item in recent:
+                if not isinstance(item, dict) or not item.get("conflicted"):
+                    continue
+                text = str(item.get("relpath") or "")
+                if text and text not in found:
+                    found.append(text)
+        return found
 
     def add_folder(self, local_path: str, name: Optional[str] = None, author: Optional[str] = None) -> str:
         path = Path(local_path).expanduser()
@@ -2332,7 +2374,17 @@ class MagicFolderCtl:
         self.ensure_running()
         existing = self._http_get("/v1/magic-folder")
         if isinstance(existing, dict) and folder_name in existing:
-            return folder_name
+            details = existing.get(folder_name)
+            already = ""
+            if isinstance(details, dict):
+                already = str(details.get("magic_path") or "")
+            if _same_directory(already, path):
+                return folder_name
+            raise SyncError(
+                "folder not added. A folder named %s is already syncing a different directory."
+                % folder_name,
+                "use the folder already listed, or pick a directory with a different name; Retry.",
+            )
         proc = self._run_cli(
             [
                 "add",

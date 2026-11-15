@@ -129,6 +129,10 @@ OPEN_LOGS_BUTTON = "Open logs folder"
 COPY_BUG_BUTTON = "Copy bug-report details"
 FOLDER_MISSING_BANNER = "That folder is not on this computer any more: %s"
 FOLDER_FILE_BANNER = "That path is not a folder: %s"
+CONFLICT_NEXT = (
+    "Open the folder, keep the copy you want, and rename or remove the conflict copy. "
+    "Sync checks again on its own."
+)
 HANDED_INVITE_DROPPED = (
     "Leasegrid Sync is already on a friendnet. This invite was not opened."
 )
@@ -2200,6 +2204,8 @@ class MainWindow:
         self._folder_list_banner = ""
         self._missing_folder_note = False
         self._missing_folder_banner = ""
+        self._conflict_note = False
+        self._conflict_banner = ""
         self._grid_note = False
         self._grid_banner = ""
         self._credit_loaded = False
@@ -3995,12 +4001,16 @@ class MainWindow:
         if self._show_refusal_if_any():
             self._missing_folder_note = False
             self._missing_folder_banner = ""
+            self._conflict_note = False
+            self._conflict_banner = ""
             self._grid_note = False
             self._grid_banner = ""
             return
         if self._note_grid(status):
             return
         self._note_missing_folders(rows)
+        if not self._missing_folder_note:
+            self._note_conflicts(rows)
 
     def _note_grid(self, status: ConnectionStatus) -> bool:
         """Name a friendnet or storage drop, and clear that line when it returns.
@@ -4042,6 +4052,30 @@ class MainWindow:
                 self.folder_error.setStyleSheet("")
             self._missing_folder_note = False
             self._missing_folder_banner = ""
+
+    def _note_conflicts(self, rows: list) -> None:
+        """Name a conflict the newest file change would otherwise hide.
+
+        A later note, whose text no longer matches, stays on screen.
+        """
+        conflicted = [row for row in rows if row.status == "Conflict" and row.detail]
+        if conflicted:
+            row = conflicted[0]
+            message = "%s has a sync conflict on %s" % (row.name, row.detail)
+            if len(conflicted) > 1:
+                message += ", and %d other folders do too" % (len(conflicted) - 1)
+            message += "."
+            self.show_folder_error(SyncError(message, CONFLICT_NEXT))
+            self._conflict_note = True
+            self._conflict_banner = self.folder_error.text()
+            return
+        if self._conflict_note:
+            if self.folder_error.text() == self._conflict_banner:
+                self.folder_error.setText("")
+                self.folder_error.setStyleSheet("")
+                self.open_credit_btn.hide()
+            self._conflict_note = False
+            self._conflict_banner = ""
 
     def _show_refusal_if_any(self) -> bool:
         """Storage refused a write for lack of credit (spender event): say so on Folders."""

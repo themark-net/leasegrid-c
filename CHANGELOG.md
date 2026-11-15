@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A folder that already has a sync conflict still says Conflict when a newer file has changed, or when that conflict is outside the five newest changes. The folder page names the file and the next step. That line clears once the conflict is gone.
+- Adding a folder whose name is already syncing a different directory stays on the page as a failure. Adding the same directory again does not create a second row.
 - Android: a leasegrid join link that puts the address in the query (`?`) joins, the same as on the computer. A non-empty `#` still wins. A web page address that only has a query is still rejected.
 - Android: Replace, Keep both, or Cancel stays on screen if the process dies while that question is open. The file is not uploaded until one of those is chosen. A stored path that leaves the phone's files is dropped.
 - Android: the list of files still waiting to upload is replaced as a whole. A write that stops keeps the previous list. A half-written temp file next to that list is not used.

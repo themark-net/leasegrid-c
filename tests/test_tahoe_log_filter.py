@@ -504,9 +504,6 @@ def _lines_leaking(tokens: list[str]) -> int:
 
 _B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 _F3_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789_"
-# This seed on the unchanged filter. Seed v017-fix3-F3. Mutant F3, which
-# widens the snake_case protector to digits, leaks far more than this.
-_F3_BASE_LEAKS = 46
 
 
 def test_forty_char_base64url_tokens_are_redacted() -> None:
@@ -524,11 +521,11 @@ def test_forty_char_base64url_tokens_are_redacted() -> None:
     assert leaked == 0, "%d/%d 40-char base64url tokens leaked" % (leaked, len(tokens))
 
 
-def test_digit_underscore_tokens_leak_no_worse_than_base() -> None:
+def test_digit_underscore_tokens_do_not_leak() -> None:
     """48-character lowercase, digit and underscore tokens.
 
-    Some 8-character fragments survive on the current script, which is the
-    same script as b267059. The bound is this seed's count.
+    Seed v017-fix3-F3. A base32 rule that stops at ``_`` leaves an 8-character
+    fragment of the same token (46 of 300 on this seed before the fix).
     """
     tokens = _seeded_tokens(
         "v017-fix3-F3",
@@ -538,7 +535,4 @@ def test_digit_underscore_tokens_leak_no_worse_than_base() -> None:
         lambda tok: any(ch.isdigit() for ch in tok) and "_" in tok,
     )
     leaked = _lines_leaking(tokens)
-    assert leaked <= _F3_BASE_LEAKS, "%d/300 fragments survived; base count is %d" % (
-        leaked,
-        _F3_BASE_LEAKS,
-    )
+    assert leaked == 0, "%d/300 underscore-joined tokens leaked an 8-char window" % leaked

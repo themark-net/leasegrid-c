@@ -16,6 +16,10 @@
 #   unpadded base64-alphabet runs of 40+; uppercase base32 runs of 20+
 #   [A-Z2-7]; and 5+ groups of exactly 4 [a-z2-7] joined by "-" or " "
 #   (a swissnum chunked for reading), bounded by non-alphanumerics.
+# Underscores are part of a base32 token and of a 40-character base64 run,
+# so a short fragment on the other side of "_" is not left behind. A long
+# snake_case name has no 20-letter run and no 40-character run between
+# underscores, so it still survives.
 # Known limit: a base32 fragment shorter than 20 chars on an allowlisted line
 # is not redacted; it is indistinguishable from an ordinary word or path part.
 # v0.1.7: a 40+ [A-Za-z0-9_-] token is redacted only when it has a digit, or
@@ -34,10 +38,10 @@ grep -E "(${TS}.*${KEY})|^Traceback|^[[:space:]]+File \"|^[A-Za-z_.]*(Error|Exce
   | sed -E \
       -e 's#pb:[^[:space:]]*#pb:REDACTED#g' \
       -e 's#([Ff][Uu][Rr][Ll][^=:]*[=:]).*#\1 REDACTED#' \
-      -e 's#[A-Za-z0-9]*[a-z2-7]{20,}[A-Za-z0-9]*#REDACTED#g' \
+      -e 's#[A-Za-z0-9_]*[a-z2-7]{20,}[A-Za-z0-9_]*#REDACTED#g' \
       -e 's#[A-Za-z0-9]*[0-9a-fA-F]{32,}[A-Za-z0-9]*#REDACTED#g' \
       -e 's#[A-Za-z0-9+/]{16,}={1,2}#REDACTED#g' \
-      -e 's#[A-Za-z0-9+/]{40,}#REDACTED#g' \
+      -e 's#[A-Za-z0-9_]*[A-Za-z0-9+/]{40,}[A-Za-z0-9_]*#REDACTED#g' \
       -e 't clr1' \
       -e ':clr1' \
       -e ':low' \

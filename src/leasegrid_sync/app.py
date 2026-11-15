@@ -974,15 +974,37 @@ def scrub_bug_report(text: str) -> str:
     return _BUG_CODE_RE.sub(_redact_wormhole_code, text)
 
 
+# Capabilities and labeled passphrases are not invite material, but they are
+# still secrets if a traceback quotes them.
+_LOG_URI_RE = re.compile(r"URI:[A-Za-z0-9:%_+-]{8,}")
+_LOG_PASS_RE = re.compile(r"(?i)(passphrase\s*[=:]\s*)\S+")
+
+
+def redact_log_text(text: str) -> str:
+    """Drop secret shapes before a log line is written. The class name stays."""
+    text = scrub_bug_report(text)
+    text = _LOG_URI_RE.sub("[redacted]", text)
+    return _LOG_PASS_RE.sub(r"\1[redacted]", text)
+
+
 def log_exception(home: Path, where: str, exc: BaseException) -> Path:
-    """Append a traceback to <home>/logs/sync-ui.log; never raises."""
+    """Append a traceback to <home>/logs/sync-ui.log.
+
+    Furls, invite codes, capabilities, and ``passphrase=`` values are removed
+    first. Never raises.
+    """
     path = Path(home) / "logs" / UI_LOG_NAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         rotate_log(path)
+        body = redact_log_text(
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        )
         with path.open("a", encoding="utf-8") as f:
-            f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), where))
-            f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+            f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), redact_log_text(where)))
+            f.write(body)
+            if not body.endswith("\n"):
+                f.write("\n")
             f.write("\n")
     except OSError:
         pass
@@ -1051,8 +1073,9 @@ def _make_disk_pie(parent):
 def unexpected_error(exc: BaseException, what: str) -> SyncError:
     """Wrap a non-SyncError so it can be shown as a FAIL banner instead of aborting.
 
-    The class name and ``str(exc)`` stay in ``logs/sync-ui.log`` via
-    ``log_exception``. The banner and the REVIEW chip get ``what`` only.
+    The class name stays in ``logs/sync-ui.log`` via ``log_exception``.
+    Secret shapes in that traceback are removed before the write.
+    The banner and the REVIEW chip get ``what`` only.
     """
     lead = what.strip()
     if lead.endswith("."):

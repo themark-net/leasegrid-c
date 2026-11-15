@@ -3,7 +3,8 @@
 Allowlisted log-only uses. These are not sinks, so the scanner ignores them:
 
 - ``app.log_exception`` writes ``traceback.format_exception(...)`` to
-  ``logs/sync-ui.log``. ``type(exc)`` and ``exc`` appear only in that write.
+  ``logs/sync-ui.log`` after removing furl, invite-code, capability, and
+  ``passphrase=`` shapes. ``type(exc)`` and ``exc`` appear only in that write.
 - ``install_excepthook`` calls ``sys.__excepthook__`` and ``log_exception``,
   then ``show_unexpected``. The window text is ``unexpected_error``.
 

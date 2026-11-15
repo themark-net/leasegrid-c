@@ -75,6 +75,29 @@ def _assert_entry_appended(home: Path, path: Path) -> None:
     assert text.encode("utf-8").startswith(b"D")
 
 
+def test_sync_ui_log_omits_passphrase_invite_and_furl(tmp_path: Path) -> None:
+    """The log file a failure writes does not keep recovery or join secrets.
+
+    The shapes are the ones a failed import or join can put on an exception:
+    a labeled recovery passphrase, a short invite code, a pb:// furl, and a
+    capability. The exception class stays so the log is still useful.
+    """
+    phrase = "correct-horse-battery-staple"
+    code = "7-guitarist-revenge"
+    furl = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
+    cap = "URI:DIR2:" + ("a" * 26) + ":" + ("b" * 52)
+    home = tmp_path / "home"
+    message = "passphrase=%s invite %s %s %s" % (phrase, code, furl, cap)
+    log_exception(home, "import", RuntimeError(message))
+    path = _log(home)
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "RuntimeError" in text
+    assert "import" in text
+    for secret in (phrase, code, "guitarist", "FAKE-TUBID", "FAKE-SWISS", "pb://", cap, "URI:"):
+        assert secret not in text, secret
+
+
 def test_rotation_failure_still_appends_and_does_not_raise(tmp_path: Path) -> None:
     """A backup name that can't be replaced (a non-empty directory) fails on every OS."""
     home = tmp_path / "home"

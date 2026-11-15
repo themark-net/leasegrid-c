@@ -1090,6 +1090,45 @@ def format_status_chip(status: ConnectionStatus) -> str:
     return status.state
 
 
+def _storage_count(status: ConnectionStatus) -> int:
+    n = int(status.servers_connected or 0)
+    if n <= 0:
+        match = re.search(r"(\d+)\s+storage", status.detail or "")
+        n = int(match.group(1)) if match else 0
+    return n
+
+
+def _storage_known_down(status: ConnectionStatus) -> bool:
+    """True when storage had somewhere to be and that count is now zero.
+
+    The count is read first, so "10 storage" is not treated as "0 storage".
+    A first paint with no servers and no announced list is not a drop.
+    """
+    if _storage_count(status) > 0:
+        return False
+    if "0 storage" in (status.detail or ""):
+        return True
+    return bool(status.announced_servers)
+
+
+def grid_down_error(status: ConnectionStatus) -> Optional[SyncError]:
+    """Folder-page FAIL when a joined friendnet or its storage drops.
+
+    Connecting, FAIL, and a first paint with nothing announced are not this.
+    """
+    if status.state == "Offline":
+        return SyncError(
+            "could not reach this friendnet.",
+            "check the network, then leave this window open. Sync tries again on its own.",
+        )
+    if status.state == "Connected" and status.introducer_ok and _storage_known_down(status):
+        return SyncError(
+            "could not reach the computers that store files.",
+            "check the network, then leave this window open. Sync tries again on its own.",
+        )
+    return None
+
+
 def about_line() -> str:
     """More → Settings. Buyer-visible version line."""
     return "%s (buyer) · version %s" % (APP_NAME, __version__)
@@ -2161,6 +2200,8 @@ class MainWindow:
         self._folder_list_banner = ""
         self._missing_folder_note = False
         self._missing_folder_banner = ""
+        self._grid_note = False
+        self._grid_banner = ""
         self._credit_loaded = False
         self._invite_session = None
 
@@ -2540,12 +2581,15 @@ class MainWindow:
         layout.addWidget(wrap)
 
     def _refresh_hosts_line(self, status: ConnectionStatus) -> None:
-        n = int(status.servers_connected or 0)
+        n = _storage_count(status)
         if n <= 0:
-            match = re.search(r"(\d+)\s+storage", status.detail or "")
-            n = int(match.group(1)) if match else 0
-        if n <= 0:
-            self.hosts_line.setText("Hosts: none connected yet")
+            # "yet" is the empty first run. Once the friendnet was up, or
+            # storage had been announced, "yet" is the wrong word.
+            dropped = status.state == "Offline" or _storage_known_down(status)
+            if dropped:
+                self.hosts_line.setText("Hosts: none connected")
+            else:
+                self.hosts_line.setText("Hosts: none connected yet")
         elif n == 1:
             self.hosts_line.setText("Hosts: 1 connected")
         else:
@@ -3948,8 +3992,32 @@ class MainWindow:
         if self._show_refusal_if_any():
             self._missing_folder_note = False
             self._missing_folder_banner = ""
+            self._grid_note = False
+            self._grid_banner = ""
+            return
+        if self._note_grid(status):
             return
         self._note_missing_folders(rows)
+
+    def _note_grid(self, status: ConnectionStatus) -> bool:
+        """Name a friendnet or storage drop, and clear that line when it returns.
+
+        A later note, whose text no longer matches, stays on screen.
+        """
+        err = grid_down_error(status)
+        if err is not None:
+            self.show_folder_error(err)
+            self._grid_note = True
+            self._grid_banner = self.folder_error.text()
+            return True
+        if self._grid_note:
+            if self.folder_error.text() == self._grid_banner:
+                self.folder_error.setText("")
+                self.folder_error.setStyleSheet("")
+                self.open_credit_btn.hide()
+            self._grid_note = False
+            self._grid_banner = ""
+        return False
 
     def _note_missing_folders(self, rows: list) -> None:
         """Say when a synced directory is gone, and clear that once it is back."""

@@ -8,6 +8,7 @@
 - Android: opening a recovery file, then rotating the phone or the process dying, does not import that file again and does not drop a home that was already saved.
 - Android: a join link with a trailing period or closing mark, or wrapped in quotes, angle brackets, or parentheses, still joins. The extra characters are not sent to the computer.
 - Android: Cancel on Import ignores a recovery read that was still waiting, including when Import is opened again.
+- While Sync is open, a friendnet that cannot be reached, or storage that drops, shows what is wrong and a next step. The host line says none are connected. The next refresh that reaches them clears that line. A note written after it stays, and a credit pause stays.
 - A join or recovery import that cannot reach the friendnet removes the node it just created, so a corrected invite or key can be tried. The window says the friendnet could not be reached, with a next step. A node that was already on this computer stays.
 - Offering disk on a loopback address (the default, or `LEASEGRID_STORAGE_HOSTNAME` set to another 127.x address) listens on that address only. A LAN hostname is unchanged, so other computers can still connect.
 - A Magic Folder scan or remote poll uses the daemon's PUT call, so Sync's request actually runs instead of waiting out the scan interval.

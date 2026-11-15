@@ -2282,6 +2282,126 @@ def test_offline_grid_recovers_when_the_friendnet_returns(
     assert not ui.open_credit_btn.isHidden()
 
 
+def _server_status_texts(ui: MainWindow) -> list[str]:
+    ui.QtWidgets.QApplication.processEvents()
+    labels = ui.win.findChildren(PyQt5.QtWidgets.QLabel, "serverStatus")
+    return [label.text() for label in labels if label.parent() is not None]
+
+
+def test_introducer_or_storage_drop_names_a_next_step_then_clears(
+    ui: MainWindow, fake_credit: FakeCredit
+):
+    """Folders stays listed. A dropped friendnet or storage names a next step, then clears."""
+    row = FolderRow(name="Docs", path="/tmp/docs", status="Up to date", detail="1 file")
+    announced = [{"nickname": "storage-1", "nodeid": "abc", "connection_status": "connected"}]
+    dropped = [{"nickname": "storage-1", "nodeid": "abc", "connection_status": ""}]
+    online = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+        announced_servers=announced,
+    )
+    intro_down = ConnectionStatus(
+        state="Offline",
+        detail="Tahoe is up but the friendnet introducer is not connected",
+    )
+    storage_down = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 0 storage",
+        introducer_ok=True,
+        servers_connected=0,
+        announced_servers=dropped,
+    )
+
+    _enter(ui)
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.status_chip.text().startswith("Online")
+    assert "1 computer" in ui.status_chip.text()
+    assert "FAIL" not in ui.folder_error.text()
+    assert ui.hosts_line.text() == "Hosts: 1 connected"
+    assert _server_status_texts(ui) == ["Connected"]
+    assert ui.table.item(0, 1).text() == "Up to date"
+
+    with patch.object(ui.tahoe, "connection_status", return_value=intro_down), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.status_chip.text() == "Offline"
+    banner = ui.folder_error.text()
+    assert banner.startswith("FAIL")
+    assert "\nNext:" in banner
+    assert "introducer" not in banner.lower()
+    assert "tahoe" not in banner.lower()
+    assert "pb://" not in banner
+    assert ui.hosts_line.text() == "Hosts: none connected"
+    assert "yet" not in ui.hosts_line.text()
+    assert ui.table.item(0, 0).text() == "Docs"
+    assert ui.table.item(0, 1).text() == "Up to date"
+    assert ui.open_credit_btn.isHidden()
+
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.status_chip.text().startswith("Online")
+    assert ui.folder_error.text() == ""
+    assert ui.hosts_line.text() == "Hosts: 1 connected"
+    assert _server_status_texts(ui) == ["Connected"]
+
+    with patch.object(ui.tahoe, "connection_status", return_value=storage_down), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    stored = ui.folder_error.text()
+    assert stored.startswith("FAIL")
+    assert "computers that store files" in stored
+    assert "\nNext:" in stored
+    assert "introducer" not in stored.lower()
+    assert "tahoe" not in stored.lower()
+    assert ui.status_chip.text() == "Online — connected to the friendnet"
+    assert ui.hosts_line.text() == "Hosts: none connected"
+    assert "yet" not in ui.hosts_line.text()
+    assert _server_status_texts(ui) == ["Available"]
+    assert ui.table.item(0, 1).text() == "Up to date"
+    assert ui.open_credit_btn.isHidden()
+
+    ui.folder_error.setText("Added folder Docs")
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.folder_error.text() == "Added folder Docs"
+
+    fake_credit.refusal = "Upload refused: out of credit"
+    with patch.object(ui.tahoe, "connection_status", return_value=storage_down), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert "out of credit" in ui.folder_error.text()
+    assert "computers that store files" not in ui.folder_error.text()
+    assert not ui.open_credit_btn.isHidden()
+
+    fake_credit.refusal = None
+    with patch.object(ui.tahoe, "connection_status", return_value=storage_down), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert "computers that store files" in ui.folder_error.text()
+    assert ui.open_credit_btn.isHidden()
+
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.folder_error.text() == ""
+    assert ui.status_chip.text().startswith("Online")
+    assert "1 computer" in ui.status_chip.text()
+
+
 def test_refresh_surfaces_spender_refusal(ui: MainWindow, fake_credit: FakeCredit):
     """Wallet ran dry mid-sync: the Tahoe-side spender wrote an event; Folders says so."""
     _enter(ui)

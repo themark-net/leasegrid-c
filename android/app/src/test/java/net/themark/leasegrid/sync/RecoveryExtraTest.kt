@@ -11,7 +11,7 @@ import java.nio.file.Files
 /**
  * EXTRA_RECOVERY_FILE at the first read, before any retry.
  * A relative name inside the app files dir loads the same bytes as the absolute path.
- * A relative path that leaves that dir, including through a symlink, must not return those bytes.
+ * A path that leaves that dir, relative or absolute, including through a symlink, must not return those bytes.
  */
 class RecoveryExtraTest {
     @Test
@@ -61,20 +61,28 @@ class RecoveryExtraTest {
     }
 
     @Test
-    fun absolutePathOutsideTheAppFilesDirStillLoads() {
+    fun absolutePathOutsideTheAppFilesDirIsRejectedAndNotRead() {
         val parent = scratch()
         try {
             val base = File(parent, "files").also { it.mkdirs() }
             val outside = File(parent, "elsewhere.leasegrid-recovery")
             outside.writeBytes("abs-bundle".toByteArray())
-            val loaded = DogfoodIntents.readRecoverySeed(
-                DogfoodIntents.recoveryFile(base, outside.absolutePath),
-            )
-            assertTrue(loaded.readable)
-            assertEquals("abs-bundle", loaded.bytes!!.decodeToString())
+            val pointed = DogfoodIntents.recoveryFile(base, outside.absolutePath)
+            assertFalse(pointed.canonicalFile == outside.canonicalFile)
+            assertTrue(pointed.canonicalPath.startsWith(base.canonicalPath))
+            val loaded = DogfoodIntents.readRecoverySeed(pointed)
+            assertFalse(loaded.readable)
+            assertNull(loaded.bytes)
             val viaLoad = DogfoodIntents.loadRecoveryExtra(base, outside.absolutePath)
-            assertFalse(viaLoad.rejected)
-            assertEquals("abs-bundle", viaLoad.bytes!!.decodeToString())
+            assertTrue(viaLoad.opensImport)
+            assertTrue(viaLoad.rejected)
+            assertNull(viaLoad.bytes)
+            val banner = viaLoad.banner
+            assertEquals(DogfoodIntents.RECOVERY_REJECT_BANNER, banner)
+            assertEquals(DogfoodIntents.RECOVERY_REJECT_NEXT, viaLoad.next)
+            assertFalse(banner!!.lowercase().contains("exception"))
+            assertFalse(banner.contains("abs-bundle"))
+            assertEquals("abs-bundle", outside.readText())
         } finally {
             parent.deleteRecursively()
         }

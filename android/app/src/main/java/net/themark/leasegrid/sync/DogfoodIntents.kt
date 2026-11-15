@@ -56,11 +56,11 @@ object DogfoodIntents {
     const val RECOVERY_REJECT_BANNER =
         "could not import this recovery key. That path is not in the app files folder."
     const val RECOVERY_REJECT_NEXT =
-        "pass a file name in the app files folder, or a full path; Retry."
+        "pass a file name in the app files folder; Retry."
 
     /**
      * Path DogfoodIntents will read for [raw].
-     * An absolute path is used as given. A relative path must stay inside [filesDir].
+     * Relative and absolute paths must stay inside [filesDir].
      * A path that leaves that directory returns a file that is not the outside target.
      */
     fun recoveryFile(filesDir: File, raw: String): File {
@@ -104,17 +104,17 @@ object DogfoodIntents {
         return RecoveryLoad(true, false, name, null, RECOVERY_MISS_BANNER, RECOVERY_MISS_NEXT)
     }
 
-    /** Null when [trimmed] is relative and its canonical path leaves [filesDir]. */
+    /** Null when the canonical path of [trimmed] leaves [filesDir]. */
     fun locateRecovery(filesDir: File, trimmed: String): File? {
         if (trimmed.isEmpty() || trimmed.indexOf('\u0000') >= 0) return null
-        if (trimmed.startsWith("/")) return File(trimmed)
         val base = try {
             filesDir.canonicalFile
         } catch (_: IOException) {
             return null
         }
         val resolved = try {
-            File(base, trimmed).canonicalFile
+            val candidate = if (File(trimmed).isAbsolute) File(trimmed) else File(base, trimmed)
+            candidate.canonicalFile
         } catch (_: IOException) {
             return null
         }

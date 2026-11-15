@@ -175,6 +175,21 @@ class RecoveryBundle:
 # -- Tahoe node facts --------------------------------------------------------
 
 
+def _tahoe_cfg(nodedir: Path) -> configparser.ConfigParser:
+    """Parsed ``tahoe.cfg``, or an empty parser when the file is not settings text.
+
+    A cut-off file has no section header. ``ConfigParser.read`` raises, and
+    that used to escape the window after join. Callers then take their usual
+    missing-value path.
+    """
+    cfg = configparser.ConfigParser()
+    try:
+        cfg.read(Path(nodedir) / "tahoe.cfg", encoding="utf-8")
+    except (configparser.Error, OSError, UnicodeError):
+        return configparser.ConfigParser()
+    return cfg
+
+
 def read_introducer_furl(nodedir: Path) -> str:
     yaml_path = nodedir / "private" / "introducers.yaml"
     if yaml_path.is_file():
@@ -185,8 +200,7 @@ def read_introducer_furl(nodedir: Path) -> str:
                 value = stripped[len("furl:"):].strip().strip("'\"")
                 if value.startswith("pb://"):
                     return value
-    cfg = configparser.ConfigParser()
-    cfg.read(nodedir / "tahoe.cfg", encoding="utf-8")
+    cfg = _tahoe_cfg(nodedir)
     value = cfg.get("client", "introducer.furl", fallback="").strip()
     if value.startswith("pb://"):
         return value
@@ -197,8 +211,7 @@ def read_introducer_furl(nodedir: Path) -> str:
 
 
 def read_shares(nodedir: Path) -> tuple[int, int, int]:
-    cfg = configparser.ConfigParser()
-    cfg.read(nodedir / "tahoe.cfg", encoding="utf-8")
+    cfg = _tahoe_cfg(nodedir)
     try:
         return (
             cfg.getint("client", "shares.needed"),
@@ -210,9 +223,12 @@ def read_shares(nodedir: Path) -> tuple[int, int, int]:
 
 
 def read_nickname(nodedir: Path) -> str:
-    cfg = configparser.ConfigParser()
-    cfg.read(nodedir / "tahoe.cfg", encoding="utf-8")
-    return cfg.get("node", "nickname", fallback="leasegrid-sync").strip() or "leasegrid-sync"
+    cfg = _tahoe_cfg(nodedir)
+    try:
+        nick = cfg.get("node", "nickname", fallback="leasegrid-sync")
+    except (configparser.Error, ValueError):
+        nick = "leasegrid-sync"
+    return nick.strip() or "leasegrid-sync"
 
 
 # -- Magic Folder config (offline, via the pinned magic-folder package) -------

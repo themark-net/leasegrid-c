@@ -7,12 +7,15 @@ No Tahoe web UI. Slice A never uploads.
 from __future__ import annotations
 
 import base64
+import contextvars
+import functools
 import hashlib
 import json
 import logging
 import socket
 import ssl
 import struct
+import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 from urllib.parse import unquote
@@ -38,6 +41,58 @@ class ReadFail(Exception):
         super().__init__(message)
         self.message = message
         self.next_hint = next_hint
+
+
+# Learn already stops at 25s. List, download and remove used to wait out a
+# socket timeout per share, so an unreachable server took minutes.
+STORAGE_DEADLINE_S = 25.0
+
+_deadline_at: contextvars.ContextVar[Optional[float]] = contextvars.ContextVar(
+    "leasegrid_storage_deadline",
+    default=None,
+)
+
+
+def _push_deadline(seconds: Optional[float] = None):
+    """Start a budget, or keep an earlier one already running on this call."""
+    if seconds is None:
+        seconds = STORAGE_DEADLINE_S
+    current = _deadline_at.get()
+    proposed = time.monotonic() + float(seconds)
+    if current is not None and proposed >= current:
+        return None
+    return _deadline_at.set(proposed)
+
+
+def _pop_deadline(token) -> None:
+    if token is not None:
+        _deadline_at.reset(token)
+
+
+def bounded_storage(fn):
+    """One overall deadline for a list, download or remove."""
+
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        token = _push_deadline()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _pop_deadline(token)
+
+    return wrapped
+
+
+def _within_deadline(timeout: float, message: str, nxt: str) -> float:
+    """Socket timeout that cannot outlive the current storage budget."""
+    end = _deadline_at.get()
+    if end is None:
+        return timeout
+    left = end - time.monotonic()
+    # Do not open another share once the budget is spent.
+    if left <= 0.05:
+        raise ReadFail(message, nxt)
+    return min(float(timeout), left)
 
 
 def _netstring(data: bytes) -> bytes:
@@ -176,8 +231,13 @@ def _http_get(host: str, port: int, tubid: str, path: str, swiss: str, timeout: 
     ).encode("ascii")
     last: Optional[Exception] = None
     for use_host in _host_candidates(host):
+        this_timeout = _within_deadline(
+            timeout,
+            "could not download this file. Network error or not enough free space.",
+            "check network / free space; Retry.",
+        )
         try:
-            raw = socket.create_connection((use_host, port), timeout=timeout)
+            raw = socket.create_connection((use_host, port), timeout=this_timeout)
         except OSError as exc:
             last = exc
             continue
@@ -188,7 +248,7 @@ def _http_get(host: str, port: int, tubid: str, path: str, swiss: str, timeout: 
             ssock = ctx.wrap_socket(raw, server_hostname=use_host)
             # wrap_socket can drop the connect timeout. A stalled read
             # must still raise, or a folder put never returns.
-            ssock.settimeout(timeout)
+            ssock.settimeout(this_timeout)
             der = ssock.getpeercert(binary_form=True)
             if der and _cert_tubid(der) != tubid.lower():
                 ssock.close()
@@ -257,8 +317,9 @@ def http_storage(
     request = ("\r\n".join(header_lines) + "\r\n\r\n").encode("ascii") + body
     last: Optional[Exception] = None
     for use_host in _host_candidates(host):
+        this_timeout = _within_deadline(timeout, fail_message, fail_next)
         try:
-            raw = socket.create_connection((use_host, port), timeout=timeout)
+            raw = socket.create_connection((use_host, port), timeout=this_timeout)
         except OSError as exc:
             last = exc
             continue
@@ -270,7 +331,7 @@ def http_storage(
             # wrap_socket can drop the connect timeout. A stalled write
             # must still raise, or read-back never runs and the row
             # stays on a progress bar.
-            ssock.settimeout(timeout)
+            ssock.settimeout(this_timeout)
             der = ssock.getpeercert(binary_form=True)
             if der and _cert_tubid(der) != tubid.lower():
                 ssock.close()
@@ -696,6 +757,7 @@ def read_literal(body: str) -> bytes:
     return a2b(body)
 
 
+@bounded_storage
 def download_file(cap: str, servers: list[StorageServer], progress: Optional[Callable[[int], None]] = None) -> bytes:
     cap = cap.strip()
     if cap.startswith("URI:LIT:"):
@@ -750,6 +812,7 @@ def _participant_files(entry: Child, servers: list[StorageServer]) -> list[Child
     return files + snaps + others
 
 
+@bounded_storage
 def list_folder_view(cap: str, servers: list[StorageServer]) -> list[Child]:
     """Buyer-facing listing.
 

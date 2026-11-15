@@ -7,11 +7,26 @@ The phone does not offer storage and does not open the Tahoe web UI.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from typing import Any
 
 from lg_tahoe import ReadFail, _host_candidates
+
+_log = logging.getLogger("lg_intro")
+
+_LEARN_NEXT = "check the network path to the introducer (and that it is running); Retry."
+
+
+def _unreachable(exc: BaseException | None) -> ReadFail:
+    """Plain learn failure. The class is logged, never put on the next line."""
+    kind = type(exc).__name__ if exc is not None else "timeout"
+    _log.warning("learn failed: %s", kind)
+    return ReadFail(
+        "could not join this friendnet. Introducer is unreachable.",
+        _LEARN_NEXT,
+    )
 
 _reactor_lock = threading.Lock()
 _reactor_started = False
@@ -174,12 +189,7 @@ def learn_servers(furl: str, timeout: float = 25.0) -> dict[str, Any]:
                     returnValue(result)
             if last_result is not None:
                 returnValue(last_result)
-            detail = type(last_exc).__name__ if last_exc else "timeout"
-            raise ReadFail(
-                "could not join this friendnet. Introducer is unreachable.",
-                "check the network path to the introducer (and that it is running); Retry. (%s)"
-                % detail,
-            )
+            raise _unreachable(last_exc)
 
         return _run()
 
@@ -188,11 +198,7 @@ def learn_servers(furl: str, timeout: float = 25.0) -> dict[str, Any]:
     except ReadFail:
         raise
     except Exception as exc:
-        raise ReadFail(
-            "could not join this friendnet. Introducer is unreachable.",
-            "check the network path to the introducer (and that it is running); Retry. (%s)"
-            % type(exc).__name__,
-        ) from exc
+        raise _unreachable(exc) from exc
 
 
 def _announcement_server(ann_t: Any) -> dict[str, str] | None:

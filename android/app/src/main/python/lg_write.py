@@ -37,6 +37,7 @@ from lg_tahoe import (
     _tagged_pair,
     a2b,
     b2a,
+    bounded_storage,
     download_file,
     http_storage,
     list_folder_view,
@@ -1163,6 +1164,7 @@ def _landed(name: str, cap: str, size: int, seed: bytes, dmd: str) -> dict[str, 
     }
 
 
+@bounded_storage
 def remove_file(
     dir_cap: str,
     name: str,

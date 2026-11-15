@@ -74,6 +74,22 @@ def _install_script(dest: Path) -> None:
     (scripts / "ci-local.sh").write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
 
 
+def test_ruff_gates_list_src_tests_scripts_and_packaging() -> None:
+    """ci.yml and ci-local both lint src, tests, scripts, and packaging."""
+    local = SCRIPT.read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    want = ("src", "tests", "scripts", "packaging")
+    for label, text in (("ci-local", local), ("ci.yml", ci)):
+        line = next(
+            row
+            for row in text.splitlines()
+            if "ruff check" in row and not row.strip().startswith("#")
+        )
+        got = line.split()
+        missing = [name for name in want if name not in got]
+        assert not missing, "%s ruff line missing %s: %s" % (label, missing, line.strip())
+
+
 def test_linked_worktree_uses_its_own_venv(tmp_path: Path) -> None:
     """Unset PYTHON in a linked worktree selects that tree's .venv, never the shared one."""
     base = tmp_path / "repo"

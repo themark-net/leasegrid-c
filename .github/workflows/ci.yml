@@ -52,7 +52,7 @@ jobs:
           kill $PID || true
           test -s "$INTRO/private/introducer.furl" || { cat "$T/ci-intro.log"; exit 1; }
       - name: Ruff
-        run: python -m ruff check src tests packaging
+        run: python -m ruff check src tests scripts packaging
       - name: Pytest
         run: python -m pytest -q
 

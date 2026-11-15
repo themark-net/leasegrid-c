@@ -73,7 +73,7 @@ else
   echo "==> tahoe extra skipped (check-0b local test will skip)"
 fi
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
-"$PYTHON" -m ruff check src tests scripts
+"$PYTHON" -m ruff check src tests scripts packaging
 # Semgrep has no native Windows build. A host without a wheel sets
 # CI_LOCAL_SKIP_SEMGREP=1. Any other install or scan failure fails the gate.
 if [[ "${CI_LOCAL_SKIP_SEMGREP:-}" == "1" ]]; then

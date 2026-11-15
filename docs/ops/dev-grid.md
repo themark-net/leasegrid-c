@@ -47,7 +47,8 @@ leasegrid-sync
    storage; uncheck **Offer disk** for `--no-storage`), starts `tahoe run`, and waits
    for the introducer. Chip: **Connected · introducer up · 3 storage**.
    Offering disk uses `LEASEGRID_STORAGE_HOSTNAME` (default `127.0.0.1`, so other
-   lab nodes on this machine can reach it).
+   lab nodes on this machine can reach it). A loopback name listens on that
+   address only. A LAN name still accepts connections from other computers.
 2. **Credit** → **Top up** → pick a tier → **Continue**. On a fake-chain issuer
    the dialog pays the quote (`/v0/fake/pay`) and the balance updates after
    confirmations. On stagenet, pay the address from a stagenet wallet (or set

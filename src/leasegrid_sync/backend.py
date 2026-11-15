@@ -170,6 +170,89 @@ def storage_hostname() -> str:
     return (os.environ.get("LEASEGRID_STORAGE_HOSTNAME") or "127.0.0.1").strip() or "127.0.0.1"
 
 
+def _endpoint_host(endpoint: str) -> Optional[str]:
+    """Host of one ``tcp:`` endpoint. An IPv6 host is inside ``[]``."""
+    text = endpoint.strip()
+    if not text.startswith("tcp:"):
+        return None
+    body = text[4:]
+    if body.startswith("["):
+        end = body.find("]")
+        if end < 1:
+            return None
+        return body[1:end]
+    if ":" not in body:
+        return None
+    host, _port = body.rsplit(":", 1)
+    return host or None
+
+
+def _loopback_host(host: str) -> bool:
+    name = host.strip().lower().rstrip(".")
+    if name in {"localhost", "::1"}:
+        return True
+    parts = name.split(".")
+    if len(parts) != 4:
+        return False
+    if not all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
+        return False
+    return parts[0] == "127"
+
+
+def _loopback_interface(host: str) -> str:
+    name = host.strip().rstrip(".")
+    if name.lower() == "localhost":
+        return "127.0.0.1"
+    return name
+
+
+def _endpoint_argument(value: str) -> str:
+    """Escape ``\\`` and ``:`` the way a Twisted endpoint argument does."""
+    for char in ("\\", ":"):
+        value = value.replace(char, "\\" + char)
+    return value
+
+
+def tighten_loopback_listen(nodedir: Path) -> bool:
+    """Listen only on a loopback address when that is the whole advertisement.
+
+    ``tahoe create-node --listen=tcp`` writes ``tub.port = tcp:PORT`` with no
+    interface, which accepts connections on every interface. A loopback
+    ``tub.location`` should not do that. A LAN name is left unchanged so other
+    computers can still connect.
+    """
+    path = Path(nodedir) / "tahoe.cfg"
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    location = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("tub.location") and "=" in stripped:
+            location = stripped.split("=", 1)[1].strip()
+            break
+    hosts: list[str] = []
+    for part in location.split(","):
+        host = _endpoint_host(part)
+        if host and host not in hosts:
+            hosts.append(host)
+    if len(hosts) != 1 or not _loopback_host(hosts[0]):
+        return False
+    interface = _endpoint_argument(_loopback_interface(hosts[0]))
+    changed = False
+    out: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^(\s*tub\.port\s*=\s*)tcp:(\d+)\s*$", line)
+        if match:
+            line = "%stcp:%s:interface=%s" % (match.group(1), match.group(2), interface)
+            changed = True
+        out.append(line)
+    if not changed:
+        return False
+    path.write_text("\n".join(out) + ("\n" if text.endswith("\n") else ""), encoding="utf-8")
+    return True
+
+
 def shares_config() -> tuple[int, int, int]:
     raw = os.environ.get("LEASEGRID_SHARES", "")
     if raw:
@@ -1446,6 +1529,8 @@ class TahoeClient:
         if code:
             fix_joined_shares(self.nodedir / "tahoe.cfg")
         self.ensure_credit_plugin()
+        if offer_storage:
+            tighten_loopback_listen(self.nodedir)
 
     def ensure_credit_plugin(self) -> bool:
         """Enable the ZKAP storage plugin in tahoe.cfg, pointed at this app's wallet.
@@ -2070,14 +2155,20 @@ class MagicFolderCtl:
             http_status=exc.code,
         )
 
-    def _http_post(self, path: str, timeout: float = 30.0, body: Optional[dict] = None) -> Any:
+    def _http_post(
+        self,
+        path: str,
+        timeout: float = 30.0,
+        body: Optional[dict] = None,
+        method: str = "POST",
+    ) -> Any:
         url = self._base_url() + path
         headers = self._auth_headers()
         data = b""
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        req = urllib.request.Request(url, data=data, method="POST", headers=headers)
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
@@ -2226,16 +2317,14 @@ class MagicFolderCtl:
         return folder_name
 
     def scan_local(self, name: str) -> None:
+        """Ask the daemon to scan now. Magic Folder accepts this only as PUT."""
         path = "/v1/magic-folder/%s/scan-local" % quote(name, safe="")
-        try:
-            self._http_post(path, timeout=60)
-            return
-        except SyncError:
-            pass
-        try:
-            self._http_get(path, timeout=60)
-        except SyncError:
-            pass
+        self._http_post(path, timeout=60, method="PUT")
+
+    def poll_remote(self, name: str) -> None:
+        """Ask the daemon to poll other computers now. PUT, same as scan."""
+        path = "/v1/magic-folder/%s/poll-remote" % quote(name, safe="")
+        self._http_post(path, timeout=120, method="PUT")
 
     def file_status(self, name: str) -> list[dict[str, Any]]:
         data = self._http_get("/v1/magic-folder/%s/file-status" % quote(name, safe=""))

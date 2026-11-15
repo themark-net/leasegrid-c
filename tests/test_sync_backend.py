@@ -1221,6 +1221,48 @@ def test_magic_folder_http_get_hides_body(tmp_path: Path, monkeypatch):
     assert_no_raw_user_text(blob)
 
 
+def test_scan_and_poll_use_the_daemon_put(tmp_path: Path):
+    """Magic Folder accepts scan and poll only as PUT. POST does not scan."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def _take(self) -> None:
+            seen.append("%s %s" % (self.command, self.path.split("?", 1)[0]))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        do_PUT = _take
+        do_POST = _take
+        do_GET = _take
+
+        def log_message(self, fmt: str, *args) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    cfg = tmp_path / "mf"
+    cfg.mkdir()
+    (cfg / "api_token").write_text("not-a-secret\n", encoding="utf-8")
+    (cfg / "api_client_endpoint").write_text("tcp:127.0.0.1:%d\n" % port, encoding="utf-8")
+    ctl = MagicFolderCtl(config_dir=cfg, nodedir=tmp_path / "tahoe", mf_bin="/bin/true")
+    try:
+        ctl.scan_local("Notes")
+        ctl.poll_remote("Notes")
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+    assert seen == [
+        "PUT /v1/magic-folder/Notes/scan-local",
+        "PUT /v1/magic-folder/Notes/poll-remote",
+    ]
+
+
 def test_magic_folder_http_post_hides_body(tmp_path: Path, monkeypatch):
     """POST must not put the HTTP body or reason on the Next line."""
     ctl = _mf_api_ready(tmp_path)

@@ -392,6 +392,119 @@ class AppModelFlowTest {
     }
 
     @Test
+    fun aClashQuestionSurvivesProcessDeathAndDoesNotUploadUntilReplace() {
+        val puts = mutableListOf<String>()
+        val first = phoneWithNotes(puts)
+        first.openFolder(folder)
+        assertTrue("the folder did not open", first.place is Place.Folder)
+        first.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        val sheet = first.writeSheet() as? WriteSheet.Clash
+        assertNotNull("the phone did not ask what to do with the existing file", sheet)
+        assertEquals("notes.txt", sheet!!.name)
+        assertTrue(File(sheet.localPath).isFile)
+        assertFalse("the question uploaded before a choice", puts.contains("put"))
+
+        val second = phoneWithNotes(puts)
+        val again = second.writeSheet() as? WriteSheet.Clash
+        assertNotNull("the question disappeared with the process", again)
+        assertEquals("notes.txt", again!!.name)
+        assertEquals(sheet.folder, again.folder)
+        assertTrue(File(again.localPath).isFile)
+        assertFalse("a restored question uploaded on its own", puts.contains("put"))
+        second.replaceClash()
+        assertTrue("Replace did not send the file", puts.contains("put"))
+    }
+
+    @Test
+    fun aRestoredClashCancelDeletesTheCopyAndDoesNotUpload() {
+        val puts = mutableListOf<String>()
+        val first = phoneWithNotes(puts)
+        first.openFolder(folder)
+        first.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        val kept = (first.writeSheet() as? WriteSheet.Clash)?.localPath
+        assertNotNull(kept)
+
+        val second = phoneWithNotes(puts)
+        assertNotNull("the question disappeared with the process", second.writeSheet())
+        second.cancelClash()
+        assertFalse("Cancel uploaded the file", puts.contains("put"))
+        assertFalse(File(kept!!).isFile)
+
+        val third = phoneWithNotes(puts)
+        assertNull("Cancel came back after the process died", third.writeSheet())
+        assertFalse(puts.contains("put"))
+    }
+
+    @Test
+    fun aClashPathOutsideThePhoneFilesIsDroppedAndNotUploaded() {
+        home = tmp.newFolder("phone")
+        SessionStore(File(home, "leasegrid")).save(joined())
+        val outside = File(tmp.root, "secret.txt")
+        outside.writeBytes(byteArrayOf(9, 9, 9, 9))
+        val index = File(home, "leasegrid/pending-adds.json")
+        index.parentFile!!.mkdirs()
+        index.writeText(
+            """{"rows":[],"clash":{"folder":"Photos","folderCap":"URI:DIR2:test-only","name":"notes.txt","path":"../secret.txt","size":4}}""",
+        )
+        val puts = mutableListOf<String>()
+        val model = AppModel(
+            Application(),
+            AppSeams(
+                filesDir = home,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                dispatch = { op, _ ->
+                    puts += op
+                    buildJsonObject { put("ok", true) }
+                },
+                freeBytes = { Long.MAX_VALUE },
+            ),
+        )
+        assertNull("a path outside the phone files was offered as a choice", model.writeSheet())
+        model.replaceClash()
+        assertFalse("Replace uploaded a file outside the phone files", puts.contains("put"))
+        assertEquals(4, outside.length())
+    }
+
+    private fun phoneWithNotes(puts: MutableList<String>): AppModel {
+        if (!::home.isInitialized) {
+            home = tmp.newFolder("phone")
+            SessionStore(File(home, "leasegrid")).save(joined())
+        }
+        return AppModel(
+            Application(),
+            AppSeams(
+                filesDir = home,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                dispatch = { op, _ ->
+                    puts += op
+                    if (op == "list") {
+                        buildJsonObject {
+                            put("ok", true)
+                            putJsonArray("children") {
+                                addJsonObject {
+                                    put("name", "notes.txt")
+                                    put("kind", "file")
+                                    put("cap", "URI:CHK:old")
+                                    put("size", 1)
+                                }
+                            }
+                        }
+                    } else {
+                        buildJsonObject {
+                            put("ok", true)
+                            put("cap", "URI:CHK:landed")
+                            put("size", 3)
+                        }
+                    }
+                },
+                freeBytes = { Long.MAX_VALUE },
+            ),
+        )
+    }
+
+    @Test
     fun aPendingDirThePhoneCannotWriteSaysPermissionAndRetryWrites() {
         val puts = mutableListOf<String>()
         val model = model(saved = joined()) { op, _ ->

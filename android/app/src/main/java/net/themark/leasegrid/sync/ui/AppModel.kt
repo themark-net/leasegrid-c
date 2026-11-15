@@ -360,7 +360,10 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         val existing = namesInFolder(folder.cap)
         when (val stage = board.stageAdd(folder.name, folder.cap, name, dest.absolutePath, bytes.size, existing)) {
             is StageAdd.Ready -> startUpload(folder, stage.name, stage.localPath, stage.size, replace = false)
-            is StageAdd.NeedsChoice -> touch()
+            is StageAdd.NeedsChoice -> {
+                rememberPendingAdds()
+                touch()
+            }
         }
     }
 
@@ -396,6 +399,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         val clash = board.clashOrNull() ?: return
         File(clash.localPath).delete()
         board.cancelSheet()
+        rememberPendingAdds()
         touch()
     }
 
@@ -880,8 +884,10 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
                 put("path", rel)
             }
         }
+        val clash = board.clashOrNull()
+        val clashRel = clash?.let { relativeInside(root, File(it.localPath)) }
         val dest = pendingIndex()
-        if (rows.isEmpty()) {
+        if (rows.isEmpty() && clashRel == null) {
             dest.delete()
             return
         }
@@ -891,6 +897,15 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
                 putJsonArray("rows") {
                     for (row in rows) add(row)
                 }
+                if (clash != null && clashRel != null) {
+                    put("clash", buildJsonObject {
+                        put("folder", clash.folder)
+                        put("folderCap", clash.folderCap)
+                        put("name", clash.name)
+                        put("size", clash.size)
+                        put("path", clashRel)
+                    })
+                }
             }.toString(),
         )
     }
@@ -898,11 +913,12 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     private fun restorePendingAdds() {
         val dest = pendingIndex()
         if (!dest.isFile) return
-        val rows = try {
-            json.parseToJsonElement(dest.readText()).jsonObject["rows"]?.jsonArray ?: return
+        val rootObj = try {
+            json.parseToJsonElement(dest.readText()).jsonObject
         } catch (_: Exception) {
             return
         }
+        val rows = rootObj["rows"]?.jsonArray
         val root = filesRoot()
         val base = try {
             root.canonicalFile
@@ -910,37 +926,49 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
             return
         }
         val kept = mutableListOf<kotlinx.serialization.json.JsonObject>()
-        for (el in rows) {
-            val obj = el as? kotlinx.serialization.json.JsonObject ?: continue
-            val cap = obj["folderCap"]?.jsonPrimitive?.contentOrNull ?: continue
-            val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: continue
-            val size = obj["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: continue
-            val rel = obj["path"]?.jsonPrimitive?.contentOrNull ?: continue
-            if (rel.startsWith("/") || rel.split("/", "\\").contains("..")) continue
-            val file = try {
-                File(base, rel).canonicalFile
-            } catch (_: IOException) {
-                continue
+        if (rows != null) {
+            for (el in rows) {
+                val obj = el as? kotlinx.serialization.json.JsonObject ?: continue
+                val cap = obj["folderCap"]?.jsonPrimitive?.contentOrNull ?: continue
+                val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: continue
+                val size = obj["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: continue
+                val rel = obj["path"]?.jsonPrimitive?.contentOrNull ?: continue
+                val file = fileInside(base, rel) ?: continue
+                board.restoreFailed(cap, name, file.absolutePath, size)
+                kept.add(obj)
             }
-            val path = file.path
-            val rootPath = base.path
-            if (path != rootPath && !path.startsWith(rootPath + File.separator)) continue
-            if (!file.isFile) continue
-            board.restoreFailed(cap, name, file.absolutePath, size)
-            kept.add(obj)
         }
-        if (kept.size == rows.size) return
-        if (kept.isEmpty()) {
-            dest.delete()
-            return
+        val clashEl = rootObj["clash"] as? kotlinx.serialization.json.JsonObject
+        val clashOk = clashEl == null || restoreClashElement(clashEl, base)
+        val rowsSame = rows == null || kept.size == rows.size
+        if (rowsSame && clashOk) return
+        rememberPendingAdds()
+    }
+
+    /** A clash path outside the phone files dir is dropped. It is not opened and not uploaded. */
+    private fun restoreClashElement(obj: kotlinx.serialization.json.JsonObject, base: File): Boolean {
+        val folder = obj["folder"]?.jsonPrimitive?.contentOrNull ?: return false
+        val cap = obj["folderCap"]?.jsonPrimitive?.contentOrNull ?: return false
+        val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: return false
+        val size = obj["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: return false
+        val rel = obj["path"]?.jsonPrimitive?.contentOrNull ?: return false
+        val file = fileInside(base, rel) ?: return false
+        board.restoreClash(folder, cap, name, file.absolutePath, size)
+        return board.clashOrNull() != null
+    }
+
+    private fun fileInside(base: File, rel: String): File? {
+        if (rel.startsWith("/") || rel.split("/", "\\").contains("..")) return null
+        val file = try {
+            File(base, rel).canonicalFile
+        } catch (_: IOException) {
+            return null
         }
-        dest.writeText(
-            buildJsonObject {
-                putJsonArray("rows") {
-                    for (row in kept) add(row)
-                }
-            }.toString(),
-        )
+        val path = file.path
+        val rootPath = base.path
+        if (path != rootPath && !path.startsWith(rootPath + File.separator)) return null
+        if (!file.isFile) return null
+        return file
     }
 
     private fun relativeInside(root: File, file: File): String? {

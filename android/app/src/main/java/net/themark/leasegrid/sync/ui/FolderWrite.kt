@@ -165,6 +165,16 @@ class FolderWriteBoard {
         )
     }
 
+    /**
+     * The Replace / Keep both / Cancel question was still open when the process died.
+     * Restoring it does not start an upload.
+     */
+    fun restoreClash(folder: String, folderCap: String, name: String, localPath: String, size: Int) {
+        if (folder.isBlank() || folderCap.isBlank() || name.isBlank() || localPath.isBlank() || size < 0) return
+        if (sheet != null) return
+        sheet = WriteSheet.Clash(folder, folderCap, name, localPath, size)
+    }
+
     fun visibleFiles(folderCap: String, server: List<ChildRow>): List<VisibleFile> {
         val mine = pending.values.filter { it.folderCap == folderCap }
         val hidden = mine.map { it.name }.toSet()

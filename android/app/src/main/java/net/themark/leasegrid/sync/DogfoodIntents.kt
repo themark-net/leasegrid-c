@@ -32,6 +32,22 @@ object DogfoodIntents {
 
     fun shouldDeliver(previousKey: String?, nextKey: String): Boolean = previousKey != nextKey
 
+    /** Hash stored across rotation and process death. The raw invite is not saved. */
+    fun deliveryToken(key: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(key.toByteArray(Charsets.UTF_8))
+        val out = StringBuilder(digest.size * 2)
+        for (byte in digest) {
+            out.append("%02x".format(byte.toInt() and 0xff))
+        }
+        return out.toString()
+    }
+
+    fun sameDelivery(savedToken: String?, incomingKey: String): Boolean {
+        if (savedToken.isNullOrEmpty()) return false
+        return savedToken == deliveryToken(incomingKey)
+    }
+
     /** A recovery extra always opens Import. A missing file still must not stay on Welcome. */
     fun opensImport(recoveryExtra: String?): Boolean = !recoveryExtra?.trim().isNullOrEmpty()
 

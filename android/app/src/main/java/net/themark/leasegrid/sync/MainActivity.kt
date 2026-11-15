@@ -19,6 +19,8 @@ import net.themark.leasegrid.sync.ui.WriteCopy
 import net.themark.leasegrid.sync.ui.readAtMost
 import java.io.File
 
+private const val STATE_DELIVERY = "leasegrid.delivery"
+
 class MainActivity : ComponentActivity() {
     private val model: AppModel by viewModels()
 
@@ -50,8 +52,8 @@ class MainActivity : ComponentActivity() {
         pickAdd.launch(arrayOf("*/*"))
     }
 
-    /** Fingerprint of the last applied dogfood payload. Not Intent identity. */
-    private var appliedKey: String? = null
+    /** Hash of the last applied launch payload. Not the invite text. */
+    private var appliedToken: String? = null
     private var readGeneration = 0
 
     /** Not decorView: noteIntent runs in onCreate before setContent. */
@@ -59,11 +61,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appliedToken = savedInstanceState?.getString(STATE_DELIVERY)
         // Before setContent, so a cold-start EXTRA_RECOVERY_FILE composes Import first.
+        // A restored activity already applied this intent. Applying it again wipes the home.
         noteIntent(intent)
         setContent {
             SyncApp(model, ::openRecoveryPicker, ::openAddPicker)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        appliedToken?.let { outState.putString(STATE_DELIVERY, it) }
     }
 
     override fun onStart() {
@@ -95,8 +104,8 @@ class MainActivity : ComponentActivity() {
             null
         }
         val key = DogfoodIntents.deliveryKey(incoming.action, inviteExtra, recoveryExtra, incoming.dataString)
-        if (!DogfoodIntents.shouldDeliver(appliedKey, key)) return
-        appliedKey = key
+        if (DogfoodIntents.sameDelivery(appliedToken, key)) return
+        appliedToken = DogfoodIntents.deliveryToken(key)
         deliver(incoming, recoveryExtra, inviteExtra)
     }
 
@@ -108,42 +117,45 @@ class MainActivity : ComponentActivity() {
             if (invite != null && recoveryPath.isEmpty() && model.session == null) model.goWelcome()
         }
         if (DogfoodIntents.opensImport(recoveryPath)) {
-            model.beginRecoveryImport()
+            val epoch = model.beginRecoveryImport()
             val generation = ++readGeneration
-            readRecoveryFile(recoveryPath, attempt = 0, generation = generation)
+            readRecoveryFile(recoveryPath, attempt = 0, generation = generation, epoch = epoch)
             return
         }
         if (intent.action == Intent.ACTION_VIEW) {
             val uri = intent.data
             if (uri != null && uri.scheme != "leasegrid") {
-                model.beginRecoveryImport()
-                readRecovery(uri, uri.lastPathSegment ?: "recovery.leasegrid-recovery")
+                val epoch = model.beginRecoveryImport()
+                readRecovery(uri, uri.lastPathSegment ?: "recovery.leasegrid-recovery", epoch)
             }
         }
     }
 
-    private fun readRecoveryFile(rawPath: String, attempt: Int, generation: Int) {
+    private fun readRecoveryFile(rawPath: String, attempt: Int, generation: Int, epoch: Int) {
         if (generation != readGeneration) return
+        if (!model.recoveryReadCurrent(epoch)) return
         val loaded = DogfoodIntents.loadRecoveryExtra(filesDir, rawPath)
         if (loaded.bytes != null) {
+            if (!model.recoveryReadCurrent(epoch)) return
             model.onPicked(loaded.name, loaded.bytes)
             model.goImport()
             return
         }
         if (!loaded.rejected && attempt < 5) {
             mainHandler.postDelayed(
-                { readRecoveryFile(rawPath, attempt + 1, generation) },
+                { readRecoveryFile(rawPath, attempt + 1, generation, epoch) },
                 200L * (attempt + 1),
             )
             return
         }
+        if (!model.recoveryReadCurrent(epoch)) return
         val again: () -> Unit = if (loaded.rejected) {
             ::openRecoveryPicker
         } else {
             {
-                model.beginRecoveryImport()
+                val nextEpoch = model.beginRecoveryImport()
                 val nextGeneration = ++readGeneration
-                readRecoveryFile(rawPath, 0, nextGeneration)
+                readRecoveryFile(rawPath, 0, nextGeneration, nextEpoch)
             }
         }
         model.goImport()
@@ -184,6 +196,11 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun readRecovery(uri: Uri, name: String, epoch: Int) {
+        if (!model.recoveryReadCurrent(epoch)) return
+        readRecovery(uri, name)
     }
 
     private fun readRecovery(uri: Uri, name: String) {

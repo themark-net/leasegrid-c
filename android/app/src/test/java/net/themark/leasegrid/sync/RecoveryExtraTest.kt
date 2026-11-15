@@ -126,6 +126,23 @@ class RecoveryExtraTest {
         }
     }
 
+    @Test
+    fun aRestoredDeliveryTokenDoesNotMatchADifferentIntent() {
+        val key = DogfoodIntents.deliveryKey(
+            "android.intent.action.VIEW",
+            null,
+            "recovery.leasegrid-recovery",
+            null,
+        )
+        val token = DogfoodIntents.deliveryToken(key)
+        assertTrue(token.length >= 32)
+        assertFalse(token.contains("recovery.leasegrid-recovery"))
+        assertTrue(DogfoodIntents.sameDelivery(token, key))
+        assertFalse(DogfoodIntents.sameDelivery(null, key))
+        assertFalse(DogfoodIntents.sameDelivery(token, "$key-other"))
+        assertEquals(token, DogfoodIntents.deliveryToken(key))
+    }
+
     private fun scratch(): File {
         val dir = File.createTempFile("lg-recovery-extra", "")
         check(dir.delete())

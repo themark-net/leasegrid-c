@@ -944,6 +944,75 @@ def test_list_folders_parses_api(tmp_path: Path):
     assert rows[0].status == "Up to date"
 
 
+def test_local_files_before_the_scan_lists_them_are_syncing(tmp_path: Path):
+    """Idle means the folder is empty. Files already on disk are Syncing."""
+    folder = tmp_path / "Docs"
+    folder.mkdir()
+    (folder / "note.txt").write_text("hello\n", encoding="utf-8")
+    nested = folder / "more"
+    nested.mkdir()
+    (nested / "b.txt").write_text("more\n", encoding="utf-8")
+    empty = tmp_path / "Empty"
+    empty.mkdir()
+    cfg = tmp_path / "mf"
+    cfg.mkdir()
+    (cfg / "api_token").write_text("dGVzdC10b2tlbi10aGF0LWlzLTMyYnl0ZXMh", encoding="utf-8")
+    (cfg / "api_client_endpoint").write_text("tcp:127.0.0.1:9\n", encoding="utf-8")
+    ctl = MagicFolderCtl(config_dir=cfg, nodedir=tmp_path, mf_bin="/bin/true")
+
+    def listing(path: str):
+        if path != "/v1/magic-folder":
+            return None
+        return {
+            "Docs": {"magic_path": str(folder), "poll_interval": 60},
+            "Empty": {"magic_path": str(empty), "poll_interval": 60},
+            "NoPath": {"poll_interval": 60},
+        }
+
+    def empty_scan(path, base=None, timeout=10.0):
+        found = listing(path)
+        if found is not None:
+            return found
+        return []
+
+    with patch.object(MagicFolderCtl, "ensure_running", return_value=None):
+        with patch.object(MagicFolderCtl, "_http_get", side_effect=empty_scan):
+            rows = {row.name: row.status for row in ctl.list_folders()}
+    assert rows["Docs"] == "Syncing"
+    assert rows["Empty"] == "Idle"
+    assert rows["NoPath"] == "Idle"
+
+    def listed(path, base=None, timeout=10.0):
+        found = listing(path)
+        if found is not None:
+            return found
+        if path.endswith("/file-status"):
+            return [{"relpath": "note.txt", "size": 6, "mtime": 1}]
+        if "recent-changes" in path:
+            return [{"relpath": "note.txt", "conflicted": False}]
+        return []
+
+    with patch.object(MagicFolderCtl, "ensure_running", return_value=None):
+        with patch.object(MagicFolderCtl, "_http_get", side_effect=listed):
+            docs = next(row for row in ctl.list_folders() if row.name == "Docs")
+    assert docs.status == "Up to date"
+
+    def conflicted(path, base=None, timeout=10.0):
+        found = listing(path)
+        if found is not None:
+            return found
+        if path.endswith("/file-status"):
+            return []
+        if "recent-changes" in path:
+            return [{"relpath": "note.txt", "conflicted": True}]
+        return []
+
+    with patch.object(MagicFolderCtl, "ensure_running", return_value=None):
+        with patch.object(MagicFolderCtl, "_http_get", side_effect=conflicted):
+            docs = next(row for row in ctl.list_folders() if row.name == "Docs")
+    assert docs.status == "Conflict"
+
+
 def test_welcome_json_roundtrip_shape():
     raw = json.dumps(
         {

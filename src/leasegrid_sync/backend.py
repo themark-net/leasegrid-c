@@ -1558,6 +1558,26 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def _directory_has_file(path: str) -> bool:
+    """True when ``path`` is a directory that contains at least one file.
+
+    An empty string is not the process's current directory. A missing
+    magic_path stays Idle.
+    """
+    if not path or not str(path).strip():
+        return False
+    root = Path(path)
+    if not root.is_dir():
+        return False
+    try:
+        for _dirpath, _dirnames, filenames in os.walk(root):
+            if filenames:
+                return True
+    except OSError:
+        return False
+    return False
+
+
 class MagicFolderCtl:
     def __init__(
         self,
@@ -1865,10 +1885,10 @@ class MagicFolderCtl:
                 )
             )
         for row in rows:
-            row.status, row.detail = self.folder_status(row.name)
+            row.status, row.detail = self.folder_status(row.name, row.path)
         return rows
 
-    def folder_status(self, name: str) -> tuple[str, str]:
+    def folder_status(self, name: str, local_path: str = "") -> tuple[str, str]:
         try:
             files = self._http_get(
                 "/v1/magic-folder/%s/file-status" % quote(name, safe="")
@@ -1887,6 +1907,10 @@ class MagicFolderCtl:
                 if item.get("conflicted"):
                     return "Conflict", last
         if nfiles == 0:
+            # Idle is an added folder with nothing in it yet. Files already on
+            # disk, before Magic Folder's scan lists them, are still syncing.
+            if _directory_has_file(local_path):
+                return "Syncing", "local files not listed yet"
             return "Idle", "empty"
         if last:
             return "Up to date", "%d files · last %s" % (nfiles, last)

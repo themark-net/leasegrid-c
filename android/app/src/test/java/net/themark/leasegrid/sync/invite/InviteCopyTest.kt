@@ -283,8 +283,31 @@ class InviteCopyTest {
         assertEquals(listOf(2, 3, 3), joined!!.shares)
     }
 
+    @Test
+    fun aQueryFormLeasegridLinkJoinsTheSameFurlAsTheHashForm() {
+        val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        val hash = "leasegrid:join#v=1&i=$furl&n=2&h=3&t=3"
+        val query = "leasegrid:join?v=1&i=$furl&n=2&h=3&t=3"
+        assertEquals(furlOf(hash), furlOf(query))
+        assertEquals(listOf(2, 3, 3), sharesOf(query))
+        val encoded = "leasegrid://join?v=1&i=" +
+            java.net.URLEncoder.encode(furl, "UTF-8") +
+            "&n=2&h=3&t=3#"
+        assertEquals(furl, furlOf(encoded))
+        assertEquals(listOf(2, 3, 3), sharesOf(encoded))
+        val winner = "leasegrid:join?i=pb://notthisnot@127.0.0.1:1/notswissxx#v=1&i=$furl"
+        assertEquals(furl, furlOf(winner))
+        assertEquals(
+            Invite.WEB_URL_MSG,
+            failFor("https://example.test/join?v=1&i=$furl").banner,
+        )
+    }
+
     private fun furlOf(raw: String): String =
         Invite.attempt(raw, fail = { error("${raw.take(40)}: ${it.banner}") }) { it.furl }
+
+    private fun sharesOf(raw: String): List<Int>? =
+        Invite.attempt(raw, fail = { error("${raw.take(48)}: ${it.banner}") }) { it.shares }
 
     @Test
     fun invisibleMarksInsideTheLinkAreDroppedAndItJoins() {

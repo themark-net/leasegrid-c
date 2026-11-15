@@ -91,11 +91,13 @@ object Invite {
             return fromFragment(text.removePrefix("#"))
         }
         if (low.startsWith("leasegrid:")) {
-            val hash = text.indexOf('#')
-            if (hash < 0 || hash == text.lastIndex) {
+            // Desktop urllib: a non-empty fragment wins, otherwise the query.
+            // A trailing # is an empty fragment, so the query is the link.
+            val tail = leasegridTail(text)
+            if (tail.isEmpty()) {
                 throw InviteFail(NO_ADDRESS_MSG, NO_NEXT)
             }
-            return fromFragment(text.substring(hash + 1))
+            return fromFragment(tail)
         }
         if (low.startsWith("http://") || low.startsWith("https://")) {
             val hash = text.indexOf('#')
@@ -178,6 +180,21 @@ object Invite {
 
     private fun isPasteMark(ch: Char): Boolean =
         ch == '\u00AD' || ch == '\u200B' || ch == '\u200C' || ch == '\u200D' || ch == '\u2060' || ch == '\uFEFF'
+
+    /**
+     * The part of a leasegrid link that holds i=.
+     * A #fragment is used when it has any characters. Otherwise the ?query is used.
+     * A ? that sits inside the fragment stays in the fragment.
+     */
+    private fun leasegridTail(text: String): String {
+        val hash = text.indexOf('#')
+        val question = text.indexOf('?')
+        val fragment = if (hash >= 0) text.substring(hash + 1) else ""
+        if (fragment.isNotEmpty()) return fragment
+        if (question < 0 || (hash >= 0 && question > hash)) return ""
+        val end = if (hash >= 0) hash else text.length
+        return text.substring(question + 1, end)
+    }
 
     /** Quotes or brackets that chat and mail wrap around a pasted link. */
     private fun peelWrappers(text: String): String {

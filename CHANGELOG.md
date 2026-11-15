@@ -8,6 +8,9 @@
 - On Linux and macOS, a second Ctrl-C, SIGTERM, or SIGHUP while a refused second launch is already closing is ignored, so that launch still exits 0. The first signal still closes the box. Windows is unchanged.
 - Clearing the Join field while a replace question is open, then handing a new invite, drops the older pending invite. A later Yes cannot apply it.
 - Android: when Join fails because the computer could not be reached, the next line no longer says to paste the join link. Paste advice stays on a link that is empty, cut off, or not a join link ([#82](https://github.com/themark-net/leasegrid-c/issues/82)).
+- A lock written on another computer is not taken over while it is younger than 30 seconds, and that refusal returns at once. A same-host lock whose process is already dead is still reclaimed. A lock path that is a directory, or a lock file with no permissions, says what is wrong and what to do next instead of opening a second window.
+- A quit signal during startup stops the Tahoe or Magic Folder process this launch started. The next launch stops a leftover daemon for this node directory only.
+- The public log filter redacts an underscore-joined secret in one piece, so a digit fragment on the other side of `_` is not left in the CI log.
 
 ## 0.1.10 (2026-11-02)
 

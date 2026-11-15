@@ -137,6 +137,28 @@ class AppModelFlowTest {
     }
 
     @Test
+    fun aRefreshThatCannotLearnShowsTheRefreshNextLineAndOneRetryRefreshes() {
+        var calls = 0
+        val model = model(saved = joined()) { _, _ ->
+            calls += 1
+            if (calls == 1) throw bridgeDown
+            learnReply()
+        }
+
+        model.refresh()
+
+        assertEquals(Invite.JOIN_FAILED, model.fail?.message)
+        assertEquals(Invite.REFRESH_FAILED_NEXT, model.fail?.next)
+        assertPlainCard(model.fail)
+        assertEquals(Place.Folders, model.place)
+        assertEquals(joined().servers, model.session?.servers)
+        model.retryFail()
+        model.retryFail()
+        assertEquals("two Retry taps should refresh once", 2, calls)
+        assertEquals(learned, model.session?.servers)
+    }
+
+    @Test
     fun cancelOnImportStopsTheImportSavesNothingAndStaysOnWelcome() {
         val io = IoQueue()
         val ops = mutableListOf<String>()

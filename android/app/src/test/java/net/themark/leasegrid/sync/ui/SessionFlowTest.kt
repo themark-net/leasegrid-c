@@ -215,6 +215,22 @@ class SessionFlowTest {
     }
 
     @Test
+    fun retryAfterALearnFailUsesTheFieldAsItIsNow() {
+        val host = Host(link)
+        val flow = SessionFlow(host)
+        flow.join()
+        assertEquals(Invite.JOIN_FAILED, host.banner!!.message)
+        assertEquals(listOf(furl), host.learnCalls)
+        val other = "pb://otherotheroth@127.0.0.1:45001/otherswiss"
+        host.inviteText = other
+        host.answers.add(listOf(server))
+        host.retry!!.invoke()
+        assertEquals(listOf(furl, other), host.learnCalls)
+        assertEquals(other, host.saved.single().introducerFurl)
+        assertNull(host.banner)
+    }
+
+    @Test
     fun refreshFailShowsRefreshCopyAndRetryRefreshes() {
         for (throws in listOf(false, true)) {
             val host = Host()

@@ -44,6 +44,7 @@ class AppModelFlowTest {
     private fun model(
         saved: Session? = null,
         io: CoroutineContext = Dispatchers.Unconfined,
+        scopeDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
         grid: (String, String) -> JsonObject,
     ): AppModel {
         home = tmp.newFolder("home")
@@ -52,7 +53,7 @@ class AppModelFlowTest {
             Application(),
             AppSeams(
                 filesDir = home,
-                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                scope = CoroutineScope(SupervisorJob() + scopeDispatcher),
                 io = io,
                 dispatch = grid,
                 freeBytes = { Long.MAX_VALUE },
@@ -254,6 +255,65 @@ class AppModelFlowTest {
         assertEquals(WriteCopy.REMOVE_FAIL, model.fail?.message)
         assertPlainCard(model.fail)
     }
+
+    @Test
+    fun unexpectedRetryAfterASaveFailureJoinsTheFieldAsItIsNow() {
+        val first = "pb://test-only@127.0.0.1:1/swissnumswiss"
+        val second = "pb://test-only@127.0.0.1:9/otherswiss"
+        val learned = mutableListOf<String>()
+        val model = model { op, payload ->
+            assertEquals("learn", op)
+            learned += payload
+            learnReply()
+        }
+        model.acknowledged = true
+        model.inviteText = first
+        // learn succeeds, then save throws: the store path is a file, not a directory.
+        val storeDir = File(home, "leasegrid")
+        assertTrue(storeDir.delete() || !storeDir.exists())
+        assertTrue(storeDir.createNewFile())
+
+        model.join()
+
+        assertEquals("could not complete that.", model.fail?.message)
+        assertNull(model.session)
+        assertEquals(1, learned.size)
+        assertTrue(learned.single().contains(first))
+
+        assertTrue(storeDir.delete())
+        model.inviteText = second
+        model.retryFail()
+
+        assertEquals(2, learned.size)
+        assertTrue("Retry learned the text from the first tap, not the field now", learned[1].contains(second))
+        assertFalse(learned[1].contains(first))
+        assertEquals(second, model.session?.introducerFurl)
+        assertEquals(Place.Folders, model.place)
+        assertNull(model.fail)
+    }
+
+    @Test
+    fun aJoinTapKeepsTheTextFromTheTapWhenTheFieldChangesBeforeTheJobStarts() {
+        val queue = IoQueue()
+        val first = "pb://test-only@127.0.0.1:1/swissnumswiss"
+        val second = "pb://test-only@127.0.0.1:9/otherswiss"
+        val learned = mutableListOf<String>()
+        val model = model(scopeDispatcher = queue) { _, payload ->
+            learned += payload
+            learnReply()
+        }
+        model.acknowledged = true
+        model.inviteText = first
+        model.join()
+        assertTrue("the job started before the queue ran", learned.isEmpty())
+        model.inviteText = second
+        queue.drain()
+        assertEquals(1, learned.size)
+        assertTrue(learned.single().contains(first))
+        assertFalse("a change before the job started replaced the tap", learned.single().contains(second))
+        assertEquals(first, model.session?.introducerFurl)
+    }
+
 }
 
 private class IoQueue : CoroutineDispatcher() {

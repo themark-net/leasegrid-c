@@ -31,8 +31,14 @@ interface FlowHost {
  */
 class SessionFlow(private val host: FlowHost) {
     fun join() {
-        val raw = host.inviteText
+        // The text at this tap. The job may start later, and a change before it
+        // starts still joins this text. Unexpected Retry runs this same block
+        // again, and that run reads the field as it is then.
+        val tapped = host.inviteText
+        var opened = false
         host.launch("Joining…") {
+            val raw = if (opened) host.inviteText else tapped
+            opened = true
             Invite.attempt(
                 raw,
                 fail = { exc: InviteFail -> host.show(FailBanner(exc.banner, exc.next)) { join() } },

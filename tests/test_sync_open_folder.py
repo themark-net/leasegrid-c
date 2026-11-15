@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +11,7 @@ import pytest
 PyQt5 = pytest.importorskip("PyQt5")
 
 from leasegrid_sync.app import MainWindow, display_path  # noqa: E402
-from leasegrid_sync.backend import FolderRow, SyncError  # noqa: E402
+from leasegrid_sync.backend import ConnectionStatus, FolderRow, SyncError  # noqa: E402
 from tests.buyer_text import assert_no_raw_user_text  # noqa: E402
 
 
@@ -109,5 +110,83 @@ def test_missing_folder_shows_a_banner_and_does_not_crash(tmp_path: Path) -> Non
         assert "That folder is not on this computer any more: %s" % display_path(missing) in text
         assert "\nNext: " in text
         assert_no_raw_user_text(text)
+    finally:
+        _close(window)
+
+
+def test_folder_removed_while_syncing_is_missing_until_it_returns(tmp_path: Path) -> None:
+    """Deleting the directory is not Idle and not Up to date. Putting it back resumes."""
+    window = _window(tmp_path)
+    folder = tmp_path / "Docs"
+    folder.mkdir()
+    (folder / "note.txt").write_text("hello\n", encoding="utf-8")
+    window._joined = True
+
+    def listing(path: str):
+        if path != "/v1/magic-folder":
+            return None
+        return {"Docs": {"magic_path": str(folder), "poll_interval": 60}}
+
+    scan_files: list[dict] = []
+
+    def http_get(path, base=None, timeout=10.0):
+        found = listing(path)
+        if found is not None:
+            return found
+        if path.endswith("/file-status"):
+            return list(scan_files)
+        if "recent-changes" in path:
+            return []
+        return []
+
+    online = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+    )
+
+    def refresh() -> None:
+        with patch.object(window.tahoe, "connection_status", return_value=online), patch.object(
+            window.mf, "ensure_running", return_value=None
+        ), patch.object(window.mf, "_http_get", side_effect=http_get):
+            window.refresh()
+
+    try:
+        refresh()
+        assert window.table.item(0, 1).text() == "Syncing"
+        shutil.rmtree(folder)
+        refresh()
+        assert window.table.item(0, 1).text() == "Missing"
+        text = window.folder_error.text()
+        assert "not on this computer" in text
+        assert "\nNext: " in text
+        assert_no_raw_user_text(text)
+        with patch("PyQt5.QtGui.QDesktopServices.openUrl") as open_url:
+            window.table.itemDoubleClicked.emit(window.table.item(0, 0))
+        assert open_url.call_count == 0
+
+        scan_files.append({"relpath": "note.txt", "size": 6, "mtime": 1})
+        refresh()
+        assert window.table.item(0, 1).text() == "Missing"
+
+        folder.mkdir()
+        (folder / "note.txt").write_text("hello\n", encoding="utf-8")
+        refresh()
+        assert window.table.item(0, 1).text() == "Up to date"
+        assert "not on this computer" not in window.folder_error.text()
+        with patch("PyQt5.QtGui.QDesktopServices.openUrl", return_value=True) as open_url:
+            window.table.itemDoubleClicked.emit(window.table.item(0, 0))
+        assert Path(open_url.call_args[0][0].toLocalFile()) == folder
+
+        shutil.rmtree(folder)
+        refresh()
+        assert window.table.item(0, 1).text() == "Missing"
+        window.folder_error.setText("Restored 1 folder(s): Docs.")
+        folder.mkdir()
+        (folder / "note.txt").write_text("hello\n", encoding="utf-8")
+        refresh()
+        assert window.table.item(0, 1).text() == "Up to date"
+        assert window.folder_error.text() == "Restored 1 folder(s): Docs."
     finally:
         _close(window)

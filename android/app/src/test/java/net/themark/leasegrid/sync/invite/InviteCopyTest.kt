@@ -344,6 +344,34 @@ class InviteCopyTest {
     }
 
     @Test
+    fun aSoftHyphenInTheLinkIsDroppedAndTheLinkJoins() {
+        val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        val raw = furl.replace("swissnum", "swiss\u00ADnum")
+        assertEquals(furl, furlOf(raw))
+        val wrapped = "leasegrid:join#v=1&i=" +
+            java.net.URLEncoder.encode(raw, "UTF-8") +
+            "&n=2&h=3&t=3"
+        assertEquals(furl, furlOf(wrapped))
+        assertEquals(Invite.EMPTY_MSG, failFor("\u00AD").banner)
+        assertEquals(furl, furlOf(furl))
+    }
+
+    @Test
+    fun aRightToLeftOverrideAPlusOrASecondAtIsIncomplete() {
+        val furl = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+        val override = furl.replace("127.0", "127\u202E.0")
+        assertEquals(Invite.MALFORMED_MSG, failFor(override).banner)
+        assertEquals(Invite.NO_NEXT, failFor(override).next)
+        val plus = "pb://hashhashhash@127.0.0.1:45001/swiss+numswiss"
+        assertEquals(Invite.MALFORMED_MSG, failFor(plus).banner)
+        val twoAt = "pb://hashhashhash@extra@127.0.0.1:45001/swissnumswiss"
+        assertEquals(Invite.MALFORMED_MSG, failFor(twoAt).banner)
+        val twoAtLink = "leasegrid:join#v=1&i=pb://hashhashhash@extra@127.0.0.1:45001/swissnumswiss"
+        assertEquals(Invite.MALFORMED_MSG, failFor(twoAtLink).banner)
+        assertEquals(furl, furlOf(furl))
+    }
+
+    @Test
     fun aShortSwissNumHiddenBehindAFragmentIsIncomplete() {
         val raw = "pb://hashhashhash@127.0.0.1:45001/ab#swissnumswissnum"
         assertEquals(Invite.MALFORMED_MSG, failFor(raw).banner)

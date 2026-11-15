@@ -162,9 +162,10 @@ object Invite {
     }
 
     /**
-     * Drop the invisible marks chat apps add on paste (U+200B, U+200C, U+200D,
-     * U+2060, U+FEFF) anywhere in the text, then trim(). None of them is ever
-     * part of a join link, so a mark inside the link is noise, not damage.
+     * Drop the invisible marks chat apps add on paste (U+00AD, U+200B, U+200C,
+     * U+200D, U+2060, U+FEFF) anywhere in the text, then trim(). None of them
+     * is ever part of a join link, so a mark inside the link is noise, not damage.
+     * U+202E is not dropped: it can hide a different host, so the link is rejected.
      */
     private fun stripPaste(raw: String): String {
         val unmarked = if (raw.any(::isPasteMark)) raw.filterNot(::isPasteMark) else raw
@@ -172,7 +173,7 @@ object Invite {
     }
 
     private fun isPasteMark(ch: Char): Boolean =
-        ch == '\u200B' || ch == '\u200C' || ch == '\u200D' || ch == '\u2060' || ch == '\uFEFF'
+        ch == '\u00AD' || ch == '\u200B' || ch == '\u200C' || ch == '\u200D' || ch == '\u2060' || ch == '\uFEFF'
 
     /**
      * The one furl check, for a pasted link and a recovery file alike.
@@ -186,6 +187,10 @@ object Invite {
         // %00 is a NUL when the paste was not decoded yet. A join URL is decoded
         // first, so the same byte arrives as a control character or U+FFFD.
         if (text.contains("%00", ignoreCase = true) || text.any { rejectedInFurl(it) }) {
+            throw InviteFail(MALFORMED_MSG, NO_NEXT)
+        }
+        // One @ separates the tub id from the location. A second @ is not a furl.
+        if (text.count { it == '@' } > 1) {
             throw InviteFail(MALFORMED_MSG, NO_NEXT)
         }
         val rest = text.removePrefix("pb://")
@@ -210,7 +215,7 @@ object Invite {
     }
 
     private fun rejectedInFurl(ch: Char): Boolean {
-        if (ch == '\uFFFD') return true
+        if (ch == '\uFFFD' || ch == '+' || ch == '\u202E') return true
         if (ch.isWhitespace()) return true
         val code = ch.code
         return code <= 0x1F || code == 0x7F || code in 0x80..0x9F

@@ -17,6 +17,10 @@ object Invite {
     // and must still parse. Empty and cut-short values are an incomplete link (#80 F1).
     private const val MIN_SWISSNUM = 8
 
+    // A raw quote in a character check is read as copy by the string scan.
+    private const val QUOTE = '\u0022'
+    private const val APOSTROPHE = '\''
+
     const val ACK_MSG = "Read the four points above first."
     const val ACK_NEXT = "check “I understand the four points above.”, then Join."
 
@@ -72,7 +76,7 @@ object Invite {
     }
 
     fun parse(raw: String): ParsedInvite {
-        val text = stripPaste(raw)
+        val text = peelWrappers(stripPaste(raw))
         if (text.isEmpty()) {
             throw InviteFail(EMPTY_MSG, NO_NEXT)
         }
@@ -175,6 +179,27 @@ object Invite {
     private fun isPasteMark(ch: Char): Boolean =
         ch == '\u00AD' || ch == '\u200B' || ch == '\u200C' || ch == '\u200D' || ch == '\u2060' || ch == '\uFEFF'
 
+    /** Quotes or brackets that chat and mail wrap around a pasted link. */
+    private fun peelWrappers(text: String): String {
+        var current = text.trim()
+        while (current.length >= 2) {
+            val open = current.first()
+            val close = current.last()
+            val pair = (open == QUOTE && close == QUOTE) ||
+                (open == APOSTROPHE && close == APOSTROPHE) ||
+                (open == '<' && close == '>') ||
+                (open == '(' && close == ')') ||
+                (open == '[' && close == ']')
+            if (!pair) break
+            current = current.substring(1, current.lastIndex).trim()
+        }
+        return current
+    }
+
+    private fun trailingPasteJunk(ch: Char): Boolean =
+        ch == '.' || ch == ',' || ch == ';' || ch == ':' || ch == '!' || ch == '?' ||
+            ch == ')' || ch == ']' || ch == '>' || ch == QUOTE || ch == APOSTROPHE
+
     /**
      * The one furl check, for a pasted link and a recovery file alike.
      * Throws [InviteFail] with the advice for what is wrong.
@@ -207,11 +232,17 @@ object Invite {
         if (at < 0 || at == authority.lastIndex) {
             throw InviteFail(NO_ADDRESS_MSG, NO_NEXT)
         }
-        val swiss = rest.substring(slash + 1).substringBefore('#')
+        val after = rest.substring(slash + 1)
+        val hash = after.indexOf('#')
+        val swissRaw = if (hash >= 0) after.substring(0, hash) else after
+        val suffix = if (hash >= 0) after.substring(hash) else ""
+        // A sentence period or a closing bracket is not part of the link.
+        val swiss = swissRaw.trimEnd(::trailingPasteJunk)
         if (swiss.length < MIN_SWISSNUM) {
             throw InviteFail(MALFORMED_MSG, NO_NEXT)
         }
-        return text
+        if (swiss == swissRaw) return text
+        return "pb://" + rest.substring(0, slash + 1) + swiss + suffix
     }
 
     private fun rejectedInFurl(ch: Char): Boolean {

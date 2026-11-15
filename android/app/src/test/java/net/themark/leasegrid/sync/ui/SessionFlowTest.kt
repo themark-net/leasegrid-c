@@ -96,6 +96,19 @@ class SessionFlowTest {
     }
 
     @Test
+    fun aTrailingMarkOrWrappedLinkJoinsTheCleanFurl() {
+        val samples = listOf("$furl.", "$furl).", "\"$furl\"", "<$furl>", "($furl)")
+        for (raw in samples) {
+            val host = Host(raw)
+            host.answers.add(listOf(server))
+            SessionFlow(host).join()
+            assertEquals(raw, listOf(furl), host.learnCalls)
+            assertEquals(furl, host.saved.single().introducerFurl)
+            assertNull(raw, host.banner)
+        }
+    }
+
+    @Test
     fun failedJoinKeepsThePastedText() {
         for (raw in listOf(link, "7-guitarist-revenge", "not-a-code")) {
             val host = Host(raw)

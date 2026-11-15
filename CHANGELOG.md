@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Desktop recovery import rejects a file over 1 MiB before parsing. Export refuses to write a key over that cap and leaves any file already there. A cut-off file, or one whose numbers are not numbers, fails with the import sentence and a next step.
-- sync-ui.log drops furls, invite codes, capabilities, and passphrase values before they are written. The exception class stays.
+- sync-ui.log drops furls, invite codes, capabilities, and passphrase values (the rest of that line) before they are written. The exception class stays.
 - A folder that already has files on disk shows Syncing until Magic Folder lists them. An empty folder stays Idle. A conflict stays Conflict.
 
 ## 0.1.10 (2026-11-02)

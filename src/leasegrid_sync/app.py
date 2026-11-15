@@ -977,7 +977,8 @@ def scrub_bug_report(text: str) -> str:
 # Capabilities and labeled passphrases are not invite material, but they are
 # still secrets if a traceback quotes them.
 _LOG_URI_RE = re.compile(r"URI:[A-Za-z0-9:%_+-]{8,}")
-_LOG_PASS_RE = re.compile(r"(?i)(passphrase\s*[=:]\s*)\S+")
+# The value runs to the end of the line. A passphrase can contain spaces.
+_LOG_PASS_RE = re.compile(r"(?i)(passphrase\s*[=:]\s*).*")
 
 
 def redact_log_text(text: str) -> str:

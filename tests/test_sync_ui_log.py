@@ -82,7 +82,7 @@ def test_sync_ui_log_omits_passphrase_invite_and_furl(tmp_path: Path) -> None:
     a labeled recovery passphrase, a short invite code, a pb:// furl, and a
     capability. The exception class stays so the log is still useful.
     """
-    phrase = "correct-horse-battery-staple"
+    phrase = "correct horse battery staple"
     code = "7-guitarist-revenge"
     furl = "pb://FAKE-TUBID@127.0.0.1:1/FAKE-SWISS"
     cap = "URI:DIR2:" + ("a" * 26) + ":" + ("b" * 52)
@@ -94,7 +94,19 @@ def test_sync_ui_log_omits_passphrase_invite_and_furl(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert "RuntimeError" in text
     assert "import" in text
-    for secret in (phrase, code, "guitarist", "FAKE-TUBID", "FAKE-SWISS", "pb://", cap, "URI:"):
+    for secret in (
+        phrase,
+        "horse",
+        "battery",
+        "staple",
+        code,
+        "guitarist",
+        "FAKE-TUBID",
+        "FAKE-SWISS",
+        "pb://",
+        cap,
+        "URI:",
+    ):
         assert secret not in text, secret
 
 

@@ -133,6 +133,33 @@ class RecoveryCodecTest {
     }
 
     @Test
+    fun scryptMemoryLineRejectsN20WithR32AndKeepsThe64MiBBoundary() {
+        // S1d. 128 * 32 * 2^20 is 4 GiB. Do not call SCrypt.generate on that.
+        assertFalse(RecoveryCodec.scryptParamsOk(1 shl 20, 32, 1))
+        // 128 * 8 * 2^16 is exactly 64 MiB, the cap. One more r is over it.
+        assertTrue(RecoveryCodec.scryptParamsOk(1 shl 16, 8, 1))
+        assertFalse(RecoveryCodec.scryptParamsOk(1 shl 16, 9, 1))
+    }
+
+    @Test
+    fun scryptRejectsAnNThatIsNotAPowerOfTwo() {
+        // S1e. decode() still fails if this check is removed, because SCrypt throws.
+        assertFalse(RecoveryCodec.scryptParamsOk(3, 8, 1))
+    }
+
+    @Test
+    fun aStringScryptNIsTheImportCardAndTheRealFileStillDecodes() {
+        // S1f. A mutant that substitutes the desktop default for a non-int n
+        // would decrypt the real file. The unmodified file must still decode.
+        val original = fixture("ok-pass.leasegrid-recovery")
+        assertEquals("Photos", RecoveryCodec.decode(original, "correct horse").folders.single().name)
+        val text = original.toString(Charsets.UTF_8)
+        val mutated = text.replace("\"n\": 32768", "\"n\": \"x\"")
+        assertTrue("the fixture n was not replaced", mutated != text)
+        assertImportCard(mutated.toByteArray(), "correct horse")
+    }
+
+    @Test
     fun theDesktopScryptParamsStillImport() {
         val bundle = RecoveryCodec.decode(fixture("ok-pass.leasegrid-recovery"), "correct horse")
         assertEquals("pb://hashhashhash@127.0.0.1:45001/swissnumswiss", bundle.introducerFurl)

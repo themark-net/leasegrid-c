@@ -45,7 +45,7 @@ _DESIGN = {
     "then copy and paste the whole link.",
     "JOIN_FAILED": "Couldn't reach your computer.",
     "JOIN_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, "
-    "then tap Retry. If it still fails, copy the join link again from your computer and paste it here.",
+    "then tap Retry.",
     "REFRESH_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
     "IMPORT_SAVED_MSG": "Saved on this phone. Couldn't reach your computer to finish.",
 }
@@ -258,6 +258,20 @@ def test_screen_uses_design_copy_and_join_keeps_pasted_text():
     # A fail leaves the pasted text in the field.
     assert "inviteText =" not in body
     assert "inviteText =" not in flow
+
+
+def test_learn_failure_next_line_has_no_paste_advice():
+    """Paste advice only for a paste or format problem, not every learn() failure.
+
+    A timeout after the link was accepted used to say to paste it again.
+    Empty, short-code, garbage, and malformed pastes still say how to paste.
+    """
+    text = INVITE.read_text(encoding="utf-8")
+    nxt = _kotlin_const(text, "JOIN_FAILED_NEXT").lower()
+    assert "paste" not in nxt, nxt
+    assert "join link" not in nxt, nxt
+    for name in ("EMPTY_MSG", "WORMHOLE_MSG", "GARBAGE_MSG", "MALFORMED_MSG"):
+        assert "paste" in _kotlin_const(text, name).lower(), name
 
 
 def test_folders_screen_copy_never_says_paste():

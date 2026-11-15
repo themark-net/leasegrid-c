@@ -24,7 +24,7 @@ interface FlowHost {
  * Join, refresh, and the end of a recovery import (#50). Pure JVM.
  *
  * Every learn() failure shows Invite copy, never learn()'s raw text:
- * join shows JOIN_FAILED + JOIN_FAILED_NEXT (Retry reruns join, the field is kept);
+ * join shows JOIN_FAILED + JOIN_FAILED_NEXT (no paste advice; Retry reruns join, the field is kept);
  * refresh shows JOIN_FAILED + REFRESH_FAILED_NEXT (Retry reruns refresh);
  * an import that saved shows IMPORT_SAVED_MSG + REFRESH_FAILED_NEXT (Retry runs refresh).
  * The Folders screen has no link field, so refresh and import never say paste.

@@ -85,6 +85,7 @@ class SessionFlowTest {
         flow.join()
         assertEquals(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT), host.banner)
         assertEquals(listOf("Couldn't reach your computer.", "Next: ${Invite.JOIN_FAILED_NEXT}"), host.lines())
+        assertTrue("a learn() failure is not a paste problem", !host.banner!!.next.lowercase().contains("paste"))
         assertClean(host)
         assertTrue(host.saved.isEmpty())
         // Retry must rerun join with the invite (a refresh has no session yet and learns nothing).

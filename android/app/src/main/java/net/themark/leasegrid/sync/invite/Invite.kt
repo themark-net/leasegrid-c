@@ -48,9 +48,11 @@ object Invite {
 
     // Any learn() failure (unreachable, timeout, or a rejected link: the grid
     // reports them all the same way). The raw error never reaches the screen.
+    // Paste advice stays on the parse/format messages. A learn() failure is
+    // not a paste problem, so this line does not say to paste again (#82).
     const val JOIN_FAILED = "Couldn't reach your computer."
     const val JOIN_FAILED_NEXT =
-        "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry. If it still fails, copy the join link again from your computer and paste it here."
+        "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry."
 
     // Refresh and recovery import fail on the Folders screen, which has no link field:
     // no paste sentence there (#50 N1). Retry runs refresh().

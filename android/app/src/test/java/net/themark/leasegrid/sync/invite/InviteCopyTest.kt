@@ -92,8 +92,7 @@ class InviteCopyTest {
         assertEquals(Invite.GARBAGE_MSG, failFor("#v=1&i=not-a-link").banner)
         assertEquals("Couldn't reach your computer.", Invite.JOIN_FAILED)
         assertEquals(
-            "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry. " +
-                "If it still fails, copy the join link again from your computer and paste it here.",
+            "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
             Invite.JOIN_FAILED_NEXT,
         )
     }

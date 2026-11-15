@@ -107,14 +107,14 @@ Adds `55`–`59` and the pointer beside `docs/09-ui-track.md`. Does **not** rewr
 
 | File | Contents |
 |------|----------|
-| [55-P4-ANDROID-B-JOURNEY.md](55-P4-ANDROID-B-JOURNEY.md) | Add file on the open folder; pending vs On friendnet; FAIL |
+| [55-P4-ANDROID-B-JOURNEY.md](55-P4-ANDROID-B-JOURNEY.md) | Add file on the open folder; pending vs In the shared folder; FAIL |
 | [56-P4-ANDROID-B-IA.md](56-P4-ANDROID-B-IA.md) | Write stays on folder detail; no settings; do not re-ask join |
 | [57-P4-ANDROID-B-WIREFRAMES.md](57-P4-ANDROID-B-WIREFRAMES.md) | ASCII: Add file, clash, remove vs discard, read-only |
 | [58-P4-ANDROID-B-NON-GOALS.md](58-P4-ANDROID-B-NON-GOALS.md) | No new folder, no new rails, no phone-as-primary |
 | [59-P4-ANDROID-B-DEVBOT-HANDOFF.md](59-P4-ANDROID-B-DEVBOT-HANDOFF.md) | Implement DoD after PM RELEASE; And dogfood; tip ≥ `be1cfea` |
 | [09-ui-track-P4-ANDROID-B-POINTER.md](../09-ui-track-P4-ANDROID-B-POINTER.md) | Pointer beside `09-ui-track.md` |
 
-**#44 one-liner:** Phone adds a file to a folder it already shows; **On friendnet** only after ack; desktop Sync stays primary.
+**#44 one-liner:** Phone adds a file to a folder it already shows; **In the shared folder** only after ack; desktop Sync stays primary.
 
 ---
 

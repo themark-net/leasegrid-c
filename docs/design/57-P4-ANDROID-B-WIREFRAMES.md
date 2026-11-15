@@ -1,4 +1,4 @@
-# P4 Android Slice B — Wireframes (mobile ASCII)
+# P4 Android Slice B - Wireframes (mobile ASCII)
 
 **Status:** Design DoD 2026-10-03 PT
 **Cite:** issue [#44](https://github.com/themark-net/leasegrid-c/issues/44) only · tip ≥ `be1cfea` · Slice A frames stay `37` (not redrawn, not rewritten)
@@ -8,71 +8,71 @@ ASCII only. Portrait phone. The system file picker is the OS picker; do not rebu
 
 ---
 
-## B1 — Folder detail, writable
+## B1 - Folder detail, writable
 
 ```
-┌──────────────────────────────┐
-│ ← Photos                    │
-│                             │
-│ ┌─────────────────────────┐ │
-│ │ 🖼  beach.jpg            │ │
-│ │     On friendnet · 2.4 MB│ │
-│ ├─────────────────────────┤ │
-│ │ 🖼  hike.png             │ │
-│ │     On friendnet · 1.1 MB│ │
-│ └─────────────────────────┘ │
-│                             │
-│ [ Add file ]                │
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ ← Photos                                 │
+│                                          │
+│ ┌──────────────────────────────────────┐ │
+│ │ 🖼  beach.jpg                         │ │
+│ │     In the shared folder · 2.4 MB    │ │
+│ ├──────────────────────────────────────┤ │
+│ │ 🖼  hike.png                          │ │
+│ │     In the shared folder · 1.1 MB    │ │
+│ └──────────────────────────────────────┘ │
+│                                          │
+│ [ Add file ]                             │
+└──────────────────────────────────────────┘
 ```
 
 Add file is on this folder. It is not in the overflow menu and not on Folders home.
 
 ---
 
-## B2 — Pending row
+## B2 - Pending row
 
 ```
-┌──────────────────────────────┐
-│ ← Photos                    │
-│                             │
-│ ┌─────────────────────────┐ │
-│ │ 🖼  receipt.pdf          │ │
-│ │     Not on friendnet yet │ │
-│ │     ████████░░░░  62%    │ │
-│ │     [ Cancel ]           │ │
-│ ├─────────────────────────┤ │
-│ │ 🖼  beach.jpg            │ │
-│ │     On friendnet         │ │
-│ └─────────────────────────┘ │
-│                             │
-│ [ Add file ]                │
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ ← Photos                                 │
+│                                          │
+│ ┌──────────────────────────────────────┐ │
+│ │ 🖼  receipt.pdf                       │ │
+│ │     Not in the shared folder yet     │ │
+│ │     ████████░░░░  62%                │ │
+│ │     [ Cancel ]                       │ │
+│ ├──────────────────────────────────────┤ │
+│ │ 🖼  beach.jpg                         │ │
+│ │     In the shared folder             │ │
+│ └──────────────────────────────────────┘ │
+│                                          │
+│ [ Add file ]                             │
+└──────────────────────────────────────────┘
 ```
 
-Cancel drops this pending row. It does not say the file was removed from the friendnet.
+Cancel drops this pending row. It does not say the file was removed from the shared folder.
 
 ---
 
-## B3 — On friendnet (just landed)
+## B3 - In the shared folder (just landed)
 
 ```
-┌──────────────────────────────┐
-│ ← Photos                    │
-│                             │
-│ ┌─────────────────────────┐ │
-│ │ 🖼  receipt.pdf          │ │
-│ │     On friendnet · 80 KB │ │
-│ │     Open · Remove        │ │
-│ └─────────────────────────┘ │
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ ← Photos                                 │
+│                                          │
+│ ┌──────────────────────────────────────┐ │
+│ │ 🖼  receipt.pdf                       │ │
+│ │     In the shared folder · 80 KB     │ │
+│ │     Open · Remove                    │ │
+│ └──────────────────────────────────────┘ │
+└──────────────────────────────────────────┘
 ```
 
-Chip text is **On friendnet**. Not "Synced", not "On your computer."
+Chip text is **In the shared folder**. Not "Synced", not "On your computer."
 
 ---
 
-## B4 — Name already there
+## B4 - Name already there
 
 ```
 ┌──────────────────────────────┐
@@ -89,85 +89,85 @@ Replace overwrites that one object. Keep both adds `beach (phone).jpg` as its ow
 
 ---
 
-## B5 — Remove confirm (already on friendnet)
+## B5 - Remove confirm (already in the shared folder)
 
 ```
-┌──────────────────────────────┐
-│ Remove beach.jpg from       │
-│ Photos on the friendnet?    │
-│                             │
-│ Other Sync computers will   │
-│ lose this copy.             │
-│                             │
-│ [ Remove ]     [ Cancel ]   │
-└──────────────────────────────┘
-```
-
----
-
-## B6 — Discard pending (never landed)
-
-```
-┌──────────────────────────────┐
-│ Discard receipt.pdf?        │
-│                             │
-│ It is not on the friendnet  │
-│ yet.                        │
-│                             │
-│ [ Discard ]    [ Cancel ]   │
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ Remove beach.jpg from                    │
+│ Photos in the shared folder?             │
+│                                          │
+│ Other Sync computers will                │
+│ lose this copy.                          │
+│                                          │
+│ [ Remove ]     [ Cancel ]                │
+└──────────────────────────────────────────┘
 ```
 
 ---
 
-## B7 — FAIL on this folder
+## B6 - Discard pending (never landed)
 
 ```
-┌──────────────────────────────┐
-│ ← Photos                    │
-│                             │
-│ ┌─ FAIL ──────────────────┐ │
-│ │ Could not add           │ │
-│ │ receipt.pdf.            │ │
-│ │                         │ │
-│ │ Next: check network;    │ │
-│ │ Retry.                  │ │
-│ │                         │ │
-│ │ [ Retry ]  [ Dismiss ]  │ │
-│ └─────────────────────────┘ │
-│                             │
-│ 🖼  receipt.pdf             │
-│     Not on friendnet yet    │
-│                             │
-│ (rest of the list stays)    │
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ Discard receipt.pdf?                     │
+│                                          │
+│ It is not in the shared folder           │
+│ yet.                                     │
+│                                          │
+│ [ Discard ]    [ Cancel ]                │
+└──────────────────────────────────────────┘
 ```
-
-Dismiss hides the banner. The row stays Not on friendnet yet. Retry uses this file, not a new picker, unless the bytes were discarded.
 
 ---
 
-## B8 — Read-only folder
+## B7 - FAIL on this folder
 
 ```
-┌──────────────────────────────┐
-│ ← Photos                    │
-│                             │
-│ You can download from this  │
-│ folder. Adding files is not │
-│ available here.             │
-│                             │
-│ 🖼  beach.jpg               │
-│     On friendnet · Tap to   │
-│     open                    │
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ ← Photos                                 │
+│                                          │
+│ ┌─ FAIL ───────────────────────────────┐ │
+│ │ Could not add                        │ │
+│ │ receipt.pdf.                         │ │
+│ │                                      │ │
+│ │ Next: check network;                 │ │
+│ │ Retry.                               │ │
+│ │                                      │ │
+│ │ [ Retry ]  [ Dismiss ]               │ │
+│ └──────────────────────────────────────┘ │
+│                                          │
+│ 🖼  receipt.pdf                           │
+│     Not in the shared folder yet         │
+│                                          │
+│ (rest of the list stays)                 │
+└──────────────────────────────────────────┘
+```
+
+Dismiss hides the banner. The row stays Not in the shared folder yet. Retry uses this file, not a new picker, unless the bytes were discarded.
+
+---
+
+## B8 - Read-only folder
+
+```
+┌──────────────────────────────────────────┐
+│ ← Photos                                 │
+│                                          │
+│ You can download from this               │
+│ folder. Adding files is not              │
+│ available here.                          │
+│                                          │
+│ 🖼  beach.jpg                             │
+│     In the shared folder · Tap to        │
+│     open                                 │
+└──────────────────────────────────────────┘
 ```
 
 No Add file button.
 
 ---
 
-## B9 — Folders home (no write chrome)
+## B9 - Folders home (no write chrome)
 
 ```
 ┌─────────────────────────────┐
@@ -176,8 +176,8 @@ No Add file button.
 │ 📁 Photos                   │
 │ 📁 Docs                     │
 │                             │
-│ — no Add folder —           │
-│ — no Sync settings —        │
+│ - no Add folder -           │
+│ - no Sync settings -        │
 └─────────────────────────────┘
 ```
 
@@ -191,7 +191,7 @@ Slice A empty and welcome frames are unchanged. If there is no folder, there is 
 |------|-------|
 | Add file on the open folder | B1 |
 | Pending is not success | B2 |
-| On friendnet, not "on your computer" | B3 |
+| In the shared folder, not "on your computer" | B3 |
 | Clash is an explicit choice | B4 |
 | Remove vs discard are different | B5, B6 |
 | FAIL leaves the row honest | B7 |

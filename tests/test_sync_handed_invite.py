@@ -17,6 +17,7 @@ from leasegrid_sync.backend import SyncError  # noqa: E402
 # raise before any daemon started. Not secrets.
 INVITE_A = "7-guitarist-revenge"
 INVITE_B = "8-pianist-kindness"
+INVITE_C = "9-drummer-courage"
 
 _WINDOWS_BOX = (
     "Showing a real QMessageBox inside the shared pytest QApplication "
@@ -195,6 +196,31 @@ def test_rehanding_the_current_invite_drops_the_older_pending(tmp_path: Path) ->
         assert window.invite_edit.text() == INVITE_A
         window._on_handed_replace_finished(window.QtWidgets.QMessageBox.Yes)
         assert window.invite_edit.text() == INVITE_A
+        assert window._joined is False
+    finally:
+        _close(window)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason=_WINDOWS_BOX)
+def test_empty_field_rehand_drops_the_older_pending(tmp_path: Path) -> None:
+    """Clearing the field and handing again drops the open question.
+
+    The empty-field branch used to fill the field and leave the older pending
+    invite in place, so a later Yes put that older invite back.
+    """
+    window = _window(tmp_path)
+    try:
+        window.invite_edit.setText(INVITE_A)
+        window.receive_handed_invite(INVITE_B)
+        assert window._handed_replace_pending == INVITE_B
+        assert len(_replace_boxes(window)) == 1
+        window.invite_edit.clear()
+        window.receive_handed_invite(INVITE_C)
+        assert window.invite_edit.text() == INVITE_C
+        assert (getattr(window, "_handed_replace_pending", "") or "") == ""
+        assert _replace_boxes(window) == []
+        window._on_handed_replace_finished(window.QtWidgets.QMessageBox.Yes)
+        assert window.invite_edit.text() == INVITE_C
         assert window._joined is False
     finally:
         _close(window)

@@ -3212,6 +3212,10 @@ class MainWindow:
         self.stack.setCurrentWidget(self.join_page)
         current = self.invite_edit.text()
         if not current.strip():
+            # The field was cleared while a question was open. The new hand is
+            # the latest one. Drop the older pending invite so Yes cannot put
+            # it back.
+            self._dismiss_handed_replace_box()
             self.invite_edit.setText(text)
             self.invite_edit.setFocus()
             self._dump_handed_invite()

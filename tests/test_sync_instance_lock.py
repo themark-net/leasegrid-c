@@ -444,6 +444,55 @@ def test_lock_file_mode_000_names_the_next_step(tmp_path: Path, monkeypatch, cap
         lock.chmod(0o644)
 
 
+def test_lock_home_that_cannot_be_created_names_the_next_step(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A home whose parent is not a directory must not start a second window.
+
+    mkdir failing used to return success, so this launch took no lock and
+    opened the app. After the sentence, a real home still starts.
+    """
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("stay", encoding="utf-8")
+    home = blocked / "sync-home"
+    code, text = _lock_failure(monkeypatch, home, capsys)
+    assert code == 1
+    assert "Traceback" not in text
+    assert "could not create its home folder" in text
+    assert "Next:" in text
+    assert "already running" not in text.lower()
+    assert blocked.read_text(encoding="utf-8") == "stay"
+    assert not home.exists()
+    good = tmp_path / "home"
+    good.mkdir()
+    _recovered(monkeypatch, good)
+
+
+def test_unwritable_home_does_not_pretend_the_app_is_already_running(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A home we cannot write a lock into is not an already-running app.
+
+    Restoring the mode lets the next launch take the lock.
+    """
+    if os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("directory mode does not block this user")
+    home = tmp_path / "home"
+    home.mkdir()
+    home.chmod(0o555)
+    try:
+        code, text = _lock_failure(monkeypatch, home, capsys)
+        assert code == 1
+        assert "Traceback" not in text
+        assert "could not write its lock file" in text
+        assert "Next:" in text
+        assert "already running" not in text.lower()
+        assert not instance_lock_path(home).exists()
+    finally:
+        home.chmod(0o755)
+    _recovered(monkeypatch, home)
+
+
 class _Pipe:
     def __init__(self, proc: subprocess.Popen[str]) -> None:
         self.proc = proc

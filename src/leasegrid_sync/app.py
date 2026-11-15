@@ -279,6 +279,16 @@ _LOCK_UNREADABLE = (
     "Leasegrid Sync could not read its lock file.",
     "Delete the lock file or restore its permissions, then start again.",
 )
+_LOCK_HOME = (
+    "Leasegrid Sync could not create its home folder.",
+    "Check that the parent folder is writable, or set LEASEGRID_SYNC_HOME "
+    "to another folder, then start again.",
+)
+_LOCK_NOT_WRITABLE = (
+    "Leasegrid Sync could not write its lock file.",
+    "Check that this Sync home is writable, or set LEASEGRID_SYNC_HOME "
+    "to another folder, then start again.",
+)
 
 
 def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
@@ -328,8 +338,9 @@ def acquire_instance_lock(home: Path) -> bool:
     first so a starter that is still writing its PID can finish. A readable
     same-host PID is refused. The QLockFile object stays referenced until a
     clean quit, or the destructor would unlock it early. Returns False when
-    another live process holds the lock. Raises SyncError when the lock path
-    is a directory or a mode-000 file.
+    another live process holds the lock. Raises SyncError when the home cannot
+    be created, the home cannot hold a lock file, or the lock path is a
+    directory or a mode-000 file.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -337,8 +348,8 @@ def acquire_instance_lock(home: Path) -> bool:
     path = instance_lock_path(home)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        return True
+    except OSError as exc:
+        raise SyncError(_LOCK_HOME[0], _LOCK_HOME[1]) from exc
     problem = _lock_path_problem(path)
     if problem is not None:
         raise SyncError(problem[0], problem[1])
@@ -347,12 +358,16 @@ def acquire_instance_lock(home: Path) -> bool:
     lock = QLockFile(str(path))
     lock.setStaleLockTime(int(_LOCK_PIDLESS_MAX_AGE_S * 1000))
     if not lock.tryLock(0):
+        if lock.error() == QLockFile.PermissionError:
+            raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
         if not _lock_pid_readable(lock):
             # The other starter may be between O_EXCL create and the PID write.
             _lock_writer_grace()
         if _lock_pid_readable(lock):
             return False
         if not lock.tryLock(0):
+            if lock.error() == QLockFile.PermissionError:
+                raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
             return False
     _INSTANCE_LOCK = lock
     return True

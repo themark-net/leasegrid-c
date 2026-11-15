@@ -392,6 +392,53 @@ class AppModelFlowTest {
     }
 
     @Test
+    fun aLeftoverPendingIndexTempDoesNotBecomeTheAdd() {
+        home = tmp.newFolder("phone")
+        SessionStore(File(home, "leasegrid")).save(joined())
+        val queue = IoQueue()
+        val grid = { op: String, _: String ->
+            if (op == "list") {
+                buildJsonObject {
+                    put("ok", true)
+                    putJsonArray("children") {}
+                }
+            } else {
+                buildJsonObject {
+                    put("ok", true)
+                    put("cap", "URI:CHK:landed")
+                    put("size", 3)
+                }
+            }
+        }
+        fun phone(dispatcher: CoroutineDispatcher = Dispatchers.Unconfined) = AppModel(
+            Application(),
+            AppSeams(
+                filesDir = home,
+                scope = CoroutineScope(SupervisorJob() + dispatcher),
+                io = Dispatchers.Unconfined,
+                dispatch = grid,
+                freeBytes = { Long.MAX_VALUE },
+            ),
+        )
+        val first = phone(queue)
+        first.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        val other = File(home, "pending/other.txt")
+        other.parentFile!!.mkdirs()
+        other.writeBytes(byteArrayOf(9))
+        val temp = File(home, "leasegrid/pending-adds.json.tmp")
+        temp.writeText(
+            """{"rows":[{"folderCap":"URI:DIR2:test-only","name":"other.txt","size":1,"path":"pending/other.txt"}]}""",
+        )
+        val second = phone()
+        second.openFolder(folder)
+        val names = second.visibleFiles(second.place as Place.Folder)
+            .filter { it.chip == Chip.Pending }
+            .map { it.name }
+        assertEquals(listOf("notes.txt"), names)
+        assertFalse("a torn index temp was left next to the saved index", temp.exists())
+    }
+
+    @Test
     fun aClashQuestionSurvivesProcessDeathAndDoesNotUploadUntilReplace() {
         val puts = mutableListOf<String>()
         val first = phoneWithNotes(puts)

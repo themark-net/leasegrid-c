@@ -540,7 +540,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         place = Place.Welcome
         fail = null
         board.clear()
-        File(filesRoot(), "leasegrid/pending-adds.json").delete()
+        deletePendingIndex(File(filesRoot(), "leasegrid/pending-adds.json"))
         File(filesRoot(), "pending").deleteRecursively()
     }
 
@@ -888,11 +888,12 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         val clashRel = clash?.let { relativeInside(root, File(it.localPath)) }
         val dest = pendingIndex()
         if (rows.isEmpty() && clashRel == null) {
-            dest.delete()
+            deletePendingIndex(dest)
             return
         }
         dest.parentFile?.mkdirs()
-        dest.writeText(
+        writePendingIndex(
+            dest,
             buildJsonObject {
                 putJsonArray("rows") {
                     for (row in rows) add(row)
@@ -912,6 +913,9 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
 
     private fun restorePendingAdds() {
         val dest = pendingIndex()
+        val temp = File(dest.parentFile, dest.name + ".tmp")
+        // A temp is an unfinished replace. The index already on disk is the last complete copy.
+        if (dest.isFile) temp.delete()
         if (!dest.isFile) return
         val rootObj = try {
             json.parseToJsonElement(dest.readText()).jsonObject

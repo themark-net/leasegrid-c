@@ -799,6 +799,7 @@ def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
     write_s.setblocking(False)
     prev_fd = signal.set_wakeup_fd(write_s.fileno())
     hit = {"on": False}
+    app._already_running_signal_hit = hit
 
     def _handler(signum, frame) -> None:
         hit["on"] = True
@@ -833,6 +834,11 @@ def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
                     pass
             except (BlockingIOError, InterruptedError, OSError):
                 pass
+            # Test fault injection. A real SIGINT can still raise inside this
+            # slot; the guard below is what keeps that from aborting (rc -6).
+            if _test_env("LEASEGRID_TEST_ALREADY_INTERRUPT") == "1":
+                os.environ["LEASEGRID_TEST_ALREADY_INTERRUPT"] = ""
+                raise KeyboardInterrupt
             if not hit["on"]:
                 return
             _close_box()
@@ -851,6 +857,69 @@ def _arm_already_running_signal_quit(app, QtCore, QtWidgets) -> None:
     timer.timeout.connect(_on)
     timer.start()
     app._already_running_signal = (read_s, write_s, notifier, timer, prev_fd, previous)
+
+
+def _hold_already_running_signals(app) -> None:
+    """Ignore later quit signals. The box is already closing.
+
+    Qt's previous SIGINT handler is SIG_DFL. Putting it back while the
+    process is still leaving makes a second Ctrl-C kill the launch (rc -2)
+    with no traceback. SIG_IGN keeps that signal from aborting teardown.
+    The first window is a different process and is not signalled here.
+    """
+    state = getattr(app, "_already_running_signal", None)
+    if not state:
+        return
+    app._already_running_signal = None
+    read_s, write_s, notifier, timer, _prev_fd, previous = state
+    try:
+        timer.stop()
+    except Exception:
+        pass
+    try:
+        notifier.setEnabled(False)
+    except Exception:
+        pass
+    for sig in previous:
+        try:
+            signal.signal(sig, signal.SIG_IGN)
+        except OSError:
+            pass
+    try:
+        signal.set_wakeup_fd(-1)
+    except (OSError, ValueError):
+        pass
+    for sock in (read_s, write_s):
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+def _pause_already_running_shutdown(hit) -> None:
+    """Test-only. Stay up after the quit-signal disposition is set.
+
+    A second Ctrl-C arrives a few milliseconds later. Without this pause the
+    process can finish before a test sends it. Production leaves the
+    variables unset, and ``_test_env`` is empty unless a driver armed hooks.
+    """
+    if not (isinstance(hit, dict) and hit.get("on")):
+        return
+    raw = _test_env("LEASEGRID_TEST_ALREADY_SHUTDOWN_DELAY")
+    if not raw:
+        return
+    mark = _test_env("LEASEGRID_TEST_ALREADY_SHUTDOWN_MARK")
+    if mark:
+        try:
+            Path(mark).write_text("paused\n", encoding="utf-8")
+        except OSError:
+            pass
+    try:
+        delay = float(raw)
+    except ValueError:
+        return
+    if delay > 0:
+        time.sleep(min(delay, 2.0))
 
 
 def _disarm_already_running_signal_quit(app) -> None:
@@ -897,7 +966,12 @@ def _show_already_running() -> None:
     try:
         QtWidgets.QMessageBox.information(None, APP_NAME, ALREADY_RUNNING)
     finally:
-        _disarm_already_running_signal_quit(app)
+        hit = getattr(app, "_already_running_signal_hit", None)
+        if isinstance(hit, dict) and hit.get("on"):
+            _hold_already_running_signals(app)
+        else:
+            _disarm_already_running_signal_quit(app)
+        _pause_already_running_shutdown(hit)
     # The local has to stay alive across information(). Reading it here keeps
     # that obvious; pumping events would deliver timers into a shared test app.
     if app.closingDown():

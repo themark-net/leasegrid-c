@@ -59,6 +59,8 @@ def _launch(
     text_file: Path | None = None,
     dismiss: bool = False,
     shown: Path | None = None,
+    driver: str | None = None,
+    extra_env: dict | None = None,
 ):
     home = tmp_path / "home"
     nodedir = tmp_path / "missing-node"
@@ -85,15 +87,17 @@ def _launch(
         env["LEASEGRID_TEST_AUTODISMISS_MS"] = "0"
         if text_file is not None:
             env["LEASEGRID_TEST_ALREADY_TEXT"] = str(text_file)
+    if extra_env:
+        env.update(extra_env)
     err_f = err_path.open("w", encoding="utf-8")
-    driver = tmp_path / "hooked_main.py"
-    driver.write_text(_HOOKED_MAIN, encoding="utf-8")
+    driver_path = tmp_path / "hooked_main.py"
+    driver_path.write_text(driver or _HOOKED_MAIN, encoding="utf-8")
     kwargs: dict = {}
     if sys.platform == "win32" and not dismiss:
         # Own group, like the other handoff tests, so console events stay local.
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
-        [sys.executable, str(driver), *_QPA_ARGS, "--nodedir", str(nodedir), *args],
+        [sys.executable, str(driver_path), *_QPA_ARGS, "--nodedir", str(nodedir), *args],
         stdout=subprocess.DEVNULL,
         stderr=err_f,
         env=env,
@@ -275,6 +279,209 @@ def test_already_running_second_launch_exits_0_on_sigterm(tmp_path: Path, sig: i
         assert first.poll() is None, _stderr(first_err)
         assert lock_path.is_file()
         assert lock_path.read_bytes() == lock_before
+    finally:
+        if not first_f.closed:
+            first_f.close()
+        _stop(first)
+        if second is not None:
+            _stop(second)
+        if second_f is not None and not second_f.closed:
+            second_f.close()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "TerminateProcess cannot be caught. The already-running box does not "
+        "install SIGINT, SIGTERM, or SIGHUP handlers on Windows."
+    ),
+)
+@pytest.mark.parametrize(
+    "first_sig",
+    [signal.SIGINT, signal.SIGTERM],
+    ids=["SIGINT-then-SIGINT", "SIGTERM-then-SIGINT"],
+)
+def test_second_ctrl_c_during_box_shutdown_exits_0(tmp_path: Path, first_sig: int) -> None:
+    """A second Ctrl-C while the box is closing is ignored. Exit 0, no traceback.
+
+    The first window and its lock stay. Putting Qt's SIG_DFL back during
+    teardown used to kill this process (rc -2). The test pause starts only
+    after that disposition is set, so the follow-up signal lands in the window.
+    """
+    ready = tmp_path / "join-ready"
+    shown = tmp_path / "shown"
+    mark = tmp_path / "shutdown-mark"
+    first, first_err, first_f = _launch(tmp_path)
+    second = None
+    second_f = None
+    try:
+        assert _wait_until(lambda: ready.is_file() or first.poll() is not None, 25), (
+            "first app did not listen: rc %s %s" % (first.poll(), _stderr(first_err)[-800:])
+        )
+        assert first.poll() is None, _stderr(first_err)
+        second, second_err, second_f = _launch(
+            tmp_path,
+            shown=shown,
+            extra_env={
+                "LEASEGRID_TEST_ALREADY_SHUTDOWN_DELAY": "0.6",
+                "LEASEGRID_TEST_ALREADY_SHUTDOWN_MARK": str(mark),
+            },
+        )
+        assert _wait_until(lambda: shown.is_file() or second.poll() is not None, 20), (
+            "second launch did not show the box: rc %s %s"
+            % (second.poll(), _stderr(second_err)[-800:])
+        )
+        assert second.poll() is None, _stderr(second_err)
+        lock_path = instance_lock_path(tmp_path / "home")
+        lock_before = lock_path.read_bytes()
+        os.kill(second.pid, first_sig)
+        assert _wait_until(lambda: mark.is_file() or second.poll() is not None, 10), (
+            "shutdown pause did not start: rc %s %s" % (second.poll(), _stderr(second_err)[-800:])
+        )
+        assert second.poll() is None, (
+            "second launch exited before the follow-up Ctrl-C (rc %s). stderr %s"
+            % (second.returncode, _stderr(second_err)[-800:])
+        )
+        os.kill(second.pid, signal.SIGINT)
+        time.sleep(0.15)
+        assert second.poll() is None, (
+            "second signal killed the launch (rc %s). stderr %s"
+            % (second.returncode, _stderr(second_err)[-800:])
+        )
+        try:
+            rc = second.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            _stop(second)
+            pytest.fail("second launch still alive after the second Ctrl-C: %s" % _stderr(second_err)[-800:])
+        err = _stderr(second_err)
+        assert rc == 0, "rc %s stderr %s" % (rc, err[-800:])
+        assert "Traceback" not in err
+        assert "KeyboardInterrupt" not in err
+        assert first.poll() is None, _stderr(first_err)
+        assert lock_path.is_file()
+        assert lock_path.read_bytes() == lock_before
+    finally:
+        if not first_f.closed:
+            first_f.close()
+        _stop(first)
+        if second is not None:
+            _stop(second)
+        if second_f is not None and not second_f.closed:
+            second_f.close()
+
+
+_HANDLER_DRIVER = """\
+import os
+import signal
+import sys
+from pathlib import Path
+
+mark = Path(os.environ["LEASEGRID_TEST_HANDLER_MARK"])
+
+
+def sentinel(signum, frame):
+    mark.write_text("ran\\n", encoding="utf-8")
+
+
+signal.signal(signal.SIGINT, sentinel)
+import leasegrid_sync.app as appmod
+appmod._TEST_HOOKS = True
+from leasegrid_sync.cli import main
+rc = main(sys.argv[1:])
+handler = signal.getsignal(signal.SIGINT)
+mark.write_text("sentinel\\n" if handler is sentinel else "other\\n", encoding="utf-8")
+raise SystemExit(0 if rc is None else int(rc))
+"""
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "The already-running box does not install a SIGINT handler on Windows, "
+        "so a KeyboardInterrupt in that slot is not this path."
+    ),
+)
+def test_keyboard_interrupt_in_the_box_slot_exits_0(tmp_path: Path) -> None:
+    """A KeyboardInterrupt inside the box slot closes the box and exits 0.
+
+    This is the A3 guard. Without it, PyQt aborts the process (rc -6) and
+    the stderr contains KeyboardInterrupt.
+    """
+    ready = tmp_path / "join-ready"
+    shown = tmp_path / "shown"
+    first, first_err, first_f = _launch(tmp_path)
+    second = None
+    second_f = None
+    try:
+        assert _wait_until(lambda: ready.is_file() or first.poll() is not None, 25), (
+            "first app did not listen: rc %s %s" % (first.poll(), _stderr(first_err)[-800:])
+        )
+        assert first.poll() is None, _stderr(first_err)
+        second, second_err, second_f = _launch(
+            tmp_path,
+            shown=shown,
+            extra_env={"LEASEGRID_TEST_ALREADY_INTERRUPT": "1"},
+        )
+        try:
+            rc = second.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            _stop(second)
+            pytest.fail(
+                "box still up after an injected KeyboardInterrupt: %s" % _stderr(second_err)[-800:]
+            )
+        err = _stderr(second_err)
+        assert rc == 0, "rc %s stderr %s" % (rc, err[-800:])
+        assert "Traceback" not in err
+        assert "KeyboardInterrupt" not in err
+        assert first.poll() is None, _stderr(first_err)
+        lock_path = instance_lock_path(tmp_path / "home")
+        assert lock_path.is_file()
+    finally:
+        if not first_f.closed:
+            first_f.close()
+        _stop(first)
+        if second is not None:
+            _stop(second)
+        if second_f is not None and not second_f.closed:
+            second_f.close()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="The already-running box does not install signal handlers on Windows.",
+)
+def test_dismissing_the_box_restores_the_previous_sigint_handler(tmp_path: Path) -> None:
+    """Ok on the box puts the previous SIGINT handler back. This is the A4 path.
+
+    A signal close leaves SIG_IGN instead, so a second Ctrl-C cannot kill the
+    launch. A click must not do that: the handler from before the box returns.
+    """
+    ready = tmp_path / "join-ready"
+    mark = tmp_path / "handler-mark"
+    first, first_err, first_f = _launch(tmp_path)
+    second = None
+    second_f = None
+    try:
+        assert _wait_until(lambda: ready.is_file() or first.poll() is not None, 25), (
+            "first app did not listen: rc %s %s" % (first.poll(), _stderr(first_err)[-800:])
+        )
+        assert first.poll() is None, _stderr(first_err)
+        second, second_err, second_f = _launch(
+            tmp_path,
+            dismiss=True,
+            driver=_HANDLER_DRIVER,
+            extra_env={"LEASEGRID_TEST_HANDLER_MARK": str(mark)},
+        )
+        try:
+            rc = second.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            _stop(second)
+            pytest.fail("dismiss launch still alive: %s" % _stderr(second_err)[-800:])
+        err = _stderr(second_err)
+        assert rc == 0, "rc %s stderr %s" % (rc, err[-800:])
+        assert mark.is_file(), err[-800:]
+        assert mark.read_text(encoding="utf-8") == "sentinel\n", err[-800:]
+        assert first.poll() is None, _stderr(first_err)
     finally:
         if not first_f.closed:
             first_f.close()

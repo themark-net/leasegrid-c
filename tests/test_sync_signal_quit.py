@@ -229,6 +229,85 @@ def _wait_until(predicate, timeout: float) -> bool:
     return False
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="CTRL_C_EVENT hits the whole console. This test aims SIGINT at one process.",
+)
+def test_second_sigint_during_shutdown_still_reaps(tmp_path: Path) -> None:
+    """A second Ctrl-C during shutdown exits 0, prints no traceback, and reaps children.
+
+    The stub ignores SIGTERM, so stop() is still in its wait when the second
+    signal arrives. Both the stub and its grandchild must be gone, and the
+    instance lock must be released.
+    """
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    nodedir.mkdir(parents=True)
+    (nodedir / "tahoe.cfg").write_text("[node]\nnickname = stub\n", encoding="utf-8")
+    bins = tmp_path / "bin"
+    bins.mkdir()
+    tahoe_bin = _executable(bins, "tahoe", _STUB)
+    mf_bin = _executable(bins, "magic-folder", _MF_STUB)
+    pidfile = tmp_path / "tahoe.pid"
+    child_pidfile = tmp_path / "tahoe-child.pid"
+    ready = tmp_path / "signal-ready"
+    err_path = tmp_path / "app.err"
+    lock = instance_lock_path(home)
+    env = os.environ.copy()
+    env["LEASEGRID_SYNC_HOME"] = str(home)
+    env["LEASEGRID_TAHOE_NODEDIR"] = str(nodedir)
+    env["LEASEGRID_TAHOE_BIN"] = tahoe_bin
+    env["LEASEGRID_MAGIC_FOLDER_BIN"] = mf_bin
+    env["LEASEGRID_TEST_TAHOE_PIDFILE"] = str(pidfile)
+    env["LEASEGRID_TEST_TAHOE_CHILD_PID"] = str(child_pidfile)
+    env["LEASEGRID_TEST_SIGNAL_READY"] = str(ready)
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    err_f = err_path.open("w", encoding="utf-8")
+    driver = tmp_path / "hooked_main.py"
+    driver.write_text(_HOOKED_MAIN, encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir)],
+        stdout=subprocess.DEVNULL,
+        stderr=err_f,
+        env=env,
+    )
+    stub_pid = 0
+    try:
+        assert _wait_until(lambda: ready.is_file() or proc.poll() is not None, 25), (
+            "app did not arm signal handlers: %s" % err_path.read_text(encoding="utf-8")
+        )
+        assert proc.poll() is None, err_path.read_text(encoding="utf-8")
+        assert pidfile.is_file(), "stub Tahoe did not start"
+        assert _wait_until(child_pidfile.is_file, 10), "stub grandchild did not start"
+        stub_pid = int(pidfile.read_text(encoding="utf-8").strip())
+        child_pid = int(child_pidfile.read_text(encoding="utf-8").strip())
+        _remember(stub_pid)
+        _remember(child_pid)
+        os.kill(proc.pid, signal.SIGINT)
+        time.sleep(0.015)
+        if proc.poll() is None:
+            os.kill(proc.pid, signal.SIGINT)
+        assert _wait_until(lambda: proc.poll() is not None, 20)
+        err = err_path.read_text(encoding="utf-8", errors="replace")
+        assert proc.returncode == 0, "rc %s stderr %s" % (proc.returncode, err[-800:])
+        assert "Traceback" not in err
+        assert "KeyboardInterrupt" not in err
+        assert not lock.exists()
+        assert _wait_until(lambda: _reaped(stub_pid), 5)
+        assert _reaped(stub_pid)
+        assert _wait_until(lambda: _reaped(child_pid), 5)
+        assert _reaped(child_pid)
+    finally:
+        err_f.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        for path in (pidfile, child_pidfile):
+            for pid in _pids_in(path):
+                _remember(pid)
+                _kill_pid(pid)
+
+
 @pytest.mark.parametrize("sig", _signals())
 def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
     home = tmp_path / "home"

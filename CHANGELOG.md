@@ -4,6 +4,9 @@
 
 - A folder that already has a sync conflict still says Conflict when a newer file has changed, or when that conflict is outside the five newest changes. The folder page names the file and the next step. That line clears once the conflict is gone.
 - Adding a folder whose name is already syncing a different directory stays on the page as a failure. Adding the same directory again does not create a second row.
+- Android: an add when the phone has no room says there is not enough free space and does not upload. Retry tries that add again once there is room. The file is not shown as in the shared folder before that.
+- Android: Keep both, when the second copy would not fit, leaves the question on screen and does not upload. Retry sends a different name once there is room. The file already in the folder is not replaced.
+- Android: Keep both, when the phone will not allow the second copy, says so and leaves the question. Retry sends the next free name. It does not upload the original name, or a name the folder already has.
 - Android: a leasegrid join link that puts the address in the query (`?`) joins, the same as on the computer. A non-empty `#` still wins. A web page address that only has a query is still rejected.
 - Android: Replace, Keep both, or Cancel stays on screen if the process dies while that question is open. The file is not uploaded until one of those is chosen. A stored path that leaves the phone's files is dropped.
 - Android: the list of files still waiting to upload is replaced as a whole. A write that stops keeps the previous list. A half-written temp file next to that list is not used.

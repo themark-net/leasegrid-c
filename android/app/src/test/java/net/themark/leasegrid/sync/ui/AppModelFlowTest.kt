@@ -45,6 +45,7 @@ class AppModelFlowTest {
         saved: Session? = null,
         io: CoroutineContext = Dispatchers.Unconfined,
         scopeDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+        freeBytes: (File) -> Long = { _ -> Long.MAX_VALUE },
         grid: (String, String) -> JsonObject,
     ): AppModel {
         home = tmp.newFolder("home")
@@ -56,7 +57,7 @@ class AppModelFlowTest {
                 scope = CoroutineScope(SupervisorJob() + scopeDispatcher),
                 io = io,
                 dispatch = grid,
-                freeBytes = { Long.MAX_VALUE },
+                freeBytes = freeBytes,
             ),
         )
     }
@@ -602,6 +603,160 @@ class AppModelFlowTest {
         model.cancelImport()
         model.retryFail()
         assertEquals(0, calls)
+    }
+
+    @Test
+    fun aFullPhoneDoesNotSaveTheAddAndRetrySavesItWhenThereIsRoom() {
+        var room = 0L
+        val ops = mutableListOf<String>()
+        val model = model(saved = joined(), freeBytes = { _ -> room }) { op, _ ->
+            ops += op
+            if (op == "list") {
+                buildJsonObject {
+                    put("ok", true)
+                    putJsonArray("children") {}
+                }
+            } else {
+                buildJsonObject {
+                    put("ok", true)
+                    put("cap", "URI:CHK:landed")
+                    put("size", 3)
+                }
+            }
+        }
+        model.openFolder(folder)
+        val open = model.place as Place.Folder
+        model.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        val card = model.fail
+        assertNotNull(card)
+        assertEquals(WriteCopy.SPACE_FAIL, card!!.message)
+        assertTrue(card.next, card.next.contains("Retry"))
+        assertPlainCard(card)
+        assertFalse("a full phone still uploaded", ops.contains("put"))
+        val rows = model.visibleFiles(open)
+        assertTrue(rows.none { it.name == "notes.txt" })
+        assertTrue(rows.none { it.chip == Chip.Landed && it.name == "notes.txt" })
+        room = Long.MAX_VALUE
+        model.retryFail()
+        assertTrue("Retry did not try the add after there was room", ops.contains("put"))
+    }
+
+    @Test
+    fun aKeepBothThatDoesNotFitLeavesTheQuestionAndRetrySendsADistinctName() {
+        val calls = mutableListOf<Pair<String, String>>()
+        var room = Long.MAX_VALUE
+        val model = clashPhone(calls, listOf("notes.txt")) { _ -> room }
+        model.openFolder(folder)
+        model.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        val sheet = model.writeSheet() as? WriteSheet.Clash
+        assertNotNull("the phone did not ask what to do with the existing file", sheet)
+        assertFalse(calls.any { it.first == "put" })
+        val kept = File(sheet!!.localPath)
+        assertTrue(kept.isFile)
+
+        room = 100L
+        model.keepBothClash()
+        assertFalse("Keep both uploaded when the second copy would not fit", calls.any { it.first == "put" })
+        val card = model.fail
+        assertNotNull(card)
+        assertEquals(WriteCopy.SPACE_FAIL, card!!.message)
+        assertTrue(card.next, card.next.contains("Retry"))
+        assertPlainCard(card)
+        assertNotNull("the question disappeared when the second copy would not fit", model.writeSheet())
+        assertTrue("the first copy was deleted before it could be sent", kept.isFile)
+        assertTrue(model.visibleFiles(model.place as Place.Folder).none { it.chip == Chip.Landed && it.name != "notes.txt" })
+
+        room = Long.MAX_VALUE
+        model.retryFail()
+        val put = calls.last { it.first == "put" }.second
+        assertTrue(put, put.contains("\"name\":\"notes (phone).txt\""))
+        assertTrue(put, put.contains("\"replace\":false"))
+        assertFalse(put, put.contains("\"name\":\"notes.txt\""))
+    }
+
+    @Test
+    fun aRestoredKeepBothThePhoneCannotWriteStaysAChoiceAndRetrySendsTheNextName() {
+        val calls = mutableListOf<Pair<String, String>>()
+        val first = clashPhone(calls, listOf("notes.txt", "notes (phone).txt")) { _ -> Long.MAX_VALUE }
+        first.openFolder(folder)
+        first.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        assertNotNull(first.writeSheet())
+        assertFalse(calls.any { it.first == "put" })
+
+        val second = clashPhone(calls, listOf("notes.txt", "notes (phone).txt")) { _ -> Long.MAX_VALUE }
+        second.openFolder(folder)
+        val again = second.writeSheet() as? WriteSheet.Clash
+        assertNotNull("the question disappeared with the process", again)
+        val parent = File(again!!.localPath).parentFile!!
+        assertTrue(parent.setWritable(false, false))
+        try {
+            second.keepBothClash()
+            val card = second.fail
+            assertNotNull(card)
+            assertTrue(card!!.message.lowercase(), card.message.lowercase().contains("would not allow"))
+            assertTrue(card.next.lowercase(), card.next.lowercase().contains("permission"))
+            assertFalse(card.next.lowercase().contains("pick it again"))
+            assertPlainCard(card)
+            assertFalse("a refused copy still uploaded", calls.any { it.first == "put" })
+            assertNotNull("the question disappeared when the phone refused the copy", second.writeSheet())
+            assertTrue(File(again.localPath).isFile)
+        } finally {
+            parent.setWritable(true, true)
+        }
+        second.retryFail()
+        val put = calls.last { it.first == "put" }.second
+        assertTrue(put, put.contains("\"name\":\"notes (phone 2).txt\""))
+        assertTrue(put, put.contains("\"replace\":false"))
+        assertFalse(put, put.contains("\"name\":\"notes.txt\""))
+        assertFalse(put, put.contains("\"name\":\"notes (phone).txt\""))
+    }
+
+    /**
+     * One phone home, reused so a second [clashPhone] is the next process.
+     * [names] are the files the folder already lists.
+     */
+    private fun clashPhone(
+        calls: MutableList<Pair<String, String>>,
+        names: List<String>,
+        freeBytes: (File) -> Long,
+    ): AppModel {
+        if (!::home.isInitialized) {
+            home = tmp.newFolder("phone")
+            SessionStore(File(home, "leasegrid")).save(joined())
+        }
+        return AppModel(
+            Application(),
+            AppSeams(
+                filesDir = home,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                dispatch = { op, payload ->
+                    calls += op to payload
+                    if (op == "list") {
+                        buildJsonObject {
+                            put("ok", true)
+                            putJsonArray("children") {
+                                for (name in names) {
+                                    addJsonObject {
+                                        put("name", name)
+                                        put("kind", "file")
+                                        put("cap", "URI:CHK:$name")
+                                        put("size", 1)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        buildJsonObject {
+                            put("ok", true)
+                            put("cap", "URI:CHK:landed")
+                            put("size", 3)
+                        }
+                    }
+                },
+                freeBytes = freeBytes,
+            ),
+        )
     }
 }
 

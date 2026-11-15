@@ -339,7 +339,9 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         try {
             val free = freeBytes(dest.parentFile!!)
             if (free < bytes.size.toLong() + 4096L) {
-                show(FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)) { }
+                show(FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)) {
+                    onFilePicked(folder, displayName, bytes)
+                }
                 return
             }
             val parent = dest.parentFile
@@ -377,20 +379,44 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
 
     fun keepBothClash() {
         val clash = board.clashOrNull() ?: return
-        board.cancelSheet()
         val folder = folderByCap(clash.folderCap) ?: return
-        val taken = namesInFolder(folder.cap)
+        val taken = namesInFolder(folder.cap) + clash.name
         val distinct = keepBothName(clash.name, taken)
         val dest = pendingFile(folder.cap, distinct)
-        val bytes = File(clash.localPath).takeIf { it.isFile }?.readBytes()
+        val source = File(clash.localPath)
+        val bytes = source.takeIf { it.isFile }?.readBytes()
         if (bytes == null) {
+            board.cancelSheet()
+            rememberPendingAdds()
             show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
             touch()
             return
         }
-        dest.parentFile?.mkdirs()
-        dest.writeBytes(bytes)
-        if (dest.absolutePath != clash.localPath) File(clash.localPath).delete()
+        val parent = dest.parentFile
+        try {
+            if (parent != null && freeBytes(parent) < bytes.size.toLong() + 4096L) {
+                show(FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)) { keepBothClash() }
+                touch()
+                return
+            }
+            if (parent != null && !parent.isDirectory) parent.mkdirs()
+            if (dest.absolutePath != source.absolutePath) dest.writeBytes(bytes)
+        } catch (exc: Exception) {
+            if (dest.absolutePath != source.absolutePath && dest.exists()) dest.delete()
+            val denied = storageDenied(exc) || parent?.canWrite() == false
+            val text = exc.message?.lowercase().orEmpty()
+            val full = text.contains("no space left") || text.contains("enospc")
+            val banner = when {
+                denied -> FailBanner(WriteCopy.PERM_FAIL, WriteCopy.PERM_NEXT)
+                full -> FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)
+                else -> FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)
+            }
+            show(banner) { keepBothClash() }
+            touch()
+            return
+        }
+        board.cancelSheet()
+        if (dest.absolutePath != source.absolutePath) source.delete()
         touch()
         startUpload(folder, distinct, dest.absolutePath, bytes.size, replace = false)
     }

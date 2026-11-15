@@ -5,6 +5,7 @@
 
 package net.themark.leasegrid.sync.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
@@ -156,6 +157,7 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
 
 @Composable
 private fun Import(model: AppModel, onPickRecovery: () -> Unit) {
+    BackHandler(onBack = { model.cancelImport() })
     Column(
         modifier = Modifier
             .fillMaxWidth()

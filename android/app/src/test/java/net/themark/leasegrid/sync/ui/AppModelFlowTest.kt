@@ -337,6 +337,104 @@ class AppModelFlowTest {
     }
 
     @Test
+    fun aPendingAddSurvivesProcessDeathAndRetrySendsIt() {
+        home = tmp.newFolder("phone")
+        SessionStore(File(home, "leasegrid")).save(joined())
+        val queue = IoQueue()
+        val puts = mutableListOf<String>()
+        val grid = { op: String, _: String ->
+            puts += op
+            if (op == "list") {
+                buildJsonObject {
+                    put("ok", true)
+                    putJsonArray("children") {}
+                }
+            } else {
+                buildJsonObject {
+                    put("ok", true)
+                    put("cap", "URI:CHK:landed")
+                    put("size", 3)
+                }
+            }
+        }
+        val first = AppModel(
+            Application(),
+            AppSeams(
+                filesDir = home,
+                scope = CoroutineScope(SupervisorJob() + queue),
+                io = Dispatchers.Unconfined,
+                dispatch = grid,
+                freeBytes = { Long.MAX_VALUE },
+            ),
+        )
+        first.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        assertEquals("the upload should still be pending when the process dies", emptyList<String>(), puts)
+
+        val second = AppModel(
+            Application(),
+            AppSeams(
+                filesDir = home,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                dispatch = grid,
+                freeBytes = { Long.MAX_VALUE },
+            ),
+        )
+        second.openFolder(folder)
+        val open = second.place as Place.Folder
+        val pending = second.visibleFiles(open).filter { it.chip == Chip.Pending }
+        assertEquals("the add disappeared with the process", listOf("notes.txt"), pending.map { it.name })
+        assertTrue(pending.single().failed)
+        assertEquals(listOf("Retry", "Cancel"), rowActions(writable = true, pending.single()))
+        second.retryUpload("notes.txt")
+        assertTrue("Retry did not send the file", puts.contains("put"))
+        assertFalse(second.visibleFiles(second.place as Place.Folder).any { it.chip == Chip.Pending && it.failed })
+    }
+
+    @Test
+    fun aPendingDirThePhoneCannotWriteSaysPermissionAndRetryWrites() {
+        val puts = mutableListOf<String>()
+        val model = model(saved = joined()) { op, _ ->
+            puts += op
+            buildJsonObject {
+                put("ok", true)
+                put("cap", "URI:CHK:landed")
+                put("size", 3)
+            }
+        }
+        val pending = File(home, "pending")
+        pending.mkdirs()
+        assertTrue(pending.setWritable(false, false))
+        try {
+            model.onFilePicked(folder, "notes.txt", byteArrayOf(1, 2, 3))
+        } finally {
+            pending.setWritable(true, true)
+        }
+        val card = model.fail
+        assertNotNull(card)
+        assertTrue(card!!.message.lowercase(), card.message.lowercase().contains("would not allow"))
+        assertTrue(card.next.lowercase(), card.next.lowercase().contains("permission"))
+        assertFalse(card.message.lowercase().contains("network"))
+        assertPlainCard(card)
+        assertFalse("the blocked write still uploaded", puts.contains("put"))
+        model.retryFail()
+        assertTrue("Retry did not write the file after the folder was writable", puts.contains("put"))
+    }
+
+    @Test
+    fun aCancelledImportRejectsTheReadThatStartedBeforeCancel() {
+        val model = model(saved = joined()) { _, _ -> learnReply() }
+        val epoch = model.beginRecoveryImport()
+        assertEquals(Place.Import, model.place)
+        assertTrue(model.recoveryReadCurrent(epoch))
+        model.cancelImport()
+        assertEquals(Place.Welcome, model.place)
+        assertFalse(model.recoveryReadCurrent(epoch))
+        model.goImport()
+        assertFalse("a later Import still accepted the cancelled read", model.recoveryReadCurrent(epoch))
+    }
+
+    @Test
     fun cancelImportDisarmsRetry() {
         var calls = 0
         val model = model { _, _ -> learnReply() }

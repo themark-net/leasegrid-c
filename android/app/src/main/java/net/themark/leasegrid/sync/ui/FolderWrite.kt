@@ -15,6 +15,8 @@ object WriteCopy {
     const val ADD_NEXT = "check network; Retry."
     const val READ_FAIL = "could not read this file."
     const val READ_NEXT = "pick it again."
+    const val PERM_FAIL = "could not save this file. This phone would not allow it."
+    const val PERM_NEXT = "check storage permission; Retry."
     // A phone reads the whole file into memory before it adds it.
     const val ADD_MAX_BYTES = 64 shl 20
     const val TOO_BIG_NEXT = "pick a file under 64 MB."
@@ -144,6 +146,24 @@ class FolderWriteBoard {
 
     fun pendingFor(folderCap: String): List<PendingFile> =
         pending.values.filter { it.folderCap == folderCap }
+
+    fun allPending(): List<PendingFile> = pending.values.toList()
+
+    /** A transfer whose coroutine died with the process. Retry can send it again. */
+    fun restoreFailed(folderCap: String, name: String, localPath: String, size: Int) {
+        if (folderCap.isBlank() || name.isBlank() || size < 0) return
+        val id = key(folderCap, name)
+        if (pending.containsKey(id)) return
+        pending[id] = PendingFile(
+            folderCap = folderCap,
+            name = name,
+            localPath = localPath,
+            size = size,
+            progress = 0f,
+            failed = true,
+            token = tokens++,
+        )
+    }
 
     fun visibleFiles(folderCap: String, server: List<ChildRow>): List<VisibleFile> {
         val mine = pending.values.filter { it.folderCap == folderCap }
@@ -285,6 +305,11 @@ class FolderWriteBoard {
     }
 
     fun clashOrNull(): WriteSheet.Clash? = sheet as? WriteSheet.Clash
+
+    fun clear() {
+        pending.clear()
+        sheet = null
+    }
 
     private fun key(folderCap: String, name: String) = "$folderCap\n$name"
 }

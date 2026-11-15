@@ -44,6 +44,7 @@ import net.themark.leasegrid.sync.session.ServerRef
 import net.themark.leasegrid.sync.session.Session
 import net.themark.leasegrid.sync.session.SessionStore
 import java.io.File
+import java.io.IOException
 import kotlin.coroutines.CoroutineContext
 
 data class ChildRow(val name: String, val kind: String, val cap: String, val size: Int)
@@ -105,6 +106,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     var pickedBytes by mutableStateOf<ByteArray?>(null)
 
     private val retries = RetryOnce()
+    private var recoveryEpoch = 0
 
     private val gridRun = GridRun(
         scope = scope,
@@ -135,6 +137,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
             session = existing
             place = Place.Folders
         }
+        restorePendingAdds()
     }
 
     fun joinEnabled(): Boolean = Invite.joinEnabled(acknowledged, inviteText)
@@ -149,18 +152,28 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
      * nothing is saved and the phone stays on Welcome (T1).
      */
     fun cancelImport() {
+        // Retire this attempt so a read that is still waiting cannot land
+        // if Import is opened again.
+        recoveryEpoch += 1
         gridRun.cancel()
         retries.arm(null)
         goWelcome()
     }
+
+    /** True only for the import attempt that is still on screen. */
+    fun recoveryReadCurrent(epoch: Int): Boolean = epoch == recoveryEpoch && place == Place.Import
 
     fun goImport() {
         fail = null
         place = Place.Import
     }
 
-    /** Drop any joined home and show Import before the recovery file is read. */
-    fun beginRecoveryImport() {
+    /**
+     * Drop any joined home and show Import before the recovery file is read.
+     * Returns the attempt id a later read must still match.
+     */
+    fun beginRecoveryImport(): Int {
+        recoveryEpoch += 1
         store.clear()
         session = null
         pickedName = ""
@@ -170,6 +183,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         // Bump the ticket so this import's finish cannot clear a later join's busy.
         gridRun.cancel()
         place = Place.Import
+        return recoveryEpoch
     }
 
     fun goFolders() {
@@ -328,10 +342,19 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
                 show(FailBanner(WriteCopy.SPACE_FAIL, WriteCopy.SPACE_NEXT)) { }
                 return
             }
-            dest.parentFile?.mkdirs()
+            val parent = dest.parentFile
+            if (parent != null && !parent.isDirectory) parent.mkdirs()
             dest.writeBytes(bytes)
-        } catch (_: Exception) {
-            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+        } catch (exc: Exception) {
+            val parent = dest.parentFile
+            val denied = storageDenied(exc) || parent?.canWrite() == false
+            if (denied) {
+                show(FailBanner(WriteCopy.PERM_FAIL, WriteCopy.PERM_NEXT)) {
+                    onFilePicked(folder, displayName, bytes)
+                }
+            } else {
+                show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+            }
             return
         }
         val existing = namesInFolder(folder.cap)
@@ -386,6 +409,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         val dropped = board.confirmDiscard() ?: return
         uploads.remove(uploadKey(dropped.folderCap, dropped.name))?.cancel()
         File(dropped.localPath).delete()
+        rememberPendingAdds()
         touch()
     }
 
@@ -511,6 +535,9 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         inviteText = ""
         place = Place.Welcome
         fail = null
+        board.clear()
+        File(filesRoot(), "leasegrid/pending-adds.json").delete()
+        File(filesRoot(), "pending").deleteRecursively()
     }
 
     private fun startUpload(
@@ -527,6 +554,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
             }
             val item = board.begin(folder.cap, name, localPath, size)
             board.fail(folder.cap, name, item.token)
+            rememberPendingAdds()
             touch()
             return
         }
@@ -543,6 +571,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         touch()
         val token = board.tokenOf(armed.cap, name) ?: item.token
         val key = uploadKey(armed.cap, name)
+        rememberPendingAdds()
         uploads.remove(key)?.cancel()
         val upload = scope.launch {
             val ticker = launch {
@@ -598,11 +627,13 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
             if (!result.ok && result.message.contains("already in this folder")) {
                 board.abandon(armed.cap, name, token)
                 board.stageAdd(armed.name, armed.cap, name, localPath, size, setOf(name))
+                rememberPendingAdds()
                 touch()
                 return@launch
             }
             if (!result.ok) {
                 board.fail(armed.cap, name, token)
+                rememberPendingAdds()
                 touch()
                 show(FailBanner(result.message, result.next)) { retryUpload(name) }
                 return@launch
@@ -624,6 +655,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
                 )
             }
             File(localPath).delete()
+            rememberPendingAdds()
             touch()
             reloadIfOpen(armed)
         }
@@ -824,6 +856,111 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     private fun safeName(name: String): String {
         val cleaned = name.replace(Regex("[\\\\/]+"), "_").replace("\u0000", "")
         return if (cleaned.isBlank()) "download.bin" else cleaned.take(120)
+    }
+
+    private fun filesRoot(): File = testFilesDir ?: getApplication<Application>().filesDir
+
+    private fun storageDenied(exc: Exception): Boolean {
+        if (exc is SecurityException) return true
+        if (exc is java.nio.file.AccessDeniedException) return true
+        val text = exc.message?.lowercase().orEmpty()
+        return text.contains("permission denied") || text.contains("eacces")
+    }
+
+    private fun pendingIndex(): File = File(filesRoot(), "leasegrid/pending-adds.json")
+
+    private fun rememberPendingAdds() {
+        val root = filesRoot()
+        val rows = board.allPending().mapNotNull { item ->
+            val rel = relativeInside(root, File(item.localPath)) ?: return@mapNotNull null
+            buildJsonObject {
+                put("folderCap", item.folderCap)
+                put("name", item.name)
+                put("size", item.size)
+                put("path", rel)
+            }
+        }
+        val dest = pendingIndex()
+        if (rows.isEmpty()) {
+            dest.delete()
+            return
+        }
+        dest.parentFile?.mkdirs()
+        dest.writeText(
+            buildJsonObject {
+                putJsonArray("rows") {
+                    for (row in rows) add(row)
+                }
+            }.toString(),
+        )
+    }
+
+    private fun restorePendingAdds() {
+        val dest = pendingIndex()
+        if (!dest.isFile) return
+        val rows = try {
+            json.parseToJsonElement(dest.readText()).jsonObject["rows"]?.jsonArray ?: return
+        } catch (_: Exception) {
+            return
+        }
+        val root = filesRoot()
+        val base = try {
+            root.canonicalFile
+        } catch (_: IOException) {
+            return
+        }
+        val kept = mutableListOf<kotlinx.serialization.json.JsonObject>()
+        for (el in rows) {
+            val obj = el as? kotlinx.serialization.json.JsonObject ?: continue
+            val cap = obj["folderCap"]?.jsonPrimitive?.contentOrNull ?: continue
+            val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: continue
+            val size = obj["size"]?.jsonPrimitive?.content?.toIntOrNull() ?: continue
+            val rel = obj["path"]?.jsonPrimitive?.contentOrNull ?: continue
+            if (rel.startsWith("/") || rel.split("/", "\\").contains("..")) continue
+            val file = try {
+                File(base, rel).canonicalFile
+            } catch (_: IOException) {
+                continue
+            }
+            val path = file.path
+            val rootPath = base.path
+            if (path != rootPath && !path.startsWith(rootPath + File.separator)) continue
+            if (!file.isFile) continue
+            board.restoreFailed(cap, name, file.absolutePath, size)
+            kept.add(obj)
+        }
+        if (kept.size == rows.size) return
+        if (kept.isEmpty()) {
+            dest.delete()
+            return
+        }
+        dest.writeText(
+            buildJsonObject {
+                putJsonArray("rows") {
+                    for (row in kept) add(row)
+                }
+            }.toString(),
+        )
+    }
+
+    private fun relativeInside(root: File, file: File): String? {
+        val base = try {
+            root.canonicalFile
+        } catch (_: IOException) {
+            return null
+        }
+        val target = try {
+            file.canonicalFile
+        } catch (_: IOException) {
+            return null
+        }
+        val rel = try {
+            target.relativeTo(base).path
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        if (rel == ".." || rel.startsWith(".." + File.separator)) return null
+        return rel
     }
 }
 

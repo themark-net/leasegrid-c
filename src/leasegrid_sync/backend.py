@@ -709,7 +709,10 @@ def storage_offered(nodedir: Path) -> bool:
     path = Path(nodedir) / "tahoe.cfg"
     if not path.is_file():
         return False
-    cfg.read(path, encoding="utf-8")
+    try:
+        cfg.read(path, encoding="utf-8")
+    except (configparser.Error, OSError, UnicodeError):
+        return False
     if not cfg.has_section("storage"):
         return False
     try:

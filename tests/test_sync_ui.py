@@ -216,6 +216,60 @@ def test_join_stays_disabled_until_threat_ack(ui: MainWindow):
     assert not ui.join_btn.isEnabled()
 
 
+def test_bad_furl_then_a_good_one_joins(ui: MainWindow, tmp_path: Path):
+    """A malformed furl and a rejected furl stay on Join. The next furl joins."""
+    from tests.test_sync_backend import GOOD_FURL, _fake_tahoe, _welcome_when_node_url
+
+    bad = "pb://badbadbadbad@127.0.0.1:1/swissnumswiss"
+    joiner = MainWindow(
+        nodedir=tmp_path / "joiner" / "tahoe",
+        home=tmp_path / "joiner-home",
+        credit=FakeCredit(),
+        autoload=False,
+    )
+    joiner.tahoe.tahoe_bin = _fake_tahoe(tmp_path)
+    joiner.threat_ack.setChecked(True)
+    joiner.win.show()
+    try:
+        joiner.invite_edit.setText("pb://short")
+        joiner.on_join_invite()
+        malformed = joiner.join_error.text()
+        assert "malformed" in malformed.lower()
+        assert "pb://short" not in malformed
+        assert "pb://" not in malformed
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert joiner.join_btn.isEnabled()
+        assert joiner.invite_edit.isEnabled()
+        assert not joiner.tahoe.nodedir.exists()
+
+        joiner.invite_edit.setText(bad)
+        joiner.on_join_invite()
+        rejected = joiner.join_error.text()
+        assert "FAIL" in rejected
+        assert bad not in rejected
+        assert "pb://" not in rejected
+        assert "Traceback" not in rejected
+        assert "ValueError" not in rejected
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert joiner.join_btn.isEnabled()
+        assert joiner.join_progress.text() == ""
+        assert not joiner.tahoe.nodedir.exists()
+
+        joiner.invite_edit.setText(GOOD_FURL)
+        with patch.object(joiner.tahoe, "welcome", side_effect=_welcome_when_node_url(joiner.tahoe)):
+            with patch.object(joiner.mf, "list_folders", return_value=[]):
+                joiner.on_join_invite()
+        assert joiner.stack.currentWidget() is joiner.main_page
+        assert joiner.join_error.text() == ""
+        assert joiner.tahoe.has_nodedir()
+    finally:
+        joiner.tahoe.stop()
+        joiner.poll.stop()
+        joiner.win.hide()
+        if joiner.tray is not None:
+            joiner.tray.hide()
+
+
 def test_join_failure_is_in_window_not_silent(ui: MainWindow):
     _ack_join(ui)
     ui.invite_edit.setText("nope")

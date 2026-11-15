@@ -135,6 +135,18 @@ def _squash_introducer(text: str) -> str:
     return text.lower()
 
 
+# ${exc.javaClass.simpleName} inside a quote is the class on screen.
+_CLASS_LEAK = re.compile(
+    r"javaClass\s*\.\s*(?:simpleName|name)|::\s*class\s*\.\s*(?:java\s*\.\s*)?simpleName"
+)
+# Log calls may name the class. Other words in that call stay scanned.
+_LOG_CALL = re.compile(r"(?:android\.util\.)?Log\.[diewv]\((?:[^()]|\([^()]*\))*\)")
+
+
+def _without_logged_class_names(source: str) -> str:
+    return _LOG_CALL.sub(lambda match: _CLASS_LEAK.sub("logged", match.group(0)), source)
+
+
 def _banned(literals: list[str]) -> list[str]:
     hits = []
     for item in literals:
@@ -143,13 +155,19 @@ def _banned(literals: list[str]) -> list[str]:
         squashed = _squash_introducer(item)
         split = any(word in squashed for word in ("introducer", "friendnet", "wormhole"))
         shown = _normalize(item)
-        if _DASH.search(shown) or _FORBIDDEN.search(shown) or split:
+        if (
+            _CLASS_LEAK.search(item)
+            or _CLASS_LEAK.search(shown)
+            or _DASH.search(shown)
+            or _FORBIDDEN.search(shown)
+            or split
+        ):
             hits.append(item)
     return hits
 
 
 def _banned_source(source: str) -> list[str]:
-    return _banned(_joined_literals(source))
+    return _banned(_joined_literals(_without_logged_class_names(source)))
 
 
 def test_banned_word_guard_catches_each_word():
@@ -437,3 +455,45 @@ def test_guard_still_passes_plain_copy():
     )
     for sample in clean:
         assert _banned_source(sample) == [], sample
+
+
+def test_guard_catches_an_exception_class_template():
+    """A Text() of ${exc.javaClass.simpleName} is the class on screen.
+
+    Log lines keep the class. The old guard only looked for banned words, so
+    the template passed.
+    """
+    leaked = (
+        'Text("down ${exc.javaClass.simpleName}")',
+        'Text("down ${exc.javaClass.name}")',
+        'show(FailBanner("x", "Retry. ${err::class.simpleName}"))',
+        'reportFail(WriteCopy.READ_FAIL, "pick it again. ${exc.javaClass.simpleName}")',
+    )
+    for sample in leaked:
+        assert _banned_source(sample), sample
+    logs = (
+        'Log.w(TAG, "learn failed: ${exc.javaClass.simpleName}")',
+        'android.util.Log.w("LeasegridSync", "add read failed: ${exc.javaClass.simpleName}")',
+    )
+    for sample in logs:
+        assert _banned_source(sample) == [], sample
+
+
+def test_mainactivity_read_failures_keep_the_class_off_the_next_line():
+    """The picker catches are the next lines at the read sites.
+
+    TooLarge and a thrown read use the plain next line. The class is a Log.w
+    argument. The read itself stops at the cap (readAtMost), so a huge file
+    is the too-big card instead of an unbounded byte array.
+    """
+    text = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    assert "readAtMost(it, WriteCopy.ADD_MAX_BYTES)" in text
+    assert "readAtMost(it, MAX_RECOVERY_BYTES)" in text
+    assert "model.reportFail(WriteCopy.READ_FAIL, WriteCopy.TOO_BIG_NEXT)" in text
+    assert "model.reportFail(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)" in text
+    assert text.count('"check the path and storage permission; Retry."') == 2
+    for line in text.splitlines():
+        if "simpleName" not in line:
+            continue
+        assert "Log.w" in line, line
+        assert "reportFail" not in line and "FailBanner" not in line and "Text(" not in line

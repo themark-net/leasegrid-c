@@ -380,3 +380,77 @@ def test_signal_quits_and_reaps_the_stub(tmp_path: Path, sig: int) -> None:
             for pid in _pids_in(path):
                 _remember(pid)
                 _kill_pid(pid)
+
+
+@pytest.mark.parametrize("sig", _signals())
+def test_signal_during_startup_does_not_orphan_the_daemon(tmp_path: Path, sig: int) -> None:
+    """A quit signal while Tahoe is spawning still reaps that process group.
+
+    The quit handler used to be armed only after autoload returned. A signal in
+    that window killed Sync and left the new-session daemon running.
+    """
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    nodedir.mkdir(parents=True)
+    (nodedir / "tahoe.cfg").write_text("[node]\nnickname = stub\n", encoding="utf-8")
+    bins = tmp_path / "bin"
+    bins.mkdir()
+    tahoe_bin = _executable(bins, "tahoe", _STUB)
+    mf_bin = _executable(bins, "magic-folder", _MF_STUB)
+    pidfile = tmp_path / "tahoe.pid"
+    child_pidfile = tmp_path / "tahoe-child.pid"
+    err_path = tmp_path / "app.err"
+    env = os.environ.copy()
+    env["LEASEGRID_SYNC_HOME"] = str(home)
+    env["LEASEGRID_TAHOE_NODEDIR"] = str(nodedir)
+    env["LEASEGRID_TAHOE_BIN"] = tahoe_bin
+    env["LEASEGRID_MAGIC_FOLDER_BIN"] = mf_bin
+    env["LEASEGRID_TEST_TAHOE_PIDFILE"] = str(pidfile)
+    env["LEASEGRID_TEST_TAHOE_CHILD_PID"] = str(child_pidfile)
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env.pop("LEASEGRID_TEST_SIGNAL_READY", None)
+    err_f = err_path.open("w", encoding="utf-8")
+    driver = tmp_path / "hooked_main.py"
+    driver.write_text(_HOOKED_MAIN, encoding="utf-8")
+    kwargs = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    proc = subprocess.Popen(
+        [sys.executable, str(driver), "--offscreen", "--nodedir", str(nodedir)],
+        stdout=subprocess.DEVNULL,
+        stderr=err_f,
+        env=env,
+        **kwargs,
+    )
+    stub_pid = 0
+    child_pid = 0
+    try:
+        def spawned() -> bool:
+            return pidfile.is_file() and child_pidfile.is_file()
+
+        assert _wait_until(lambda: spawned() or proc.poll() is not None, 25), (
+            "daemon did not spawn: %s" % err_path.read_text(encoding="utf-8")
+        )
+        assert proc.poll() is None, err_path.read_text(encoding="utf-8")
+        stub_pid = int(pidfile.read_text(encoding="utf-8").strip())
+        child_pid = int(child_pidfile.read_text(encoding="utf-8").strip())
+        _remember(stub_pid)
+        _remember(child_pid)
+        send = sig
+        if sys.platform == "win32" and sig == getattr(signal, "SIGBREAK", None):
+            send = signal.CTRL_BREAK_EVENT
+        os.kill(proc.pid, send)
+        assert _wait_until(lambda: proc.poll() is not None, 20), err_path.read_text(encoding="utf-8")
+        assert proc.returncode == 0, err_path.read_text(encoding="utf-8")
+        assert _wait_until(lambda: _reaped(stub_pid), 5), "tahoe survived startup signal"
+        assert _reaped(child_pid), "grandchild survived startup signal"
+        assert "Traceback" not in err_path.read_text(encoding="utf-8")
+    finally:
+        err_f.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        for path in (pidfile, child_pidfile):
+            for pid in _pids_in(path):
+                _remember(pid)
+                _kill_pid(pid)

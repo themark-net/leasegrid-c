@@ -43,6 +43,31 @@ MF_STOP_WAIT = 5.0
 LOG_ROTATE_BYTES = 1024 * 1024
 
 
+# Set from a signal handler. start() and ensure_running() notice it between polls
+# so a quit in the first moments of a spawn still reaps the daemon.
+_QUIT_REQUESTED = False
+
+
+def request_quit() -> None:
+    """Record a quit signal. Safe to call from a signal handler."""
+    global _QUIT_REQUESTED
+    _QUIT_REQUESTED = True
+
+
+def quit_requested() -> bool:
+    return _QUIT_REQUESTED
+
+
+class ShutdownRequested(Exception):
+    """A quit signal arrived while a daemon was starting."""
+
+
+# Pid files we write for daemons this process starts. Tahoe's own twistd.pid
+# is read as well, and only a command line that names our directory is stopped.
+TAHOE_PID_FILENAME = "leasegrid-tahoe.pid"
+MF_PID_FILENAME = "leasegrid-magic-folder.pid"
+
+
 class SyncError(Exception):
     """Buyer-visible failure. ``next_hint`` is the in-window Next line.
 
@@ -453,6 +478,204 @@ def rotate_log(path: Path) -> None:
         os.replace(path, backup)
     except OSError:
         return
+
+
+def _pid_alive(pid: int) -> bool:
+    """True when pid still has a process table entry. A zombie counts as alive."""
+    if pid <= 0:
+        return False
+    if sys.platform == "linux":
+        return Path("/proc/%d" % pid).exists()
+    if sys.platform == "darwin":
+        try:
+            proc = subprocess.run(
+                ["ps", "-p", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return proc.returncode == 0
+    return False
+
+
+def _process_snapshot(pid: int) -> Optional[tuple[int, list[str]]]:
+    """(uid, argv) for a live process, or None when we cannot prove both.
+
+    No snapshot means the caller must not signal. Windows is in that bucket:
+    the command line is not available without guessing.
+    """
+    if pid <= 0:
+        return None
+    if sys.platform == "linux":
+        try:
+            status = Path("/proc/%d/status" % pid).read_text(encoding="utf-8")
+            raw = Path("/proc/%d/cmdline" % pid).read_bytes()
+        except OSError:
+            return None
+        uid = None
+        for line in status.splitlines():
+            if line.startswith("Uid:"):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    uid = int(parts[1])
+                break
+        if uid is None:
+            return None
+        args = [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+        return uid, args
+    if sys.platform == "darwin":
+        return _darwin_snapshot(pid)
+    return None
+
+
+def _darwin_snapshot(pid: int) -> Optional[tuple[int, list[str]]]:
+    import shlex
+
+    try:
+        proc = subprocess.run(
+            ["ps", "-p", str(pid), "-ww", "-o", "uid=", "-o", "args="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    line = proc.stdout.strip()
+    if proc.returncode != 0 or not line:
+        return None
+    bits = line.split(None, 1)
+    if not bits or not bits[0].isdigit():
+        return None
+    args = shlex.split(bits[1]) if len(bits) > 1 else []
+    return int(bits[0]), args
+
+
+def _args_contain_directory(args: list[str], directory: str) -> bool:
+    """True when an argv element is that directory or a path inside it."""
+    if not directory:
+        return False
+    prefix = directory + os.sep
+    for arg in args:
+        if arg == directory or arg.startswith(prefix):
+            return True
+    return False
+
+
+def _process_matches_directory(pid: int, directory: str) -> bool:
+    """Our uid, and the command line names this directory. Never pid 1 or us."""
+    if pid <= 1 or pid == os.getpid():
+        return False
+    snap = _process_snapshot(pid)
+    if snap is None:
+        return False
+    uid, args = snap
+    if uid != os.getuid():
+        return False
+    return _args_contain_directory(args, directory)
+
+
+def _stop_matched_process(pid: int, directory: str) -> None:
+    """Stop one verified daemon. Re-checks identity before each signal.
+
+    Windows returns first: we cannot prove a command line there, so we do not
+    signal. The group kill runs only when this pid is still the session leader
+    and that group is not ours.
+    """
+    if sys.platform == "win32":
+        return None
+    if not _process_matches_directory(pid, directory):
+        return None
+    try:
+        # nosemgrep: signal-to-stored-pid -- uid and argv re-checked above; not a reaped child
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return None
+    deadline = time.time() + 0.4
+    while time.time() < deadline and _pid_alive(pid):
+        if not _process_matches_directory(pid, directory):
+            return None
+        time.sleep(0.05)
+    if not _pid_alive(pid) or not _process_matches_directory(pid, directory):
+        return None
+    pgid = None
+    try:
+        # nosemgrep: posix-only-process-api -- win32 returned above; pid was re-checked
+        pgid = os.getpgid(pid)
+    except OSError:
+        pgid = None
+    try:
+        # nosemgrep: posix-only-process-api -- win32 returned above; compared only to avoid our group
+        own = os.getpgrp()
+    except OSError:
+        own = None
+    if pgid is not None and pgid > 1 and pgid == pid and pgid != own:
+        try:
+            # nosemgrep: signal-to-stored-pid, posix-only-process-api -- this leader's own group, re-checked above
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            return
+        return
+    try:
+        # nosemgrep: signal-to-stored-pid -- same pid re-checked above; not our process group
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        return
+
+
+def _read_pidfile(path: Path) -> Optional[int]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    lines = text.strip().splitlines()
+    if not lines or not lines[0].strip().isdigit():
+        return None
+    pid = int(lines[0].strip())
+    if pid <= 0:
+        return None
+    return pid
+
+
+def _write_pidfile(path: Path, pid: int) -> None:
+    try:
+        path.write_text("%d\n" % pid, encoding="utf-8")
+    except OSError:
+        return
+
+
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        return
+
+
+def stop_orphan_for_directory(pid_paths: list[Path], directory: Path) -> None:
+    """Stop a leftover daemon for this directory. Leave every other process alone."""
+    needle = str(Path(directory).resolve())
+    if not needle:
+        return
+    for path in pid_paths:
+        pid = _read_pidfile(path)
+        if pid is None:
+            continue
+        if not _pid_alive(pid):
+            _unlink_quiet(path)
+            continue
+        if not _process_matches_directory(pid, needle):
+            continue
+        _stop_matched_process(pid, needle)
+        if not _pid_alive(pid):
+            _unlink_quiet(path)
+
+
+def _reap_because_quit(proc: subprocess.Popen) -> None:
+    """Reap a daemon we just started because a quit signal arrived."""
+    reap_child(proc, 0.5)
 
 
 def popen_hidden(cmd: list[str], log_f) -> subprocess.Popen:
@@ -1288,6 +1511,15 @@ class TahoeClient:
             # group before starting another daemon.
             reap_child(self._proc, TAHOE_STOP_WAIT)
             self._proc = None
+        if quit_requested():
+            raise ShutdownRequested()
+        # A previous crash can leave tahoe running for this node dir only.
+        stop_orphan_for_directory(
+            [self.nodedir / TAHOE_PID_FILENAME, self.nodedir / "twistd.pid"],
+            self.nodedir,
+        )
+        if quit_requested():
+            raise ShutdownRequested()
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             rotate_log(self.log_path)
@@ -1299,11 +1531,19 @@ class TahoeClient:
                 [self.require_bin(), "run", str(self.nodedir)],
                 log_f,
             )
+            _write_pidfile(self.nodedir / TAHOE_PID_FILENAME, self._proc.pid)
         except OSError as exc:
             log_f.close()
             raise join_spawn_failure(exc, invite="", code=False, timeout=0) from exc
         deadline = time.time() + timeout
         while time.time() < deadline:
+            if quit_requested():
+                proc = self._proc
+                self._proc = None
+                if proc is not None:
+                    _reap_because_quit(proc)
+                _unlink_quiet(self.nodedir / TAHOE_PID_FILENAME)
+                raise ShutdownRequested()
             if _leader_state(self._proc) != "running":
                 proc = self._proc
                 self._proc = None
@@ -1326,9 +1566,13 @@ class TahoeClient:
         proc = self._proc
         if proc is None:
             return
+        pid = proc.pid
         timeout = TAHOE_STOP_WAIT if terminate_timeout is None else terminate_timeout
         reap_child(proc, timeout)
         self._proc = None
+        recorded = _read_pidfile(self.nodedir / TAHOE_PID_FILENAME)
+        if recorded is None or recorded == pid:
+            _unlink_quiet(self.nodedir / TAHOE_PID_FILENAME)
 
     def owns_process(self) -> bool:
         """True while this process still has to reap the daemon it started.
@@ -1689,6 +1933,12 @@ class MagicFolderCtl:
         self.ensure_init()
         if self.is_running():
             return
+        stop_orphan_for_directory(
+            [self.config_dir / MF_PID_FILENAME],
+            self.config_dir,
+        )
+        if quit_requested():
+            raise ShutdownRequested()
         if not _port_free(self.listen_port) and not self.is_running():
             raise SyncError(
                 "folder not added. Port %d is busy and Magic Folder is not answering."
@@ -1709,6 +1959,7 @@ class MagicFolderCtl:
                 [self.require_bin(), "--config", str(self.config_dir), "run"],
                 log_f,
             )
+            _write_pidfile(self.config_dir / MF_PID_FILENAME, self._proc.pid)
         except OSError as exc:
             log_f.close()
             raise SyncError(
@@ -1717,6 +1968,13 @@ class MagicFolderCtl:
             ) from exc
         deadline = time.time() + 20
         while time.time() < deadline:
+            if quit_requested():
+                proc = self._proc
+                self._proc = None
+                if proc is not None:
+                    _reap_because_quit(proc)
+                _unlink_quiet(self.config_dir / MF_PID_FILENAME)
+                raise ShutdownRequested()
             if _leader_state(self._proc) != "running":
                 proc = self._proc
                 self._proc = None
@@ -1740,9 +1998,13 @@ class MagicFolderCtl:
         proc = self._proc
         if proc is None:
             return
+        pid = proc.pid
         timeout = MF_STOP_WAIT if terminate_timeout is None else terminate_timeout
         reap_child(proc, timeout)
         self._proc = None
+        recorded = _read_pidfile(self.config_dir / MF_PID_FILENAME)
+        if recorded is None or recorded == pid:
+            _unlink_quiet(self.config_dir / MF_PID_FILENAME)
 
     def _auth_headers(self) -> dict[str, str]:
         token_path = self.config_dir / "api_token"

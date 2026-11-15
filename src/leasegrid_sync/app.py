@@ -28,8 +28,11 @@ from .backend import (
     DiskSlices,
     FolderRow,
     MagicFolderCtl,
+    ShutdownRequested,
     SyncError,
     TahoeClient,
+    quit_requested,
+    request_quit,
     apply_offer_percent,
     default_home,
     format_bytes,
@@ -4217,14 +4220,29 @@ def _signal_names() -> tuple:
     return tuple(getattr(signal, name) for name in names if hasattr(signal, name))
 
 
-def _install_signal_quit(ui) -> None:
+def _announce_signal_ready() -> None:
+    ready = _test_env("LEASEGRID_TEST_SIGNAL_READY")
+    if not ready:
+        return
+    try:
+        Path(ready).write_text("ready\n", encoding="utf-8")
+    except OSError:
+        return
+
+
+def _install_signal_quit(ui, *, announce: bool = False) -> None:
     """Wake the Qt loop when a quit signal arrives, then call ``ui.quit()``.
 
     The handler only sets a flag. ``set_wakeup_fd`` writes one byte from C so
     the loop wakes during ``exec_``. The socket notifier and a short timer run
-    on the Qt thread and are the only places that touch Qt.
+    on the Qt thread and are the only places that touch Qt. ``announce`` writes
+    the test ready file, and only the call just before the event loop does that.
+    An earlier call still arms the handler, so a signal during daemon spawn is
+    caught.
     """
     if getattr(ui, "_signal_quit_state", None) is not None:
+        if announce:
+            _announce_signal_ready()
         return
     read_s, write_s = socket.socketpair()
     read_s.setblocking(False)
@@ -4233,6 +4251,7 @@ def _install_signal_quit(ui) -> None:
     ui._signal_quit_requested = False
 
     def _handler(signum, frame) -> None:
+        request_quit()
         ui._signal_quit_requested = True
 
     previous = {}
@@ -4261,12 +4280,8 @@ def _install_signal_quit(ui) -> None:
     timer.timeout.connect(_on_signal)
     timer.start()
     ui._signal_quit_state = (read_s, write_s, notifier, timer, prev_fd, previous)
-    ready = _test_env("LEASEGRID_TEST_SIGNAL_READY")
-    if ready:
-        try:
-            Path(ready).write_text("ready\n", encoding="utf-8")
-        except OSError:
-            pass
+    if announce:
+        _announce_signal_ready()
 
 
 def _remove_signal_quit(ui) -> None:
@@ -4324,6 +4339,9 @@ def run_app(
         return 0
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)
     install_excepthook(ui)
+    # Before any daemon spawn. A signal during autoload must not kill us and
+    # leave Tahoe or Magic Folder in its own session.
+    _install_signal_quit(ui)
     ui.show()
     ui.QtWidgets.QApplication.processEvents()
     _start_join_server(ui)
@@ -4340,7 +4358,10 @@ def run_app(
                 print(exc.banner(), file=sys.stderr)
                 return 1
         return _run_modes(ui, screenshot, dogfood_folder, credit_dogfood, credit_tier)
+    except ShutdownRequested:
+        return 0
     finally:
+        _remove_signal_quit(ui)
         ui.shutdown()
 
 
@@ -4351,9 +4372,13 @@ def _run_modes(
     credit_dogfood: bool,
     credit_tier: str,
 ) -> int:
+    if quit_requested():
+        raise ShutdownRequested()
     if not (credit_dogfood or dogfood_folder is not None):
         # Window is visible first so a slow Tahoe start shows progress copy, not a blank desktop.
         ui._try_autoload()
+    if quit_requested():
+        raise ShutdownRequested()
     if credit_dogfood:
         try:
             result = ui.dogfood_credit(screenshot=screenshot, tier=credit_tier)
@@ -4390,7 +4415,7 @@ def _run_modes(
     if screenshot:
         ui.QtCore.QTimer.singleShot(400, lambda: ui.grab_to(screenshot))
         ui.QtCore.QTimer.singleShot(800, ui.app.quit)
-    _install_signal_quit(ui)
+    _install_signal_quit(ui, announce=True)
     try:
         return ui.app.exec_()
     finally:

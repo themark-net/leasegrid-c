@@ -1989,6 +1989,70 @@ def test_topup_close_stops_timer_and_lists_pending(ui: MainWindow, fake_credit: 
     assert "0.12" in ui.credit_pending.text() or "20" in ui.credit_pending.text()
 
 
+def test_export_to_an_unwritable_path_keeps_the_bytes_and_retries(ui: MainWindow, tmp_path: Path):
+    """A path we cannot write leaves what was already there. Another path still exports."""
+    from leasegrid_sync.app import ExportRecoveryDialog
+    from leasegrid_sync.credit import CreditCtl
+    from leasegrid_sync.recovery import EXPORT_FAIL_MSG, RecoveryCtl, decode_recovery_file
+
+    nodedir = ui.tahoe.nodedir
+    (nodedir / "private").mkdir()
+    (nodedir / "tahoe.cfg").write_text(
+        "[node]\nnickname = nimo\n[client]\nshares.needed = 2\nshares.happy = 3\n"
+        "shares.total = 3\n",
+        encoding="utf-8",
+    )
+    (nodedir / "private" / "introducers.yaml").write_text(
+        "introducers:\n  default:\n    furl: pb://hashhashhash@127.0.0.1:45001/swissnumswiss\n",
+        encoding="utf-8",
+    )
+    recovery = RecoveryCtl(
+        ui.home, ui.tahoe, ui.mf, CreditCtl(home=ui.home, issuer_url="http://127.0.0.1:1")
+    )
+    dlg = ExportRecoveryDialog(ui.win, recovery, ui.QtWidgets, default_dir=tmp_path)
+    dlg.ack_loss.setChecked(True)
+    dlg.ack_store.setChecked(True)
+    dlg.pass_edit.setText("pw")
+    dlg.confirm_edit.setText("pw")
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_bytes(b"stay")
+    dlg.path_edit.setText(str(blocker / "key.leasegrid-recovery"))
+    dlg.on_write()
+    assert dlg.written is None
+    assert EXPORT_FAIL_MSG in dlg.status.text()
+    assert "\nNext: " in dlg.status.text()
+    assert "Traceback" not in dlg.status.text()
+    assert dlg.write_btn.isEnabled()
+    assert dlg.write_btn.text() == "Retry export"
+    assert blocker.read_bytes() == b"stay"
+    assert recovery.last_export() is None
+
+    frozen = tmp_path / "frozen.leasegrid-recovery"
+    if os.name != "nt" and os.geteuid() != 0:
+        frozen.write_bytes(b"keep-me")
+        frozen.chmod(0)
+        try:
+            dlg.path_edit.setText(str(frozen))
+            dlg.on_write()
+            assert dlg.written is None
+            assert EXPORT_FAIL_MSG in dlg.status.text()
+            frozen.chmod(0o644)
+            assert frozen.read_bytes() == b"keep-me"
+        finally:
+            frozen.chmod(0o644)
+
+    good = tmp_path / "keys" / "ok.leasegrid-recovery"
+    dlg.path_edit.setText(str(good))
+    dlg.on_write()
+    assert dlg.written == good
+    assert decode_recovery_file(good.read_bytes(), "pw").nickname == "nimo"
+    assert blocker.read_bytes() == b"stay"
+    if frozen.is_file():
+        assert frozen.read_bytes() == b"keep-me"
+    assert recovery.last_export()["path"] == str(good)
+
+
 def test_export_warn_mentions_credit_seed(ui: MainWindow):
     from leasegrid_sync.app import ExportRecoveryDialog
     from leasegrid_sync.recovery import EXPORT_WARN

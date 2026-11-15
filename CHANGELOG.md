@@ -4,6 +4,7 @@
 
 - Offering disk on a loopback address (the default, or `LEASEGRID_STORAGE_HOSTNAME` set to another 127.x address) listens on that address only. A LAN hostname is unchanged, so other computers can still connect.
 - A Magic Folder scan or remote poll uses the daemon's PUT call, so Sync's request actually runs instead of waiting out the scan interval.
+- A Sync home that cannot be created, or a home folder that cannot hold the lock file, says what is wrong and what to do next. It does not open a second window, and it does not say Leasegrid Sync is already running.
 - Android recovery import: a file name in the recovery extra is read from the app files folder. A relative path that leaves that folder (including `../` or a link that points outside) is refused, and the outside file is not read. An absolute path is still used as given ([#26](https://github.com/themark-net/leasegrid-c/issues/26)).
 - Android list and remove errors no longer say "download". A folder list that cannot reach storage says it could not load folders. A remove that cannot reach storage says it could not remove this file ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
 - Android join paste: a soft hyphen (U+00AD) is dropped like the other invisible paste marks, so the link still joins. A right-to-left override, a plus sign, or a second @ in the link is reported as incomplete ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).

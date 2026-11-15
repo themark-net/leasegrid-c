@@ -18,6 +18,7 @@ APP_MODEL = INVITE.parents[1] / "ui" / "AppModel.kt"
 SESSION_FLOW = INVITE.parents[1] / "ui" / "SessionFlow.kt"
 SYNC_APP = INVITE.parents[1] / "ui" / "SyncApp.kt"
 MAIN_ACTIVITY = INVITE.parents[1] / "MainActivity.kt"
+RECOVERY_CODEC = INVITE.parents[1] / "recovery" / "RecoveryCodec.kt"
 
 # Exact tokens the code still uses. Any other literal that names them is copy.
 _CODE_OK = frozenset({"pb://", "furl"})
@@ -139,12 +140,25 @@ def _squash_introducer(text: str) -> str:
 _CLASS_LEAK = re.compile(
     r"javaClass\s*\.\s*(?:simpleName|name)|::\s*class\s*\.\s*(?:java\s*\.\s*)?simpleName"
 )
-# Log calls may name the class. Other words in that call stay scanned.
+# A log line is not on screen. The whole call is dropped before the word scan.
 _LOG_CALL = re.compile(r"(?:android\.util\.)?Log\.[diewv]\((?:[^()]|\([^()]*\))*\)")
 
 
 def _without_logged_class_names(source: str) -> str:
-    return _LOG_CALL.sub(lambda match: _CLASS_LEAK.sub("logged", match.group(0)), source)
+    return _LOG_CALL.sub('Log.w(TAG, "logged")', source)
+
+
+def _bounded_word(text: str, word: str) -> bool:
+    """True when [word] is in [text] and the next character does not continue it."""
+    start = 0
+    while True:
+        found = text.find(word, start)
+        if found < 0:
+            return False
+        after = found + len(word)
+        if after >= len(text) or not text[after].isalpha():
+            return True
+        start = found + 1
 
 
 def _banned(literals: list[str]) -> list[str]:
@@ -153,14 +167,19 @@ def _banned(literals: list[str]) -> list[str]:
         if item in _CODE_OK or item in _CODE_INTRODUCER_KEYS:
             continue
         squashed = _squash_introducer(item)
-        split = any(word in squashed for word in ("introducer", "friendnet", "wormhole"))
         shown = _normalize(item)
+        shown_low = shown.lower()
+        # Spaces stay for wormhole, so "worm hole" is not the jargon word.
+        # friendnet uses the squashed text with a boundary, so "friend network"
+        # (friendnetwork) is kept and "friend net" is still caught.
         if (
             _CLASS_LEAK.search(item)
             or _CLASS_LEAK.search(shown)
             or _DASH.search(shown)
             or _FORBIDDEN.search(shown)
-            or split
+            or "introducer" in squashed
+            or _bounded_word(squashed, "friendnet")
+            or "wormhole" in shown_low
         ):
             hits.append(item)
     return hits
@@ -444,6 +463,35 @@ def test_guard_sees_through_hidden_spellings():
     )
     for sample in samples:
         assert _banned_source(sample), sample
+
+
+def test_guard_allows_friend_network_worm_hole_and_log_lines():
+    """Squashing every space made two ordinary phrases look banned.
+
+    "friend network" and "worm hole" are not the jargon words. A log line is
+    not on screen, so the word there is not copy. The joined jargon still fails.
+    """
+    allowed = (
+        'Text("a friend network")',
+        'Text("worm hole")',
+        'Log.w(TAG, "introducer failed: ${exc.javaClass.simpleName}")',
+        'Log.w(TAG, "friendnet is down")',
+        'android.util.Log.w("LeasegridSync", "wormhole code in the log")',
+    )
+    for sample in allowed:
+        assert _banned_source(sample) == [], sample
+    assert _banned_source('Text("this friendnet")')
+    assert _banned_source('Text("wormhole")')
+    assert _banned_source('Text("Intro" + "ducer")')
+    assert _banned_source('Text("friend" + "net")')
+
+
+def test_recovery_codec_passes_the_banned_word_guard():
+    """C4: a banned word in RecoveryCodec.kt used to sit outside the scan."""
+    text = RECOVERY_CODEC.read_text(encoding="utf-8")
+    assert "introducer_furl" in text
+    assert _banned_source(text) == []
+    assert _banned_source(text + '\nval leak = "on friendnet"')
 
 
 def test_guard_still_passes_plain_copy():

@@ -28,6 +28,8 @@ Headless: `leasegrid-sync --status` · `leasegrid-sync --credit-status`. CI: `QT
 | Symptom | Likely cause | Recovery |
 |---------|--------------|----------|
 | Join FAIL, empty/garbage invite | Not a short code or join link | Paste a fresh short code or join link; Retry. A raw introducer furl is not the normal path |
+| Join FAIL, short code stops mid-word | The word is only the start of a longer word | Ask for the full short code. No node is created |
+| Join paste has an invisible hyphen | A chat app inserted a soft hyphen or a zero-width mark | The mark is dropped and the code or link still joins. A right-to-left override is refused |
 | Join FAIL, HTTP URL | Buyer pasted WUI | Rejected; paste a short code or join link, or use an existing nodedir |
 | Join FAIL, Tahoe unreachable | Client not running | `tahoe run ~/.tahoe` |
 | Add folder FAIL, daemon missing | `magic-folder` not on PATH | Install `magic-folder` 24.3; see U1 dogfood |

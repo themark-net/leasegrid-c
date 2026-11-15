@@ -20,6 +20,7 @@ from typing import Optional
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 from .backend import SyncError, is_wormhole_code, validate_introducer_furl
+from .pgp_words import WORMHOLE_WORDS
 
 # Tahoe 1.20 prints this once the inviter is parked on the relay.
 _INVITE_CODE_LINE = re.compile(r"Invite Code for client:\s*(\S+)", re.IGNORECASE)
@@ -27,6 +28,39 @@ INVITE_CODE_TIMEOUT = 20.0
 
 DEFAULT_JOIN_ORIGIN = "http://leasegrid.i2p/join"
 NATIVE_SCHEME = "leasegrid:join"
+
+# Chat and mail insert these. None of them is part of a code or a furl.
+# U+202E is not in this set: it can hide a different host, so the paste is refused.
+_PASTE_MARKS = frozenset("\u00ad\u200b\u200c\u200d\u2060\ufeff")
+_SEGMENT_LETTERS = re.compile(r"^([a-z]+)(\d*)$")
+_INVALID_CODE = (
+    "could not join this friendnet. Invite code invalid.",
+    "ask your inviter for a fresh short code like 7-word-word, or a join link; Retry.",
+)
+
+
+def normalize_invite_paste(raw: str) -> str:
+    """Drop invisible paste marks, then trim. A right-to-left override stays."""
+    text = raw or ""
+    if any(ch in _PASTE_MARKS for ch in text):
+        text = "".join(ch for ch in text if ch not in _PASTE_MARKS)
+    return text.strip()
+
+
+def _segment_is_pgp_prefix(segment: str) -> bool:
+    """True when the letters only start a PGP word and are not that word.
+
+    ``dead`` starts ``deadbolt``. ``deadbolt`` and ``guitarist2`` do not.
+    A word that is neither a PGP word nor the start of one stays a code, so
+    the invite service can still say it expired or was not accepted.
+    """
+    match = _SEGMENT_LETTERS.match(segment.lower())
+    if not match:
+        return False
+    letters = match.group(1)
+    if letters in WORMHOLE_WORDS:
+        return False
+    return any(word.startswith(letters) for word in WORMHOLE_WORDS)
 
 
 @dataclass
@@ -75,13 +109,18 @@ def to_native_url(url_or_furl: str) -> str:
 
 
 def parse_invite(raw: str) -> ParsedInvite:
-    text = (raw or "").strip()
+    text = normalize_invite_paste(raw)
+    if "\u202e" in text:
+        raise SyncError(*_INVALID_CODE)
     if not text:
         raise SyncError(
             "could not join this friendnet. Invite is empty.",
             "paste a join link, a short code like 7-word-word, or scan the QR.",
         )
     if is_wormhole_code(text):
+        parts = text.split("-")[1:]
+        if any(_segment_is_pgp_prefix(part) for part in parts):
+            raise SyncError(*_INVALID_CODE)
         return ParsedInvite(kind="code", token=text.lower())
     if text.startswith("pb://"):
         return ParsedInvite(kind="furl", token=validate_introducer_furl(text))
@@ -128,10 +167,7 @@ def parse_invite(raw: str) -> ParsedInvite:
             "Leasegrid Sync does not use the Tahoe web UI. Paste a short code or a join link.",
         )
 
-    raise SyncError(
-        "could not join this friendnet. Invite code invalid.",
-        "ask your inviter for a fresh short code like 7-word-word, or a join link; Retry.",
-    )
+    raise SyncError(*_INVALID_CODE)
 
 
 def _from_fragment(frag: str, origin: str = "") -> ParsedInvite:

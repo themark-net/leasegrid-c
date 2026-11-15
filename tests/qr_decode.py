@@ -614,7 +614,7 @@ INVITE_JOIN_TAHOE = "\n".join([
     "        raise SystemExit(1)",
     "    nodedir.mkdir(parents=True)",
     "    join = [a for a in args if a.startswith(\"--join=\")]",
-    "    if join == [\"--join=0-dead-code\"]:",
+    "    if join == [\"--join=0-stale-quiet\"]:",
     "        sys.stderr.write(\"Traceback (most recent call last):\\n\")",
     "        sys.stderr.write(\"wormhole.errors.LonelyError\\n\")",
     "        raise SystemExit(1)",

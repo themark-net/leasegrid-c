@@ -330,6 +330,96 @@ def test_truncated_invite_code_then_a_full_one_joins(tmp_path: Path):
             joiner.tray.hide()
 
 
+def test_join_offline_recover_after_a_bad_paste(tmp_path: Path):
+    """A prefix code is refused. A marked code joins. Offline names a next step, then clears."""
+    from tests.test_sync_backend import _fake_tahoe, _welcome_when_node_url
+
+    row = FolderRow(name="Docs", path="/tmp/docs", status="Up to date", detail="1 file")
+    joiner = MainWindow(
+        nodedir=tmp_path / "joiner" / "tahoe",
+        home=tmp_path / "joiner-home",
+        credit=FakeCredit(),
+        autoload=False,
+    )
+    joiner.tahoe.tahoe_bin = _fake_tahoe(tmp_path)
+    joiner.threat_ack.setChecked(True)
+    joiner.win.show()
+    online = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+        announced_servers=[
+            {"nickname": "storage-1", "nodeid": "abc", "connection_status": "connected"}
+        ],
+    )
+    intro_down = ConnectionStatus(
+        state="Offline",
+        detail="Tahoe is up but the friendnet introducer is not connected",
+    )
+    try:
+        joiner.invite_edit.setText("0-dead-code")
+        joiner.on_join_invite()
+        refused = joiner.join_error.text()
+        assert "invalid" in refused.lower()
+        assert "expire" not in refused.lower()
+        assert "0-dead-code" not in refused
+        assert "deadbolt" not in refused.lower()
+        assert "\nNext:" in refused
+        assert joiner.join_btn.isEnabled()
+        assert joiner.invite_edit.isEnabled()
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert not joiner.tahoe.nodedir.exists()
+        assert_no_raw_user_text(refused)
+
+        joiner.invite_edit.setText("7-gui\u00adtarist-revenge")
+        welcome = _welcome_when_node_url(joiner.tahoe)
+        with patch.object(joiner.tahoe, "welcome", side_effect=welcome), patch.object(
+            joiner.mf, "list_folders", return_value=[row]
+        ):
+            joiner.on_join_invite()
+        assert joiner.stack.currentWidget() is joiner.main_page
+        assert joiner.join_error.text() == ""
+        cfg = (joiner.tahoe.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--join=7-guitarist-revenge" in cfg
+        assert "\u00ad" not in cfg
+        assert joiner.table.item(0, 0).text() == "Docs"
+        assert joiner.table.item(0, 1).text() == "Up to date"
+        joiner.poll.stop()
+
+        with patch.object(joiner.tahoe, "connection_status", return_value=intro_down), patch.object(
+            joiner.mf, "list_folders", return_value=[row]
+        ):
+            joiner.refresh()
+        assert joiner.stack.currentWidget() is joiner.main_page
+        assert joiner.status_chip.text() == "Offline"
+        banner = joiner.folder_error.text()
+        assert banner.startswith("FAIL")
+        assert "\nNext:" in banner
+        assert "could not reach this friendnet" in banner
+        assert "introducer" not in banner.lower()
+        assert "tahoe" not in banner.lower()
+        assert "pb://" not in banner
+        assert joiner.table.item(0, 0).text() == "Docs"
+        assert joiner.table.item(0, 1).text() == "Up to date"
+
+        with patch.object(joiner.tahoe, "connection_status", return_value=online), patch.object(
+            joiner.mf, "list_folders", return_value=[row]
+        ):
+            joiner.refresh()
+        assert joiner.folder_error.text() == ""
+        assert joiner.status_chip.text().startswith("Online")
+        assert "1 computer" in joiner.status_chip.text()
+        assert joiner.table.item(0, 0).text() == "Docs"
+        assert joiner.stack.currentWidget() is joiner.main_page
+    finally:
+        joiner.tahoe.stop()
+        joiner.poll.stop()
+        joiner.win.hide()
+        if joiner.tray is not None:
+            joiner.tray.hide()
+
+
 def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
     """A cut-off key file, then a key whose invite never connects, then a good key."""
     from leasegrid_sync.app import ImportRecoveryDialog
@@ -1230,7 +1320,7 @@ def test_share_qr_copy_then_join_recovers_from_bad_codes(ui: MainWindow, tmp_pat
         assert joiner.join_btn.isEnabled()
         assert not joiner.tahoe.nodedir.exists()
 
-        joiner.invite_edit.setText("0-dead-code")
+        joiner.invite_edit.setText("0-stale-quiet")
         joiner.on_join_invite()
         expired = joiner.join_error.text()
         assert "expire" in expired.lower()

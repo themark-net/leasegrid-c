@@ -5,6 +5,8 @@
 - Android: a leasegrid join link that puts the address in the query (`?`) joins, the same as on the computer. A non-empty `#` still wins. A web page address that only has a query is still rejected.
 - Android: Replace, Keep both, or Cancel stays on screen if the process dies while that question is open. The file is not uploaded until one of those is chosen. A stored path that leaves the phone's files is dropped.
 - Android: the list of files still waiting to upload is replaced as a whole. A write that stops keeps the previous list. A half-written temp file next to that list is not used.
+- Desktop join: a short code that stops at the start of a word (such as the start of "deadbolt") is refused, and no node is created. The next full code can still join. A code the invite service says has expired still says so.
+- Desktop join paste: a soft hyphen or another invisible paste mark in a short code or join link is dropped, so the link still joins. A right-to-left override in that paste is refused.
 - Android: an add to a folder gives up after about 25 seconds when storage cannot be reached, the same budget as list, download and remove. It used to open a connection for every share.
 - Android: a download the phone cannot save, or a file the phone cannot read for an add, says the phone would not allow it and to check storage permission, then Retry. It does not say network or free space, and it does not say to pick the file again.
 - Android: an add that is still pending when the phone process dies stays on the folder as not in the shared folder yet, failed, with Retry. Retry sends the file that is still on the phone.

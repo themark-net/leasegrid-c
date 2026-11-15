@@ -3736,6 +3736,9 @@ class MainWindow:
         if self._join_refused_without_ack():
             return
         invite = self.invite_edit.text()
+        from .invite import normalize_invite_paste
+
+        shown = normalize_invite_paste(invite)
         offer = self.offer_storage_cb.isChecked()
         kind = "sync + storage" if offer else "sync only"
         progress = (
@@ -3744,11 +3747,11 @@ class MainWindow:
         )
         if self.tahoe.has_nodedir():
             progress = "Connecting to the existing Tahoe node…"
-        elif is_wormhole_code(invite):
+        elif is_wormhole_code(shown):
             progress = (
                 "Joining… collecting the friendnet settings behind code %s from your "
                 "inviter, then starting this Tahoe node (%s)."
-                % (invite.strip().lower(), kind)
+                % (shown.lower(), kind)
             )
         self._join_busy(True, progress)
         try:

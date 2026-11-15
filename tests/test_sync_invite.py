@@ -329,7 +329,7 @@ def test_generated_code_round_trips_after_bad_garbled_and_expired(tmp_path: Path
         assert not joiner.nodedir.exists()
 
         with pytest.raises(SyncError) as exc:
-            joiner.join_invite("0-dead-code")
+            joiner.join_invite("0-stale-quiet")
         expired = exc.value.banner()
         assert "expire" in expired.lower()
         assert "not accepted" not in expired.lower()

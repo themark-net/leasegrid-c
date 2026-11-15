@@ -156,7 +156,7 @@ if sub in ("create-node", "create-client"):
         sys.stderr.write("The base directory already exists: %s\\n" % nodedir)
         sys.exit(1)
     nodedir.mkdir(parents=True)
-    if join and join[0] == "--join=0-dead-code":
+    if join and join[0] == "--join=0-stale-quiet":
         sys.stderr.write("Traceback (most recent call last):\\n")
         sys.stderr.write("wormhole.errors.LonelyError\\n")
         sys.exit(1)
@@ -391,7 +391,7 @@ def test_join_wormhole_dead_code_fails_clean_and_leaves_no_nodedir(tmp_path: Pat
     nodedir = tmp_path / "home" / "tahoe"
     client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
     with pytest.raises(SyncError) as exc:
-        client.join_invite("0-dead-code")
+        client.join_invite("0-stale-quiet")
     blob = exc.value.banner()
     assert "expire" in blob.lower()
     assert "not accepted" not in blob.lower()
@@ -409,13 +409,105 @@ def test_join_wormhole_dead_code_fails_clean_and_leaves_no_nodedir(tmp_path: Pat
         client.stop()
 
 
+def test_pgp_word_prefix_is_refused_and_a_full_word_still_joins(tmp_path: Path, monkeypatch):
+    """A word that only starts a PGP word is not a code. A full word still joins."""
+    monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    with pytest.raises(SyncError) as exc:
+        client.join_invite("0-dead-code")
+    blob = exc.value.banner()
+    assert "invalid" in blob.lower()
+    assert "expire" not in blob.lower()
+    assert "0-dead-code" not in blob
+    assert "deadbolt" not in blob.lower()
+    assert "\nNext:" in blob
+    assert not nodedir.exists()
+    with pytest.raises(SyncError) as exc:
+        client.join_invite("7-deadbol-revenge")
+    assert "invalid" in exc.value.banner().lower()
+    assert "7-deadbol-revenge" not in exc.value.banner()
+    assert not nodedir.exists()
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite("7-guitarist2-revenge")
+        assert st.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--join=7-guitarist2-revenge" in cfg
+    finally:
+        client.stop()
+
+
+def test_marks_only_paste_is_an_empty_invite(tmp_path: Path):
+    """Invisible paste marks are not an invite. The window says the field is empty."""
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    with pytest.raises(SyncError) as exc:
+        client.join_invite("\u00ad \u200b")
+    blob = exc.value.banner()
+    assert "empty" in blob.lower()
+    assert "\nNext:" in blob
+    assert not nodedir.exists()
+
+
+def test_rtl_override_in_a_paste_does_not_create_a_node(tmp_path: Path):
+    """A right-to-left override can hide a different host, so the paste is refused."""
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    hidden = "pb://hashhashhash@127.0.0.1:45001/\u202eswissnumswiss"
+    with pytest.raises(SyncError) as exc:
+        client.join_invite(hidden)
+    blob = exc.value.banner()
+    assert "invalid" in blob.lower()
+    assert "\u202e" not in blob
+    assert "pb://" not in blob
+    assert "swissnum" not in blob
+    assert "\nNext:" in blob
+    assert not nodedir.exists()
+
+
+def test_soft_hyphen_code_joins_the_clean_code(tmp_path: Path, monkeypatch):
+    """A soft hyphen or zero-width mark in a short code is not sent to Tahoe."""
+    monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    marked = "7-\u200bgui\u00adtarist-revenge"
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite(marked)
+        assert st.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--join=7-guitarist-revenge" in cfg
+        assert "\u00ad" not in cfg
+        assert "\u200b" not in cfg
+    finally:
+        client.stop()
+
+
+def test_soft_hyphen_furl_joins_without_the_mark(tmp_path: Path):
+    """The same marks inside a join furl are dropped before the node is created."""
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    marked = "pb://hashhashhash@127.0.0.1:45001/swiss\u00adnum\u200bswiss"
+    try:
+        with patch.object(client, "welcome", side_effect=_welcome_when_node_url(client)):
+            st = client.join_invite(marked)
+        assert st.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--introducer=%s" % GOOD_FURL in cfg
+        assert "\u00ad" not in cfg
+        assert "\u200b" not in cfg
+    finally:
+        client.stop()
+
+
 def test_join_errors_distinguish_expired_rejected_and_network(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("LEASEGRID_WORMHOLE_SERVER", raising=False)
     nodedir = tmp_path / "home" / "tahoe"
     client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
     seen = {}
     for code, needle in (
-        ("0-dead-code", "expire"),
+        ("0-stale-quiet", "expire"),
         ("3-bad-code", "not accepted"),
         ("1-net-down", "mailbox"),
     ):
@@ -428,8 +520,8 @@ def test_join_errors_distinguish_expired_rejected_and_network(tmp_path: Path, mo
         seen[code] = exc.value.message
     assert len(set(seen.values())) == 3
     assert "expire" not in seen["3-bad-code"].lower()
-    assert "not accepted" not in seen["0-dead-code"].lower()
-    assert "mailbox" not in seen["0-dead-code"].lower()
+    assert "not accepted" not in seen["0-stale-quiet"].lower()
+    assert "mailbox" not in seen["0-stale-quiet"].lower()
 
 
 def _assert_no_spawn_leak(text: str, *banned: str) -> None:

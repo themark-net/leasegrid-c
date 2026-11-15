@@ -918,9 +918,11 @@ def test_list_folders_parses_api(tmp_path: Path):
     (cfg / "api_token").write_text("dGVzdC10b2tlbi10aGF0LWlzLTMyYnl0ZXMh", encoding="utf-8")
     (cfg / "api_client_endpoint").write_text("tcp:127.0.0.1:19780\n", encoding="utf-8")
     ctl = MagicFolderCtl(config_dir=cfg, nodedir=tmp_path, mf_bin="/bin/true")
+    photos = tmp_path / "Photos"
+    photos.mkdir()
     payload = {
         "Photos": {
-            "magic_path": "/tmp/Photos",
+            "magic_path": str(photos),
             "poll_interval": 5,
             "author": {"name": "nimo"},
         }
@@ -940,7 +942,7 @@ def test_list_folders_parses_api(tmp_path: Path):
             rows = ctl.list_folders()
     assert len(rows) == 1
     assert rows[0].name == "Photos"
-    assert rows[0].path == "/tmp/Photos"
+    assert rows[0].path == str(photos)
     assert rows[0].status == "Up to date"
 
 

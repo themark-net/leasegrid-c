@@ -314,6 +314,15 @@ class AppModelFlowTest {
         assertEquals(first, model.session?.introducerFurl)
     }
 
+    @Test
+    fun cancelImportDisarmsRetry() {
+        var calls = 0
+        val model = model { _, _ -> learnReply() }
+        model.reportFail("could not import this recovery key.", "Retry.") { calls += 1 }
+        model.cancelImport()
+        model.retryFail()
+        assertEquals(0, calls)
+    }
 }
 
 private class IoQueue : CoroutineDispatcher() {

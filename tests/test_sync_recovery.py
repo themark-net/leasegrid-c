@@ -12,6 +12,7 @@ from leasegrid_sync.backend import ConnectionStatus, MagicFolderCtl, SyncError, 
 from leasegrid_sync.credit import CreditCtl
 from leasegrid_sync.recovery import (
     CREDIT_RECOVER_FAIL,
+    EXPORT_FAIL_MSG,
     IMPORT_FAIL_MSG,
     FolderRecord,
     RecoveryBundle,
@@ -181,6 +182,75 @@ def test_roundtrip_without_passphrase_is_plaintext():
 def test_garbage_files_fail_closed(blob):
     with pytest.raises(SyncError):
         decode_recovery_file(blob, "")
+
+
+def test_truncated_recovery_file_fails_with_a_sentence():
+    """A cut-off key is the import sentence, not a parser traceback."""
+    data = encode_recovery_file(_bundle(), "correct horse")
+    cut = data[: max(1, len(data) // 2)]
+    with pytest.raises(SyncError) as exc:
+        decode_recovery_file(cut, "correct horse")
+    banner = exc.value.banner()
+    assert IMPORT_FAIL_MSG in banner
+    assert "Next:" in banner
+    assert "correct horse" not in banner
+    assert "JSONDecodeError" not in banner
+    assert "Traceback" not in banner
+
+
+def test_damaged_recovery_numbers_fail_with_a_sentence():
+    """A file that parses but has bad numbers still fails closed."""
+    import json
+
+    raw = json.loads(encode_recovery_file(_bundle(), ""))
+    raw["bundle"]["version"] = "nope"
+    raw["bundle"]["shares"] = ["nope", "nope", "nope"]
+    raw["bundle"]["quote_counter"] = "nope"
+    blob = json.dumps(raw).encode("utf-8")
+    with pytest.raises(SyncError) as exc:
+        decode_recovery_file(blob, "")
+    banner = exc.value.banner()
+    assert IMPORT_FAIL_MSG in banner
+    assert "Next:" in banner
+    assert "ValueError" not in banner
+    assert "nope" not in banner
+
+
+def test_oversized_recovery_is_rejected_before_parse(tmp_path: Path, monkeypatch):
+    """A file past the cap is refused before JSON or scrypt runs."""
+    import json
+
+    from leasegrid_sync import recovery as recovery_mod
+
+    cap = getattr(recovery_mod, "MAX_RECOVERY_BYTES", 1 << 20)
+    key = tmp_path / "big.leasegrid-recovery"
+    key.write_bytes(b"{" + (b"x" * cap))
+    parsed = {"ran": False}
+
+    def explode(*_args, **_kwargs):
+        parsed["ran"] = True
+        raise AssertionError("recovery parse ran")
+
+    monkeypatch.setattr(recovery_mod.json, "loads", explode)
+    monkeypatch.setattr(json, "loads", explode)
+    home = tmp_path / "home"
+    nodedir = tmp_path / "tahoe-missing"
+    tahoe = TahoeClient(nodedir=nodedir, home=home)
+    mf = MagicFolderCtl(config_dir=home / "mf", nodedir=nodedir)
+    credit = CreditCtl(home=home)
+    ctl = RecoveryCtl(home, tahoe, mf, credit)
+    with pytest.raises(SyncError) as exc:
+        ctl.restore(key, "correct horse")
+    banner = exc.value.banner()
+    assert IMPORT_FAIL_MSG in banner
+    assert "Next:" in banner
+    assert "correct horse" not in banner
+    assert parsed["ran"] is False
+    assert not nodedir.exists()
+    with pytest.raises(SyncError) as direct:
+        decode_recovery_file(key.read_bytes()[: cap + 1], "correct horse")
+    assert IMPORT_FAIL_MSG in direct.value.banner()
+    assert parsed["ran"] is False
 
 
 def test_bundle_rejects_foreign_wallet_shape():
@@ -360,6 +430,43 @@ def test_export_records_last_export(tmp_path: Path, mf_config: Path):
         assert (out.stat().st_mode & 0o777) == 0o600
     assert ctl.last_export()["path"] == str(out)
     assert decode_recovery_file(out.read_bytes(), "pw").nickname == "nimo"
+
+
+def test_export_refuses_an_oversized_key_before_writing(tmp_path: Path, mf_config: Path, monkeypatch):
+    """A key past the cap is an export failure and does not replace a file already there."""
+    from leasegrid_sync import recovery as recovery_mod
+
+    home = tmp_path / "home"
+    home.mkdir()
+    nodedir = tmp_path / "tahoe"
+    (nodedir / "private").mkdir()
+    (nodedir / "tahoe.cfg").write_text(
+        "[node]\nnickname = nimo\n[client]\nshares.needed = 2\nshares.happy = 3\n"
+        "shares.total = 3\n",
+        encoding="utf-8",
+    )
+    (nodedir / "private" / "introducers.yaml").write_text(
+        "introducers:\n  default:\n    furl: %s\n" % FURL, encoding="utf-8"
+    )
+    tahoe = TahoeClient(nodedir=nodedir, tahoe_bin="/bin/true", home=home)
+    mf = MagicFolderCtl(config_dir=mf_config, nodedir=nodedir, mf_bin="/bin/true")
+    ctl = RecoveryCtl(home, tahoe, mf, CreditCtl(home=home, issuer_url="http://127.0.0.1:1"))
+    monkeypatch.setattr(
+        recovery_mod,
+        "encode_recovery_file",
+        lambda _bundle, _passphrase: b"x" * (recovery_mod.MAX_RECOVERY_BYTES + 1),
+    )
+    out = tmp_path / "keys" / "nimo.leasegrid-recovery"
+    out.parent.mkdir()
+    out.write_bytes(b"keep-me")
+    with pytest.raises(SyncError) as exc:
+        ctl.export(out, "pw")
+    banner = exc.value.banner()
+    assert EXPORT_FAIL_MSG in banner
+    assert IMPORT_FAIL_MSG not in banner
+    assert "Next:" in banner
+    assert out.read_bytes() == b"keep-me"
+    assert ctl.last_export() is None
 
 
 def test_bundle_carries_credit_seed_and_drops_malformed():

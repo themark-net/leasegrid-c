@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Desktop recovery import rejects a file over 1 MiB before parsing. Export refuses to write a key over that cap and leaves any file already there. A cut-off file, or one whose numbers are not numbers, fails with the import sentence and a next step.
+
 ## 0.1.10 (2026-11-02)
 
 - Android Invite: a paste of about 100 KB that is almost a short code shows "That isn't a join link." instead of failing, and Retry after fixing the field joins the corrected link ([#78](https://github.com/themark-net/leasegrid-c/issues/78)).

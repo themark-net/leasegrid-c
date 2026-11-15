@@ -32,6 +32,9 @@ from .credit import CreditCtl, is_leasegrid_wallet
 
 RECOVERY_VERSION = 1
 RECOVERY_SUFFIX = ".leasegrid-recovery"
+# A recovery file is a few KB. The Android codec uses this same 1 MiB cap
+# and refuses anything larger before it parses.
+MAX_RECOVERY_BYTES = 1 << 20
 SCRYPT_N = 2**15
 SCRYPT_R = 8
 SCRYPT_P = 1
@@ -120,7 +123,13 @@ class RecoveryBundle:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
             raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT) from exc
-        if not isinstance(data, dict) or int(data.get("version", 0)) != RECOVERY_VERSION:
+        if not isinstance(data, dict):
+            raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+        try:
+            version = int(data.get("version", 0))
+        except (TypeError, ValueError) as exc:
+            raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT) from exc
+        if version != RECOVERY_VERSION:
             raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
         furl = str(data.get("introducer_furl") or "")
         if not furl.startswith("pb://"):
@@ -142,16 +151,24 @@ class RecoveryBundle:
         seed = str(data.get("credit_seed") or "")
         if seed and (len(seed) != 64 or any(c not in "0123456789abcdef" for c in seed.lower())):
             seed = ""
+        try:
+            needed = int(shares[0])
+            happy = int(shares[1])
+            total = int(shares[2])
+            created = float(data.get("created") or 0)
+            counter = int(data.get("quote_counter") or 0)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT) from exc
         return cls(
             introducer_furl=furl,
-            shares=(int(shares[0]), int(shares[1]), int(shares[2])),
+            shares=(needed, happy, total),
             nickname=str(data.get("nickname") or "leasegrid-sync"),
             issuer_url=str(data.get("issuer_url") or ""),
             folders=folders,
             wallet=wallet,
             credit_seed=seed.lower(),
-            quote_counter=int(data.get("quote_counter") or 0),
-            created=float(data.get("created") or 0),
+            quote_counter=counter,
+            created=created,
         )
 
 
@@ -315,7 +332,22 @@ def encode_recovery_file(bundle: RecoveryBundle, passphrase: str) -> bytes:
     return (json.dumps(envelope, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def _read_capped(path: Path) -> bytes:
+    """Read a recovery file, stopping once it is past the cap.
+
+    The extra byte is how we know the file is too big without reading the rest
+    and without parsing it.
+    """
+    with path.open("rb") as handle:
+        data = handle.read(MAX_RECOVERY_BYTES + 1)
+    if len(data) > MAX_RECOVERY_BYTES:
+        raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
+    return data
+
+
 def decode_recovery_file(data: bytes, passphrase: str) -> RecoveryBundle:
+    if len(data) > MAX_RECOVERY_BYTES:
+        raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT)
     try:
         envelope = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -425,6 +457,10 @@ class RecoveryCtl:
     def export(self, path: Path, passphrase: str) -> RecoveryBundle:
         bundle = self.collect()
         data = encode_recovery_file(bundle, passphrase)
+        # Check before open(O_TRUNC). The read-back below would otherwise
+        # raise the import sentence after the previous key was replaced.
+        if len(data) > MAX_RECOVERY_BYTES:
+            raise SyncError(EXPORT_FAIL_MSG, EXPORT_FAIL_NEXT)
         path = Path(path)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -503,7 +539,7 @@ class RecoveryCtl:
     ) -> RestoreResult:
         say = progress or (lambda _text: None)
         try:
-            data = Path(path).read_bytes()
+            data = _read_capped(Path(path))
         except OSError as exc:
             raise SyncError(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT) from exc
         bundle = decode_recovery_file(data, passphrase)

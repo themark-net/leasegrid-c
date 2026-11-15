@@ -70,7 +70,7 @@ def _pop_deadline(token) -> None:
 
 
 def bounded_storage(fn):
-    """One overall deadline for a list, download or remove."""
+    """One overall deadline for a list, download, upload or remove."""
 
     @functools.wraps(fn)
     def wrapped(*args, **kwargs):

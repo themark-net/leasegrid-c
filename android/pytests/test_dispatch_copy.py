@@ -191,6 +191,96 @@ def test_list_and_remove_oserror_does_not_say_download(monkeypatch):
         _no_class_name(reply)
 
 
+def _put_blob(tmp_path: Path) -> Path:
+    blob = tmp_path / "notes.txt"
+    blob.write_bytes(b"hello from the phone")
+    return blob
+
+
+def test_unreachable_put_stops_at_one_deadline(tmp_path, monkeypatch):
+    """The folder list already stops at one budget. The upload after it did not.
+
+    Ten shares on a server that never accepts a connection must not each open
+    their own socket. The card says the add failed, and Retry is the next step.
+    """
+    import time
+
+    import lg_tahoe
+    import lg_write
+
+    assert lg_tahoe.STORAGE_DEADLINE_S == 25.0
+    connects = _slow_storage(monkeypatch)
+    monkeypatch.setattr(lg_write, "list_folder_view", lambda cap, servers: [])
+    server = [{"furl": "pb://testid@203.0.113.9:1/swissnumswiss", "nickname": "s1"}]
+    payload = {
+        "cap": _dir_cap(),
+        "name": "notes.txt",
+        "path": str(_put_blob(tmp_path)),
+        "replace": False,
+        "shares": [1, 1, 10],
+        "author_seed_b64": "",
+        "phone_dmd": "",
+        "servers": server,
+    }
+    started = connects["n"]
+    began = time.monotonic()
+    reply = json.loads(leasegrid_read.dispatch("put", json.dumps(payload)))
+    used = connects["n"] - started
+    assert reply["ok"] is False
+    assert reply["message"] == "could not add this file.", reply
+    assert "download" not in reply["message"].lower()
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+    # Old code opens one connection per share (10). One budget stops sooner.
+    assert used <= 8, used
+    assert time.monotonic() - began < 3.0
+
+
+def test_download_permission_denied_does_not_say_network(tmp_path, monkeypatch):
+    """The bytes arrived. The phone refused to save them. That is not the network."""
+    monkeypatch.setattr(leasegrid_read, "download_file", lambda cap, servers: b"file body")
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    blocked.chmod(0o555)
+    dest = blocked / "photo.jpg"
+    try:
+        payload = json.dumps({"cap": "URI:CHK:test-only", "dest": str(dest), "servers": []})
+        reply = json.loads(leasegrid_read.dispatch("download", payload))
+    finally:
+        blocked.chmod(0o755)
+    assert reply["ok"] is False
+    assert "would not allow" in reply["message"].lower(), reply
+    assert "permission" in reply["next"].lower(), reply
+    assert "network" not in reply["message"].lower(), reply
+    assert "free space" not in reply["message"].lower(), reply
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+    assert not dest.exists()
+
+
+def test_put_permission_denied_does_not_say_pick_it_again(tmp_path):
+    """A file the phone cannot read is a permission failure, not a bad pick."""
+    src = _put_blob(tmp_path)
+    src.chmod(0)
+    try:
+        payload = {
+            "cap": _dir_cap(),
+            "name": "notes.txt",
+            "path": str(src),
+            "shares": [1, 1, 1],
+            "servers": [{"furl": "pb://testid@203.0.113.9:1/swissnumswiss", "nickname": "s1"}],
+        }
+        reply = json.loads(leasegrid_read.dispatch("put", json.dumps(payload)))
+    finally:
+        src.chmod(0o644)
+    assert reply["ok"] is False
+    assert "would not allow" in reply["message"].lower(), reply
+    assert "permission" in reply["next"].lower(), reply
+    assert "pick it again" not in reply["next"].lower(), reply
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+
+
 def test_unreachable_remove_does_not_say_download(monkeypatch):
     """A remove that cannot reach storage says remove, not download or list."""
     connects = _slow_storage(monkeypatch)

@@ -56,7 +56,7 @@ def dispatch(op: str, payload: str) -> str:
         return json.dumps({"ok": False, "message": exc.message, "next": exc.next_hint})
     except OSError as exc:
         _log.warning("dispatch %s failed: %s", op, exc.__class__.__name__)
-        message, nxt = _oserror_copy(op)
+        message, nxt = _permission_copy(op) if isinstance(exc, PermissionError) else _oserror_copy(op)
         return json.dumps({"ok": False, "message": message, "next": nxt})
     except Exception as exc:  # last-resort operate-or-FAIL, still in-app
         _log.warning("dispatch %s failed: %s", op, exc.__class__.__name__)
@@ -67,6 +67,34 @@ def dispatch(op: str, payload: str) -> str:
                 "next": "Retry. If it repeats, check the network and the invite.",
             }
         )
+
+
+def _permission_copy(op: str) -> tuple[str, str]:
+    """The phone refused a local read or save. Not a storage-server failure."""
+    if op == "download":
+        return (
+            "could not download this file. This phone would not allow saving it.",
+            "check storage permission; Retry.",
+        )
+    if op == "list":
+        return (
+            "could not load folders. This phone would not allow it.",
+            "check storage permission; Retry.",
+        )
+    if op == "remove":
+        return (
+            "could not remove this file. This phone would not allow it.",
+            "check storage permission; Retry.",
+        )
+    if op == "put":
+        return (
+            "could not read this file. This phone would not allow it.",
+            "check storage permission; Retry.",
+        )
+    return (
+        "could not complete that. This phone would not allow it.",
+        "check storage permission; Retry.",
+    )
 
 
 def _oserror_copy(op: str) -> tuple[str, str]:
@@ -96,6 +124,9 @@ def _put(data: dict[str, Any]) -> dict[str, Any]:
     except OSError as exc:
         if getattr(exc, "errno", None) == 28:
             raise WriteFail("not enough free space.", "free space; Retry.") from exc
+        if isinstance(exc, PermissionError):
+            message, nxt = _permission_copy("put")
+            raise WriteFail(message, nxt) from exc
         raise WriteFail("could not read this file.", "pick it again.") from exc
     seed_b64 = str(data.get("author_seed_b64") or "")
     try:

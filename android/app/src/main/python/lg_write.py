@@ -1066,6 +1066,7 @@ def _place_in_collective(
     return _landed(name, content_cap, len(data), seed, dmd)
 
 
+@bounded_storage
 def put_file(
     dir_cap: str,
     name: str,

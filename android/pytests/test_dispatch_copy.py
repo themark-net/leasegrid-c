@@ -160,6 +160,58 @@ def test_unreachable_list_download_and_remove_stop_at_one_deadline(tmp_path, mon
     assert time.monotonic() - started < 3.0
 
 
+def test_list_and_remove_oserror_does_not_say_download(monkeypatch):
+    """The OSError fallback used the download sentence for every action."""
+
+    def boom(*_args, **_kwargs):
+        raise OSError(5, "input/output error")
+
+    monkeypatch.setattr(leasegrid_read, "list_folder_view", boom)
+    monkeypatch.setattr(leasegrid_read, "remove_file", boom)
+    server = [{"furl": "pb://testid@203.0.113.9:1/swissnumswiss", "nickname": "s1"}]
+    cases = {
+        "list": (
+            {"cap": _dir_cap(), "servers": server},
+            "could not load folders. Network error talking to storage.",
+            "check network; Retry.",
+        ),
+        "remove": (
+            {"cap": _dir_cap(), "name": "notes.txt", "shares": [2, 3, 3], "servers": server},
+            "could not remove this file.",
+            "Retry.",
+        ),
+    }
+    for op, (payload, message, nxt) in cases.items():
+        reply = json.loads(leasegrid_read.dispatch(op, json.dumps(payload)))
+        assert reply["ok"] is False, op
+        assert reply["message"] == message, op
+        assert reply["next"] == nxt, op
+        assert "download" not in reply["message"].lower(), reply
+        assert "download" not in reply["next"].lower(), reply
+        _no_class_name(reply)
+
+
+def test_unreachable_remove_does_not_say_download(monkeypatch):
+    """A remove that cannot reach storage says remove, not download or list."""
+    connects = _slow_storage(monkeypatch)
+    server = [{"furl": "pb://testid@203.0.113.9:1/swissnumswiss", "nickname": "s1"}]
+    started = connects["n"]
+    reply = json.loads(
+        leasegrid_read.dispatch(
+            "remove",
+            json.dumps(
+                {"cap": _dir_cap(), "name": "notes.txt", "shares": [2, 3, 3], "servers": server}
+            ),
+        )
+    )
+    assert connects["n"] > started
+    assert reply["ok"] is False
+    assert reply["message"] == "could not remove this file.", reply
+    assert "download" not in reply["message"].lower()
+    assert "download" not in reply["next"].lower()
+    _no_class_name(reply)
+
+
 def test_learn_next_line_does_not_name_the_exception_class(monkeypatch, caplog):
     """lg_intro used to append the exception class to the learn next line.
 

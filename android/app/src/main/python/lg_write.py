@@ -1176,7 +1176,10 @@ def remove_file(
         raise WriteFail(REMOVE_FAIL, REMOVE_NEXT)
     name = _basename(name)
     needed, _happy, total = shares
-    entries = _load_entries(dir_cap, servers)
+    try:
+        entries = _load_entries(dir_cap, servers)
+    except WriteFail as exc:
+        raise _as_remove(exc) from exc
     removed = False
     if any(entry.name == name for entry in entries):
         _commit_entries(
@@ -1190,7 +1193,10 @@ def remove_file(
         )
         removed = True
     if phone_dmd and directory_writable(phone_dmd):
-        inner = _load_entries(phone_dmd, servers)
+        try:
+            inner = _load_entries(phone_dmd, servers)
+        except WriteFail as exc:
+            raise _as_remove(exc) from exc
         if any(entry.name == name for entry in inner):
             _commit_entries(
                 phone_dmd,
@@ -1211,6 +1217,14 @@ def remove_file(
     if any(row.name == name for row in listed):
         raise WriteFail(REMOVE_FAIL, REMOVE_NEXT)
     return {"ok": True, "name": name}
+
+
+def _as_remove(exc: WriteFail) -> WriteFail:
+    """A remove shows the remove sentence. The inner text can name a download or a list."""
+    hint = exc.next_hint or REMOVE_NEXT
+    if "download" in hint.lower():
+        hint = REMOVE_NEXT
+    return WriteFail(REMOVE_FAIL, hint)
 
 
 def shares_tuple(raw: Any) -> tuple[int, int, int]:

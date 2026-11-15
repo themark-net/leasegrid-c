@@ -56,13 +56,8 @@ def dispatch(op: str, payload: str) -> str:
         return json.dumps({"ok": False, "message": exc.message, "next": exc.next_hint})
     except OSError as exc:
         _log.warning("dispatch %s failed: %s", op, exc.__class__.__name__)
-        return json.dumps(
-            {
-                "ok": False,
-                "message": "could not download this file. Network error or not enough free space.",
-                "next": "check network / free space; Retry.",
-            }
-        )
+        message, nxt = _oserror_copy(op)
+        return json.dumps({"ok": False, "message": message, "next": nxt})
     except Exception as exc:  # last-resort operate-or-FAIL, still in-app
         _log.warning("dispatch %s failed: %s", op, exc.__class__.__name__)
         return json.dumps(
@@ -72,6 +67,23 @@ def dispatch(op: str, payload: str) -> str:
                 "next": "Retry. If it repeats, check the network and the invite.",
             }
         )
+
+
+def _oserror_copy(op: str) -> tuple[str, str]:
+    """The sentence for a storage OSError. List and remove do not say download."""
+    if op == "list":
+        return (
+            "could not load folders. Network error talking to storage.",
+            "check network; Retry.",
+        )
+    if op == "remove":
+        return ("could not remove this file.", "Retry.")
+    if op == "download":
+        return (
+            "could not download this file. Network error or not enough free space.",
+            "check network / free space; Retry.",
+        )
+    return ("could not complete that.", "Retry.")
 
 
 def _put(data: dict[str, Any]) -> dict[str, Any]:

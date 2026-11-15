@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Android Join: Retry after a failure that is not a bad link or an unreachable computer joins the text in the field now. The tap itself still joins the text from that tap if the field changes before the join starts ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
+- Android Import: the system Back button cancels the import, the same as Cancel and the back arrow ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
 - Android list, download and remove give up after about 25 seconds when storage cannot be reached, and show the error card then. They used to wait out a timeout on every share.
 - Desktop recovery import rejects a file over 1 MiB before parsing. Export refuses to write a key over that cap and leaves any file already there. A cut-off file, or one whose numbers are not numbers, fails with the import sentence and a next step.
 - sync-ui.log drops furls, invite codes, capabilities, and passphrase values (the rest of that line) before they are written. The exception class stays.

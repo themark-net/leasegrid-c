@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Android: an add to a folder gives up after about 25 seconds when storage cannot be reached, the same budget as list, download and remove. It used to open a connection for every share.
+- Android: a download the phone cannot save, or a file the phone cannot read for an add, says the phone would not allow it and to check storage permission, then Retry. It does not say network or free space, and it does not say to pick the file again.
+- Android: an add that is still pending when the phone process dies stays on the folder as not in the shared folder yet, failed, with Retry. Retry sends the file that is still on the phone.
+- Android: opening a recovery file, then rotating the phone or the process dying, does not import that file again and does not drop a home that was already saved.
+- Android: a join link with a trailing period or closing mark, or wrapped in quotes, angle brackets, or parentheses, still joins. The extra characters are not sent to the computer.
+- Android: Cancel on Import ignores a recovery read that was still waiting, including when Import is opened again.
 - Offering disk on a loopback address (the default, or `LEASEGRID_STORAGE_HOSTNAME` set to another 127.x address) listens on that address only. A LAN hostname is unchanged, so other computers can still connect.
 - A Magic Folder scan or remote poll uses the daemon's PUT call, so Sync's request actually runs instead of waiting out the scan interval.
 - A Sync home that cannot be created, or a home folder that cannot hold the lock file, says what is wrong and what to do next. It does not open a second window, and it does not say Leasegrid Sync is already running.

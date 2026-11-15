@@ -21,7 +21,7 @@ from leasegrid_sync.app import (  # noqa: E402
     MainWindow,
     TopUpDialog,
 )
-from leasegrid_sync.backend import ConnectionStatus, SyncError  # noqa: E402
+from leasegrid_sync.backend import ConnectionStatus, FolderRow, SyncError  # noqa: E402
 from tests.qr_decode import INVITE_JOIN_TAHOE, decode_qr_png, write_executable  # noqa: E402
 from tests.buyer_text import POISON, assert_no_raw_user_text  # noqa: E402
 from leasegrid_sync.credit import (  # noqa: E402
@@ -2006,6 +2006,75 @@ def test_export_warn_mentions_credit_seed(ui: MainWindow):
     assert "credit seed" in EXPORT_WARN.lower()
     dlg = ExportRecoveryDialog(ui.win, ui.recovery, ui.QtWidgets, default_dir=ui.home)
     assert "credit seed" in dlg.dlg.findChild(PyQt5.QtWidgets.QLabel, "exportWarn").text().lower()
+
+
+def test_offline_grid_recovers_when_the_friendnet_returns(
+    ui: MainWindow, fake_credit: FakeCredit
+):
+    """An unreachable folder list shows Offline and a next step, then clears."""
+    row = FolderRow(name="Docs", path="/tmp/docs", status="Up to date", detail="1 file")
+    online = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+    )
+    offline = ConnectionStatus(
+        state="Offline",
+        detail="Tahoe is up but the friendnet introducer is not connected",
+    )
+    _enter(ui)
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.status_chip.text().startswith("Online")
+    assert ui.table.item(0, 0).text() == "Docs"
+    assert "FAIL" not in ui.folder_error.text()
+
+    def down():
+        raise SyncError("Magic Folder daemon is not reachable.", "Restart Sync.")
+
+    with patch.object(ui.tahoe, "connection_status", return_value=offline), patch.object(
+        ui.mf, "list_folders", side_effect=down
+    ):
+        ui.refresh()
+    assert ui.status_chip.text() == "Offline"
+    banner = ui.folder_error.text()
+    assert "not reachable" in banner
+    assert "\nNext: " in banner
+    assert "Traceback" not in banner
+    assert ui.table.item(0, 0).text() == "Docs"
+    assert ui.table.item(0, 1).text() == "Up to date"
+
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.status_chip.text().startswith("Online")
+    assert ui.folder_error.text() == ""
+    assert ui.table.item(0, 1).text() == "Up to date"
+    assert ui.open_credit_btn.isHidden()
+
+    with patch.object(ui.tahoe, "connection_status", return_value=offline), patch.object(
+        ui.mf, "list_folders", side_effect=down
+    ):
+        ui.refresh()
+    ui.folder_error.setText("Added folder Docs")
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert ui.folder_error.text() == "Added folder Docs"
+    assert ui.table.item(0, 1).text() == "Up to date"
+
+    fake_credit.refusal = "Upload refused: out of credit"
+    with patch.object(ui.tahoe, "connection_status", return_value=online), patch.object(
+        ui.mf, "list_folders", return_value=[row]
+    ):
+        ui.refresh()
+    assert "out of credit" in ui.folder_error.text()
+    assert not ui.open_credit_btn.isHidden()
 
 
 def test_refresh_surfaces_spender_refusal(ui: MainWindow, fake_credit: FakeCredit):

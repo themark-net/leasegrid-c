@@ -1822,6 +1822,24 @@ def _directory_has_file(path: str) -> bool:
     return False
 
 
+def _folder_is_missing(path: str) -> bool:
+    """True when a folder path was set and that directory is gone.
+
+    A blank magic_path is not missing. A directory that is still there is not
+    missing, even when it is empty. A path that is a file is left to the open
+    action.
+    """
+    if not path or not str(path).strip():
+        return False
+    root = Path(path)
+    try:
+        if root.is_dir() or root.exists():
+            return False
+    except OSError:
+        return False
+    return True
+
+
 class MagicFolderCtl:
     def __init__(
         self,
@@ -2160,6 +2178,8 @@ class MagicFolderCtl:
             )
         except SyncError as exc:
             return "FAIL", self._refresh_http_message(exc).message
+        if _folder_is_missing(local_path):
+            return "Missing", "not on this computer"
         nfiles = len(files) if isinstance(files, list) else 0
         last = ""
         if isinstance(recent, list) and recent:

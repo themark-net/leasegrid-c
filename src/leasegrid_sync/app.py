@@ -2157,6 +2157,10 @@ class MainWindow:
         self.recovery = RecoveryCtl(self.home, self.tahoe, self.mf, self.credit)
         self._joined = False
         self._joining = False
+        self._folder_list_failed = False
+        self._folder_list_banner = ""
+        self._missing_folder_note = False
+        self._missing_folder_banner = ""
         self._credit_loaded = False
         self._invite_session = None
 
@@ -3923,14 +3927,50 @@ class MainWindow:
         try:
             rows = self.mf.list_folders()
         except SyncError as exc:
+            self._folder_list_failed = True
             self.show_folder_error(exc)
+            self._folder_list_banner = self.folder_error.text()
             return
         except Exception as exc:
             self._log_exception("refresh", exc)
+            self._folder_list_failed = True
             self.show_folder_error(unexpected_error(exc, "could not list folders."))
+            self._folder_list_banner = self.folder_error.text()
             return
         self._render_rows(rows)
-        self._show_refusal_if_any()
+        if self._folder_list_failed:
+            if self.folder_error.text() == self._folder_list_banner:
+                self.folder_error.setStyleSheet("")
+                self.folder_error.setText("")
+                self.open_credit_btn.hide()
+            self._folder_list_failed = False
+            self._folder_list_banner = ""
+        if self._show_refusal_if_any():
+            self._missing_folder_note = False
+            self._missing_folder_banner = ""
+            return
+        self._note_missing_folders(rows)
+
+    def _note_missing_folders(self, rows: list) -> None:
+        """Say when a synced directory is gone, and clear that once it is back."""
+        missing = [row for row in rows if row.status == "Missing" and row.path]
+        if missing:
+            shown = display_path(missing[0].path)
+            self.show_folder_error(
+                SyncError(
+                    FOLDER_MISSING_BANNER % shown,
+                    "Add the folder again if you still want it.",
+                )
+            )
+            self._missing_folder_note = True
+            self._missing_folder_banner = self.folder_error.text()
+            return
+        if self._missing_folder_note:
+            if self.folder_error.text() == self._missing_folder_banner:
+                self.folder_error.setText("")
+                self.folder_error.setStyleSheet("")
+            self._missing_folder_note = False
+            self._missing_folder_banner = ""
 
     def _show_refusal_if_any(self) -> bool:
         """Storage refused a write for lack of credit (spender event): say so on Folders."""

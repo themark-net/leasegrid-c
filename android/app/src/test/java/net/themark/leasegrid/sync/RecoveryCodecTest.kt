@@ -142,6 +142,31 @@ class RecoveryCodecTest {
     }
 
     @Test
+    fun scryptRejectsNBelowTwoAndKeepsNAtTwo() {
+        // n = 1 is a power of two and uses almost no memory, so only the lower bound rejects it.
+        assertFalse(RecoveryCodec.scryptParamsOk(1, 8, 1))
+        assertFalse(RecoveryCodec.scryptParamsOk(0, 8, 1))
+        assertTrue(RecoveryCodec.scryptParamsOk(2, 8, 1))
+    }
+
+    @Test
+    fun scryptRejectsROutsideOneToThirtyTwo() {
+        // r = 0 and r = 33 with a tiny n stay under the memory cap, so only the r bound rejects them.
+        assertFalse(RecoveryCodec.scryptParamsOk(2, 0, 1))
+        assertFalse(RecoveryCodec.scryptParamsOk(2, 33, 1))
+        assertTrue(RecoveryCodec.scryptParamsOk(2, 1, 1))
+        assertTrue(RecoveryCodec.scryptParamsOk(2, 32, 1))
+    }
+
+    @Test
+    fun scryptRejectsPOutsideOneToSixteen() {
+        assertFalse(RecoveryCodec.scryptParamsOk(1 shl 15, 8, 0))
+        assertFalse(RecoveryCodec.scryptParamsOk(1 shl 15, 8, 17))
+        assertTrue(RecoveryCodec.scryptParamsOk(1 shl 15, 8, 1))
+        assertTrue(RecoveryCodec.scryptParamsOk(1 shl 15, 8, 16))
+    }
+
+    @Test
     fun scryptRejectsAnNThatIsNotAPowerOfTwo() {
         // S1e. decode() still fails if this check is removed, because SCrypt throws.
         assertFalse(RecoveryCodec.scryptParamsOk(3, 8, 1))

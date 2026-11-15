@@ -561,9 +561,10 @@ class RecoveryCtl:
         bundle = decode_recovery_file(data, passphrase)
 
         say("Joining the friendnet from the recovery key…")
-        if not self.tahoe.has_nodedir():
-            self.tahoe.create_node(bundle.introducer_furl, shares=bundle.shares)
-        status = self.tahoe.join_invite(bundle.introducer_furl)
+        # join_invite creates the node (with this key's shares) and drops it
+        # again when the friendnet cannot be reached. A node already on disk
+        # is left in place.
+        status = self.tahoe.join_invite(bundle.introducer_furl, shares=bundle.shares)
 
         # Credit first: on a gated grid `tahoe mkdir` (personal DMD) is a paid
         # write. Restoring folders before the wallet is how a new device used

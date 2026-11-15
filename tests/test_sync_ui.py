@@ -270,6 +270,157 @@ def test_bad_furl_then_a_good_one_joins(ui: MainWindow, tmp_path: Path):
             joiner.tray.hide()
 
 
+def test_truncated_invite_code_then_a_full_one_joins(tmp_path: Path):
+    """A cut-off code that still looks like a code must not block the real one."""
+    from tests.test_sync_backend import _fake_tahoe, _welcome_when_node_url
+
+    joiner = MainWindow(
+        nodedir=tmp_path / "joiner" / "tahoe",
+        home=tmp_path / "joiner-home",
+        credit=FakeCredit(),
+        autoload=False,
+    )
+    joiner.tahoe.tahoe_bin = _fake_tahoe(tmp_path)
+    joiner.threat_ack.setChecked(True)
+    joiner.win.show()
+    offline = ConnectionStatus(state="Offline", detail="introducer down")
+    try:
+        joiner.invite_edit.setText("7-guitarist")
+        joiner.on_join_invite()
+        short = joiner.join_error.text()
+        assert "invalid" in short.lower()
+        assert "\nNext:" in short
+        assert "7-guitarist" not in short
+        assert joiner.join_btn.isEnabled()
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert not joiner.tahoe.nodedir.exists()
+
+        joiner.invite_edit.setText("7-cut-code")
+        with patch.object(joiner.tahoe, "is_reachable", return_value=True), patch.object(
+            joiner.tahoe, "wait_connected", return_value=offline
+        ):
+            joiner.on_join_invite()
+        cut = joiner.join_error.text()
+        assert "Introducer is unreachable" in cut
+        assert "\nNext:" in cut
+        assert "LEASEGRID_TAHOE_NODEDIR" not in cut
+        assert "7-cut-code" not in cut
+        assert "pb://" not in cut
+        assert joiner.join_btn.isEnabled()
+        assert joiner.invite_edit.isEnabled()
+        assert joiner.join_progress.text() == ""
+        assert joiner.stack.currentWidget() is joiner.join_page
+        assert not joiner.tahoe.nodedir.exists()
+
+        joiner.invite_edit.setText("7-guitarist-revenge")
+        welcome = _welcome_when_node_url(joiner.tahoe)
+        with patch.object(joiner.tahoe, "welcome", side_effect=welcome):
+            with patch.object(joiner.mf, "list_folders", return_value=[]):
+                joiner.on_join_invite()
+        assert joiner.stack.currentWidget() is joiner.main_page
+        assert joiner.join_error.text() == ""
+        cfg = (joiner.tahoe.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert "--join=7-guitarist-revenge" in cfg
+        assert "7-cut-code" not in cfg
+    finally:
+        joiner.tahoe.stop()
+        joiner.poll.stop()
+        joiner.win.hide()
+        if joiner.tray is not None:
+            joiner.tray.hide()
+
+
+def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
+    """A cut-off key file, then a key whose invite never connects, then a good key."""
+    from leasegrid_sync.app import ImportRecoveryDialog
+    from leasegrid_sync.recovery import IMPORT_FAIL_MSG, RecoveryBundle, encode_recovery_file
+    from tests.test_sync_backend import GOOD_FURL, TRUNCATED_FURL, _fake_tahoe
+
+    home = tmp_path / "import-home"
+    joiner = MainWindow(
+        nodedir=tmp_path / "import-tahoe",
+        home=home,
+        credit=FakeCredit(),
+        autoload=False,
+    )
+    joiner.tahoe.tahoe_bin = _fake_tahoe(tmp_path)
+    joiner.win.show()
+    offline = ConnectionStatus(state="Offline", detail="introducer down")
+    online = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+    )
+    dlg = ImportRecoveryDialog(joiner.win, joiner.recovery, joiner.QtWidgets)
+    dlg.pass_edit.setText("pw")
+    try:
+        whole = encode_recovery_file(
+            RecoveryBundle(introducer_furl=GOOD_FURL, shares=(1, 2, 2)), "pw"
+        )
+        cut_file = tmp_path / "cut.leasegrid-recovery"
+        cut_file.write_bytes(whole[: len(whole) // 2])
+        dlg.path_edit.setText(str(cut_file))
+        dlg.on_import()
+        cut_text = dlg.status.text()
+        assert IMPORT_FAIL_MSG in cut_text
+        assert "\nNext:" in cut_text
+        assert dlg.import_btn.text() == "Retry import"
+        assert dlg.import_btn.isEnabled()
+        assert dlg.result is None
+        assert not joiner.tahoe.has_nodedir()
+        assert_no_raw_user_text(cut_text)
+
+        bad_key = tmp_path / "bad.leasegrid-recovery"
+        bad_key.write_bytes(
+            encode_recovery_file(
+                RecoveryBundle(introducer_furl=TRUNCATED_FURL, shares=(1, 2, 2)), "pw"
+            )
+        )
+        dlg.path_edit.setText(str(bad_key))
+        with patch.object(joiner.tahoe, "is_reachable", return_value=True), patch.object(
+            joiner.tahoe, "wait_connected", return_value=offline
+        ):
+            dlg.on_import()
+        bad_text = dlg.status.text()
+        assert "Introducer is unreachable" in bad_text
+        assert "\nNext:" in bad_text
+        assert "LEASEGRID_TAHOE_NODEDIR" not in bad_text
+        assert TRUNCATED_FURL not in bad_text
+        assert "pb://" not in bad_text
+        assert dlg.import_btn.text() == "Retry import"
+        assert dlg.import_btn.isEnabled()
+        assert dlg.result is None
+        assert not joiner.tahoe.nodedir.exists()
+        assert_no_raw_user_text(bad_text)
+
+        good_key = tmp_path / "good.leasegrid-recovery"
+        good_key.write_bytes(
+            encode_recovery_file(
+                RecoveryBundle(introducer_furl=GOOD_FURL, shares=(1, 2, 2)), "pw"
+            )
+        )
+        dlg.path_edit.setText(str(good_key))
+        with patch.object(joiner.tahoe, "is_reachable", return_value=True), patch.object(
+            joiner.tahoe, "wait_connected", return_value=online
+        ), patch.object(joiner.mf, "ensure_init", return_value=None):
+            dlg.on_import()
+        assert dlg.result is not None
+        cfg = (joiner.tahoe.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert GOOD_FURL in cfg
+        assert TRUNCATED_FURL not in cfg
+        assert "--shares-needed=1" in cfg
+        assert "--shares-happy=2" in cfg
+        assert "--shares-total=2" in cfg
+    finally:
+        dlg.dlg.hide()
+        joiner.tahoe.stop()
+        joiner.poll.stop()
+        joiner.win.hide()
+        if joiner.tray is not None:
+            joiner.tray.hide()
+
+
 def test_join_failure_is_in_window_not_silent(ui: MainWindow):
     _ack_join(ui)
     ui.invite_edit.setText("nope")

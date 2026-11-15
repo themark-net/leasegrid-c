@@ -1857,7 +1857,12 @@ class TahoeClient:
             )
         return self._bring_up()
 
-    def join_invite(self, invite: str, offer_storage: bool = True) -> ConnectionStatus:
+    def join_invite(
+        self,
+        invite: str,
+        offer_storage: bool = True,
+        shares: Optional[tuple[int, int, int]] = None,
+    ) -> ConnectionStatus:
         """Join from a join URL, pb:// introducer furl, or short `tahoe invite` code.
 
         No node yet: create a Tahoe node for that friendnet (client+storage
@@ -1882,8 +1887,20 @@ class TahoeClient:
                     "if that node belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
                     "to a new path; otherwise check the introducer is up; Retry.",
                 ) from exc
-        self.create_node(furl, shares=parsed.shares, offer_storage=offer_storage)
-        return self._bring_up()
+        # A node this attempt creates must not block a corrected invite.
+        # A node that was already on disk is the branch above and stays.
+        chosen = parsed.shares or shares
+        self.create_node(furl, shares=chosen, offer_storage=offer_storage)
+        try:
+            return self._bring_up()
+        except SyncError:
+            self._discard_fresh_node()
+            raise
+
+    def _discard_fresh_node(self) -> None:
+        """Remove a node this attempt created and that never connected."""
+        self.stop()
+        shutil.rmtree(self.nodedir, ignore_errors=True)
 
 
 def _read_text(path: Path) -> str:

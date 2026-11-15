@@ -191,6 +191,8 @@ elif args[0] == "run":
 """
 
 GOOD_FURL = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
+# Long enough for validate_introducer_furl, short of a real swissnum. Fake.
+TRUNCATED_FURL = "pb://hashhashhash@127.0.0.1:45001/cut"
 
 
 def _fake_tahoe(tmp_path: Path) -> str:
@@ -753,6 +755,45 @@ def test_join_furl_failure_hides_the_tahoe_traceback(tmp_path: Path):
     assert "ValueError" not in blob
     assert bad not in blob
     assert not nodedir.exists()
+
+
+def test_truncated_furl_then_a_good_one_joins(tmp_path: Path):
+    """A furl that creates a node but never connects must not block the next one."""
+    assert validate_introducer_furl(TRUNCATED_FURL) == TRUNCATED_FURL
+    nodedir = tmp_path / "home" / "tahoe"
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
+    offline = ConnectionStatus(state="Offline", detail="introducer down")
+    online = ConnectionStatus(
+        state="Connected",
+        detail="introducer up · 1 storage",
+        introducer_ok=True,
+        servers_connected=1,
+    )
+    try:
+        with patch.object(client, "is_reachable", return_value=True), patch.object(
+            client, "wait_connected", return_value=offline
+        ):
+            with pytest.raises(SyncError) as exc:
+                client.join_invite(TRUNCATED_FURL)
+        blob = exc.value.banner()
+        assert "Introducer is unreachable" in blob
+        assert "\nNext:" in blob
+        assert "LEASEGRID_TAHOE_NODEDIR" not in blob
+        assert TRUNCATED_FURL not in blob
+        assert "pb://" not in blob
+        _assert_no_raw_failure(blob)
+        assert not nodedir.exists()
+
+        with patch.object(client, "is_reachable", return_value=True), patch.object(
+            client, "wait_connected", return_value=online
+        ):
+            status = client.join_invite(GOOD_FURL)
+        assert status.state == "Connected"
+        cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+        assert GOOD_FURL in cfg
+        assert TRUNCATED_FURL not in cfg
+    finally:
+        client.stop()
 
 
 def test_join_existing_starts_stopped_node(tmp_path: Path):

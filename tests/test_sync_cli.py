@@ -197,7 +197,7 @@ def test_restore_cli_hides_credit_exception_text(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("leasegrid_sync.recovery.RecoveryCtl._recover_credit", boom)
     monkeypatch.setattr(
         "leasegrid_sync.backend.TahoeClient.join_invite",
-        lambda self, _invite: ConnectionStatus(
+        lambda self, _invite, **_kwargs: ConnectionStatus(
             state="Connected", detail="grid-ok", introducer_ok=True
         ),
     )

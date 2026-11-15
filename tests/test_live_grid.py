@@ -6,8 +6,12 @@ The journey matches the deanery-grok b3c0a03 live stations: offer-disk join,
 client-only join, an app-made short code and the full join link both joining,
 add folder through Up to date, recovery export and import, an offscreen PyQt5
 window with screenshots, and a secret sweep of the logs that journey wrote.
+The same flag also runs the extras from that replay: a loopback storage-address
+override, a conflict, a missing folder, a stopped magic-folder, and the
+connection chip parade.
 
-Grid, homes, and screenshots stay under ./tmp. Nothing listens except 127.0.0.1.
+Grid, homes, and screenshots stay under ./tmp. Listeners stay on loopback
+(the grid on 127.0.0.1, the storage override on 127.0.0.2).
 A short code uses the grid's local wormhole relay.
 """
 
@@ -15,9 +19,11 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -35,10 +41,12 @@ HELLO = b"hello from leasegrid journey\n"
 PASSPHRASE = "journey-horse-battery"
 _SECRET_SHAPES = (
     re.compile(r"pb://"),
-    re.compile(r"URI:"),
     re.compile(r"\b\d+-[A-Za-z]{2,}(?:-[A-Za-z]{2,})+\b"),
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
 )
+# The public filter keeps a short URI:TYPE: label and replaces the body with
+# REDACTED. An unredacted body still has a long base32 or hex run.
+_URI_TOKEN = re.compile(r"URI:\S+")
 
 
 def _safe(text: str) -> str:
@@ -111,6 +119,14 @@ def _stop_group(proc: subprocess.Popen | None) -> None:
         proc.wait(timeout=10)
 
 
+def _tool_bin() -> Path:
+    exe = Path(sys.executable)
+    for folder in (ROOT / ".venv" / "bin", exe.parent, exe.resolve().parent):
+        if (folder / "tahoe").is_file() and (folder / "magic-folder").is_file():
+            return folder
+    return ROOT / ".venv" / "bin"
+
+
 def _start_grid(work: Path) -> tuple[subprocess.Popen, str, str, str]:
     """Start scripts/dev-grid.sh on ephemeral loopback ports. Return proc, furl, relay, issuer."""
     intro, intro_sock = _hold_port()
@@ -121,7 +137,7 @@ def _start_grid(work: Path) -> tuple[subprocess.Popen, str, str, str]:
     grid_dir = work / "grid"
     log_path = work / "grid.log"
     grid_dir.mkdir(parents=True)
-    venv_bin = ROOT / ".venv" / "bin"
+    venv_bin = _tool_bin()
     env = os.environ.copy()
     for key in (
         "LEASEGRID_SYNC_HOME",
@@ -309,6 +325,14 @@ def _filtered_log(path: Path) -> str:
     return proc.stdout.decode("utf-8", errors="replace")
 
 
+def _uri_body_leaks(text: str) -> bool:
+    for match in _URI_TOKEN.finditer(text):
+        body = match.group(0).replace("REDACTED", "")
+        if re.search(r"[A-Za-z2-7]{8,}", body) or re.search(r"[0-9A-Fa-f]{16,}", body):
+            return True
+    return False
+
+
 def _assert_clean(text: str, where: str, needles: list[str]) -> None:
     for needle in needles:
         if needle and needle in text:
@@ -316,6 +340,8 @@ def _assert_clean(text: str, where: str, needles: list[str]) -> None:
     for pattern in _SECRET_SHAPES:
         if pattern.search(text):
             raise AssertionError("%s contains a secret shape" % where)
+    if _uri_body_leaks(text):
+        raise AssertionError("%s contains a capability" % where)
 
 
 def _sweep(homes: list[Path], reports: list[str], needles: list[str]) -> None:
@@ -341,10 +367,311 @@ def _sweep(homes: list[Path], reports: list[str], needles: list[str]) -> None:
         raise AssertionError("no log files were scanned")
 
 
+def _tub_lines(nodedir: Path) -> tuple[str, str]:
+    port = ""
+    location = ""
+    text = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("tub.port") and "=" in stripped:
+            port = stripped.split("=", 1)[1].strip()
+        elif stripped.startswith("tub.location") and "=" in stripped:
+            location = stripped.split("=", 1)[1].strip()
+    if not port or not location:
+        raise AssertionError("the node did not publish a listen address")
+    return port, location
+
+
+def _listen_addrs(port: int) -> set[str]:
+    found: set[str] = set()
+    want = "%04X" % port
+    for name in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            lines = Path(name).read_text(encoding="utf-8").splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 4 or parts[3] != "0A":
+                continue
+            addr, hex_port = parts[1].split(":")
+            if hex_port.upper() == want:
+                found.add(addr.upper())
+    return found
+
+
+def _see_storage_override(work, furl, issuer, mf_port, windows, homes, shots) -> None:
+    """One loopback address replaces the default, and the port is not on every interface."""
+    previous = os.environ.get("LEASEGRID_STORAGE_HOSTNAME")
+    os.environ["LEASEGRID_STORAGE_HOSTNAME"] = "127.0.0.2"
+    window = None
+    try:
+        window = _open_window(work / "home-override", mf_port, issuer)
+        windows.append(window)
+        homes.append(window.home)
+        _join(window, furl, offer=True)
+        from leasegrid_sync.backend import storage_offered
+
+        if not storage_offered(window.tahoe.nodedir):
+            raise AssertionError("storage override did not offer disk")
+        port_line, location = _tub_lines(window.tahoe.nodedir)
+        listen_port = int(port_line.split(":")[1])
+        if location != "tcp:127.0.0.2:%d" % listen_port:
+            raise AssertionError("the override did not replace the advertised address")
+        short = socket.gethostname().split(".")[0]
+        if short and not short[0].isdigit() and short in location:
+            raise AssertionError("the storage address is the machine hostname")
+        if "interface=127.0.0.2" not in port_line:
+            raise AssertionError("the override is not bound to the chosen address")
+        sock = socket.socket()
+        try:
+            sock.settimeout(3)
+            sock.connect(("127.0.0.2", listen_port))
+        finally:
+            sock.close()
+        listeners = _listen_addrs(listen_port)
+        if "0200007F" not in listeners:
+            raise AssertionError("the override is not listening on 127.0.0.2")
+        if "00000000" in listeners or "00000000000000000000000000000000" in listeners:
+            raise AssertionError("loopback storage is also listening on every interface")
+        _shot(window.win, shots / "storage-override.png")
+    finally:
+        os.environ["LEASEGRID_STORAGE_HOSTNAME"] = previous or "127.0.0.1"
+        if window is not None:
+            _retire(window)
+
+
+def _row_status(window, name: str) -> str:
+    for row in range(window.table.rowCount()):
+        item = window.table.item(row, 0)
+        if item is None or item.text() != name:
+            continue
+        cell = window.table.item(row, 1)
+        return cell.text() if cell is not None else ""
+    return ""
+
+
+def _nudge(window, name: str) -> None:
+    try:
+        window.mf.scan_local(name)
+    except Exception:
+        pass
+    try:
+        window.mf.poll_remote(name)
+    except Exception:
+        pass
+    try:
+        window.refresh()
+    except Exception:
+        pass
+    window.app.processEvents()
+
+
+def _see_conflict(offer, restored, offer_file: Path, restored_file: Path, name: str, shots) -> None:
+    offer_file.write_bytes(b"alice edit\n")
+    restored_file.write_bytes(b"bob edit\n")
+    deadline = time.monotonic() + 150
+    last_offer = ""
+    last_restored = ""
+    while time.monotonic() < deadline:
+        _nudge(offer, name)
+        _nudge(restored, name)
+        last_offer = _row_status(offer, name)
+        last_restored = _row_status(restored, name)
+        if last_offer == "Conflict" or last_restored == "Conflict":
+            winner = offer if last_offer == "Conflict" else restored
+            _shot(winner.win, shots / "folder-conflict.png")
+            return
+        time.sleep(1)
+    raise AssertionError(
+        "neither computer showed Conflict (%s, %s)" % (_safe(last_offer), _safe(last_restored))
+    )
+
+
+def _see_missing_folder(window, shots) -> None:
+    from leasegrid_sync.app import display_path
+
+    item = window.table.item(0, 2) if window.table.rowCount() else None
+    path = item.text() if item is not None else ""
+    if not path:
+        raise AssertionError("the folder row has no path")
+    target = Path(path)
+    if target.is_dir():
+        shutil.rmtree(target)
+    window.open_folder_path(path)
+    window.app.processEvents()
+    banner = window.folder_error.text()
+    if "not on this computer any more" not in banner:
+        raise AssertionError("missing-folder banner was %s" % _safe(banner))
+    shown = display_path(path)
+    if shown not in banner and target.name not in banner:
+        raise AssertionError("missing-folder banner left out the folder")
+    _shot(window.win, shots / "folder-missing.png")
+
+
+def _see_stopped_magic_folder(window, name: str, shots) -> None:
+    from leasegrid_sync.backend import SyncError
+
+    window.mf.stop()
+    if window.mf.is_running():
+        raise AssertionError("magic-folder was still answering after stop")
+    status, detail = window.mf.folder_status(name, "")
+    # A clean exit rewrites the endpoint to "not running". No answer at all
+    # says "not reachable". Either one is the service being down.
+    down = "not running" in detail or "not reachable" in detail
+    if status != "FAIL" or not down:
+        raise AssertionError("stopped magic-folder said %s" % _safe("%s %s" % (status, detail)))
+    window.show_folder_error(SyncError(detail, "Restart Sync."))
+    window.app.processEvents()
+    _shot(window.win, shots / "folder-service-down.png")
+    try:
+        window.refresh()
+    except Exception:
+        pass
+    window.app.processEvents()
+    if not window.mf.is_running():
+        raise AssertionError(
+            "refresh did not start magic-folder again: %s" % _safe(window.folder_error.text())
+        )
+    if window.table.rowCount() < 1:
+        raise AssertionError("refresh dropped the folder: %s" % _safe(window.folder_error.text()))
+    _shot(window.win, shots / "folder-service-back.png")
+
+
+def _owned_pids(proc: subprocess.Popen) -> set[int]:
+    owned = {proc.pid}
+    stack = [proc.pid]
+    while stack:
+        current = stack.pop()
+        path = Path("/proc/%d/task/%d/children" % (current, current))
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for item in raw.split():
+            if item.isdigit():
+                child = int(item)
+                if child not in owned:
+                    owned.add(child)
+                    stack.append(child)
+    try:
+        listing = subprocess.check_output(
+            ["ps", "-o", "pid=", "-g", str(os.getpgid(proc.pid))],
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError, ProcessLookupError):
+        return owned
+    for line in listing.splitlines():
+        text = line.strip()
+        if text.isdigit():
+            owned.add(int(text))
+    return owned
+
+
+def _cmdline(pid: int) -> str:
+    try:
+        raw = Path("/proc/%d/cmdline" % pid).read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\x00", b" ").decode("utf-8", "replace")
+
+
+def _pid_for(nodedir: Path, owned: set[int]) -> int:
+    needle = str(nodedir)
+    for pid in owned:
+        if needle in _cmdline(pid) and "tahoe" in _cmdline(pid):
+            return pid
+    pid_path = nodedir / "twistd.pid"
+    if pid_path.is_file():
+        text = pid_path.read_text(encoding="utf-8").strip()
+        if text.isdigit() and int(text) in owned:
+            return int(text)
+    raise AssertionError("dev-grid node is not one this journey started")
+
+
+def _ports_closed(ports: list[int], timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(not _port_open(port) for port in ports):
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def _stop_nodedirs(proc: subprocess.Popen, nodedirs: list[Path]) -> None:
+    owned = _owned_pids(proc)
+    pids: list[int] = []
+    ports: list[int] = []
+    for nodedir in nodedirs:
+        if not (nodedir / "tahoe.cfg").is_file():
+            raise AssertionError("dev-grid node directory is missing")
+        pids.append(_pid_for(nodedir, owned))
+        port_line, _location = _tub_lines(nodedir)
+        ports.append(int(port_line.split(":")[1]))
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    if _ports_closed(ports, 15):
+        return
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    if not _ports_closed(ports, 8):
+        raise AssertionError("a dev-grid node stayed up after stop")
+
+
+def _pump_chip(window, predicate, timeout: float) -> str:
+    deadline = time.monotonic() + timeout
+    last = window.status_chip.text()
+    while time.monotonic() < deadline:
+        try:
+            window.refresh()
+        except Exception:
+            pass
+        window.app.processEvents()
+        last = window.status_chip.text()
+        if predicate(last):
+            return last
+        time.sleep(0.4)
+    return last
+
+
+def _see_chip_parade(window, proc: subprocess.Popen, grid_dir: Path, shots) -> None:
+    """Online with no storage, then offline, then the client itself stopped."""
+    storages = sorted(path for path in grid_dir.glob("storage-*") if path.is_dir())
+    if len(storages) < 1:
+        raise AssertionError("the dev-grid has no storage nodes")
+    _stop_nodedirs(proc, storages)
+    last = _pump_chip(window, lambda text: "connected to the friendnet" in text, 45)
+    if "connected to the friendnet" not in last:
+        raise AssertionError("chip stayed %s" % _safe(last))
+    _shot(window.win, shots / "status-online-empty.png")
+    _stop_nodedirs(proc, [grid_dir / "intro"])
+    connecting = _pump_chip(window, lambda text: text.startswith("Connecting"), 8)
+    if connecting.startswith("Connecting"):
+        _shot(window.win, shots / "status-connecting.png")
+    if connecting == "Offline":
+        last = connecting
+    else:
+        last = _pump_chip(window, lambda text: text == "Offline", 40)
+    if last != "Offline":
+        raise AssertionError("chip stayed %s" % _safe(last))
+    _shot(window.win, shots / "status-offline.png")
+    window.tahoe.stop()
+    last = _pump_chip(window, lambda text: "Can't reach" in text, 30)
+    if "Can't reach" not in last:
+        raise AssertionError("chip stayed %s" % _safe(last))
+    _shot(window.win, shots / "status-could-not-check.png")
+
+
 def test_live_journey_matches_replay_stations() -> None:
-    """Offer disk, client-only, both invite kinds, folder, recovery, window, secrets."""
+    """Offer disk, client-only, invites, folder, recovery, and the replay extras."""
     pytest.importorskip("PyQt5")
-    venv_bin = ROOT / ".venv" / "bin"
+    venv_bin = _tool_bin()
     tahoe_bin = venv_bin / "tahoe"
     mf_bin = venv_bin / "magic-folder"
     if not tahoe_bin.is_file() or not mf_bin.is_file():
@@ -382,7 +709,7 @@ def test_live_journey_matches_replay_stations() -> None:
         os.environ["LEASEGRID_ISSUER_URL"] = issuer
         phase("grid")
 
-        mf_ports = [_hold_port() for _ in range(5)]
+        mf_ports = [_hold_port() for _ in range(7)]
         _release([sock for _port, sock in mf_ports])
         ports = [port for port, _sock in mf_ports]
 
@@ -394,6 +721,8 @@ def test_live_journey_matches_replay_stations() -> None:
             raise AssertionError("offer-disk join did not enable storage")
         _shot(offer.win, shots / "offer-joined.png")
         phase("offer-disk")
+        _see_storage_override(work, furl, issuer, ports[5], windows, homes, shots)
+        phase("storage-override")
 
         client = _open_window(work / "home-client", ports[1], issuer)
         windows.append(client)
@@ -511,9 +840,25 @@ def test_live_journey_matches_replay_stations() -> None:
         _shot(restored.win, shots / "recovery-imported.png")
         phase("import")
 
-        reports = []
-        for window in (offer, restored):
-            reports.append(window.bug_report_text())
+        _see_conflict(offer, restored, notes / "hello.txt", arrived, folder_name, shots)
+        phase("conflict")
+        _see_missing_folder(offer, shots)
+        phase("missing-folder")
+        _see_stopped_magic_folder(offer, folder_name, shots)
+        phase("magic-folder-stopped")
+
+        chips = _open_window(work / "home-chips", ports[6], issuer)
+        windows.append(chips)
+        homes.append(chips.home)
+        _join(chips, furl, offer=False)
+        if storage_offered(chips.tahoe.nodedir):
+            raise AssertionError("chip window offered storage")
+        reports = [offer.bug_report_text(), restored.bug_report_text()]
+        _retire(offer)
+        _retire(restored)
+        _see_chip_parade(chips, grid_proc, work / "grid", shots)
+        phase("chips")
+        reports.append(chips.bug_report_text())
         _sweep(homes, reports, [furl, code, link, PASSPHRASE])
         phase("secrets")
     finally:

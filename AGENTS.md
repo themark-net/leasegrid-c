@@ -27,7 +27,7 @@ Standing rule: every Tester/Reviewer blocker a pattern could catch becomes a too
 
 Skill: [.grok/skills/systems-safety/SKILL.md](.grok/skills/systems-safety/SKILL.md)
 
-Before claiming done: run `scripts/prove-red.py` on a cases file for your fixes and paste the table into the PR body. Exit 0 means every case is RED. A baseline that is not green, or a pytest exit other than 1, is a setup error (exit 2), not RED. Never write 'CI green' without `gh pr checks` output or a run URL listing all jobs.
+Before claiming done: run `scripts/prove-red.py` on a cases file for your fixes and paste the table into the PR body. Exit 0 means every case is RED. A baseline that is not green, or a pytest exit other than 1, is a setup error (exit 2), not RED. A mutated Python file that does not compile is INVALID (exit 2), not a kill. SIGKILL cannot be caught and leaves the mutant applied; the next run restores the file when those bytes are exactly that case's mutant, otherwise `git restore --source=HEAD -- <file>`. Never write 'CI green' without `gh pr checks` output or a run URL listing all jobs.
 
 ## Verify / dogfood
 

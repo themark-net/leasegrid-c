@@ -64,6 +64,16 @@ MODULE = "def answer():\n    return 1\n"
 TEST = "import mod\n\ndef test_answer():\n    assert mod.answer() == 1\n"
 
 
+def test_sigkill_and_invalid_are_documented() -> None:
+    """The harness and AGENTS.md name the SIGKILL leftover and INVALID."""
+    script = SCRIPT.read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    for text in (script, agents):
+        assert "INVALID" in text
+        assert "SIGKILL" in text
+        assert "git restore --source=HEAD --" in text
+
+
 def test_caught_mutant_is_red_and_restores(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     target = _init_repo(repo, MODULE, TEST)
@@ -185,6 +195,48 @@ def test_always_failing_baseline_is_setup_error(tmp_path: Path) -> None:
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "SETUP-ERROR (baseline rc=1)" in proc.stdout
     assert target.read_bytes() == original
+
+
+def test_syntax_error_mutant_is_invalid_not_a_kill(tmp_path: Path) -> None:
+    """A syntax error is INVALID. It is not a kill, even when pytest would exit 1.
+
+    The import sits inside the test, so collection succeeds and a SyntaxError
+    during the test used to print RED and exit 0.
+    """
+    repo = tmp_path / "repo"
+    test_body = "def test_answer():\n    import mod\n    assert mod.answer() == 1\n"
+    target = _init_repo(repo, MODULE, test_body)
+    original = target.read_bytes()
+    cases = _cases(repo, "syntax", "return 1\n", "return (\n")
+    proc = _run(repo, cases)
+    assert target.read_bytes() == original
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "INVALID" in proc.stdout
+    assert "RED" not in proc.stdout
+    assert "SURVIVED" not in proc.stdout
+
+
+def test_leftover_mutant_from_sigkill_is_restored(tmp_path: Path) -> None:
+    """SIGKILL leaves the mutant. The next run restores that exact mutant and continues.
+
+    A different uncommitted edit is still refused and left in place.
+    """
+    repo = tmp_path / "repo"
+    target = _init_repo(repo, MODULE, TEST)
+    original = target.read_bytes()
+    target.write_bytes(original.replace(b"return 1\n", b"return 2\n"))
+    cases = _cases(repo, "caught", "return 1\n", "return 2\n")
+    proc = _run(repo, cases)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "restored leftover mutant" in proc.stderr
+    assert "RED" in proc.stdout
+    assert target.read_bytes() == original
+    local = MODULE + "# local edit\n"
+    target.write_text(local, encoding="utf-8")
+    proc = _run(repo, cases)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "uncommitted" in proc.stderr
+    assert target.read_text(encoding="utf-8") == local
 
 
 def test_dirty_target_exits_2_and_is_unchanged(tmp_path: Path) -> None:
@@ -314,3 +366,61 @@ def test_signal_restores_bytes_and_skips_the_receipt(
     assert not receipt.is_file()
     assert proc.returncode not in (0, None)
     assert proc.returncode == code, proc.returncode
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or not hasattr(signal, "pthread_sigmask"),
+    reason="POSIX signal mask is what holds SIGINT off during the restore write",
+)
+def test_signal_during_restore_still_restores(tmp_path: Path) -> None:
+    """A SIGINT during the restore write still puts the original bytes back.
+
+    The harness sleeps inside the masked section when PROVE_RED_RESTORE_DELAY
+    is set. A second SIGINT in that window must not skip the write.
+    """
+    repo = tmp_path / "repo"
+    module = "def answer():\n    return 1\n"
+    test_body = "def test_answer():\n    import mod\n    assert mod.answer() == 1\n"
+    target = _init_repo(repo, module, test_body)
+    original = target.read_bytes()
+    marker = tmp_path / "marker"
+    mutant = (
+        "    import pathlib\n"
+        "    import time\n"
+        "    pathlib.Path(%r).write_text('up', encoding='utf-8')\n"
+        "    time.sleep(30)\n"
+        "    return 1\n" % str(marker)
+    )
+    cases = _cases(repo, "hold", "    return 1\n", mutant)
+    env = os.environ.copy()
+    env["PROVE_RED_RESTORE_DELAY"] = "0.6"
+    proc = subprocess.Popen(
+        [sys.executable, str(SCRIPT), str(cases)],
+        cwd=repo,
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.time() + 20
+        while time.time() < deadline and not marker.is_file():
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.is_file(), "sleeper did not start rc %s" % proc.returncode
+        os.kill(proc.pid, signal.SIGINT)
+        time.sleep(0.15)
+        if proc.poll() is None:
+            os.kill(proc.pid, signal.SIGINT)
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            pytest.fail("prove-red still alive after the restore signal")
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=5)
+    assert target.read_bytes() == original, "target left mutated"
+    assert proc.returncode == 130, proc.returncode

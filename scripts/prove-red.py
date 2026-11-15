@@ -14,7 +14,17 @@ pattern is missing, or a target is dirty or absent. A target with
 uncommitted changes is refused so a mutant cannot be committed.
 
 SIGINT, and SIGTERM on POSIX, restore the open target and exit 130 or 143.
+Those signals are blocked while the original bytes are written, then
+delivered, so a second signal during the write cannot skip the restore.
 No receipt is written on that path.
+
+A mutated Python file that does not compile is INVALID, not RED. INVALID
+is not a kill. The process exits 2.
+
+SIGKILL cannot be caught and leaves the mutant applied. The next run
+restores a target whose bytes are exactly that case's mutant, then
+continues. Any other uncommitted change is still refused. Hand recovery:
+``git restore --source=HEAD -- <file>``.
 """
 
 from __future__ import annotations
@@ -25,6 +35,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -110,6 +121,68 @@ def _mutant_bytes(original: bytes, old: str, new: str) -> bytes:
     return mutated.encode("utf-8")
 
 
+def _python_syntax_error(path: Path) -> bool:
+    """True when the mutated file is Python that does not compile."""
+    if path.suffix != ".py":
+        return False
+    try:
+        compile(path.read_bytes(), str(path), "exec")
+    except SyntaxError:
+        return True
+    return False
+
+
+def _restore_bytes(path: Path, original: bytes) -> None:
+    """Write ``original`` back. Stop signals wait until the write finishes.
+
+    ``PROVE_RED_RESTORE_DELAY`` (seconds) sleeps inside the blocked section.
+    Tests use it to deliver a signal during the restore. Production runs
+    leave it unset.
+    """
+    delay = os.environ.get("PROVE_RED_RESTORE_DELAY", "")
+    block = sys.platform != "win32" and hasattr(signal, "pthread_sigmask")
+    if block:
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
+    try:
+        if delay:
+            try:
+                time.sleep(float(delay))
+            except ValueError:
+                pass
+        path.write_bytes(original)
+    finally:
+        if block:
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT, signal.SIGTERM})
+
+
+def _head_bytes(path: Path) -> bytes | None:
+    """Committed bytes of ``path``, or None when git cannot show them."""
+    proc = subprocess.run(
+        ["git", "show", "HEAD:%s" % path.as_posix()],
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _exact_leftover(path: Path, old: str, new: str) -> bool:
+    """True when the working tree is exactly one application of this mutant."""
+    head = _head_bytes(path)
+    if head is None:
+        return False
+    try:
+        mutant = _mutant_bytes(head, old, new)
+    except SystemExit:
+        return False
+    try:
+        current = path.read_bytes()
+    except OSError:
+        return False
+    return current == mutant
+
+
 def _pytest(python: str, args: list[str]) -> int:
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
@@ -127,17 +200,23 @@ def _run_case(python: str, path: Path, old: str, new: str, args: list[str]) -> s
     baseline = _pytest(python, args)
     if baseline != 0:
         return "SETUP-ERROR (baseline rc=%s)" % baseline
+    result = "SETUP-ERROR (rc=?)"
     try:
         # Bytes, not write_text: write_text would turn ``\\n`` into CRLF again.
         path.write_bytes(_mutant_bytes(original, old, new))
-        rc = _pytest(python, args)
+        if _python_syntax_error(path):
+            result = "INVALID"
+        else:
+            rc = _pytest(python, args)
+            if rc == 1:
+                result = "RED"
+            elif rc == 0:
+                result = "SURVIVED"
+            else:
+                result = "SETUP-ERROR (rc=%s)" % rc
     finally:
-        path.write_bytes(original)
-    if rc == 1:
-        return "RED"
-    if rc == 0:
-        return "SURVIVED"
-    return "SETUP-ERROR (rc=%s)" % rc
+        _restore_bytes(path, original)
+    return result
 
 
 def _table(rows: list[tuple[str, str]]) -> str:
@@ -158,12 +237,38 @@ def _main(argv: list[str] | None = None) -> int:
         print("cases file not found", file=sys.stderr)
         return 2
     cases = _load_cases(args.cases)
+    seen: list[Path] = []
     for _name, path, _old, _new, _pytest_args in cases:
+        if path in seen:
+            continue
+        seen.append(path)
         if not path.is_file():
             print("target missing: %s" % path, file=sys.stderr)
             return 2
+        if not _uncommitted(path):
+            continue
+        restored = False
+        for _case_name, case_path, old, new, _case_args in cases:
+            if case_path != path:
+                continue
+            if not _exact_leftover(path, old, new):
+                continue
+            head = _head_bytes(path)
+            if head is None:
+                break
+            _restore_bytes(path, head)
+            print(
+                "restored leftover mutant in %s. SIGKILL leaves a mutant applied. "
+                "Hand recovery: git restore --source=HEAD -- %s" % (path, path),
+                file=sys.stderr,
+            )
+            restored = True
+            break
         if _uncommitted(path):
-            print("uncommitted changes in %s" % path, file=sys.stderr)
+            if restored:
+                print("could not restore %s" % path, file=sys.stderr)
+            else:
+                print("uncommitted changes in %s" % path, file=sys.stderr)
             return 2
     rows: list[tuple[str, str]] = []
     touched: list[Path] = []
@@ -182,7 +287,7 @@ def _main(argv: list[str] | None = None) -> int:
     if leaked:
         print("git diff is not quiet: %s" % ", ".join(leaked), file=sys.stderr)
         return 2
-    if any(result.startswith("SETUP-ERROR") for _name, result in rows):
+    if any(result == "INVALID" or result.startswith("SETUP-ERROR") for _name, result in rows):
         return 2
     if any(result == "SURVIVED" for _name, result in rows):
         return 1

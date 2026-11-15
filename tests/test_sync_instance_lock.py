@@ -373,6 +373,77 @@ def test_foreign_host_lock_older_than_stale_time_is_recovered(tmp_path: Path, mo
     _recovered(monkeypatch, home)
 
 
+def test_young_other_host_lock_is_not_stolen(tmp_path: Path, monkeypatch) -> None:
+    """A lock from another host, a few seconds old, is not taken and does not block.
+
+    Qt's 2s stale time treats that file as stale and steals it at once. The
+    launch must refuse immediately instead, and leave the file unchanged.
+    Same-host dead pids stay on the path covered by the killed-process test.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    payload = b"1\nleasegrid-sync\nnot-this-host\n"
+    lock.write_bytes(payload)
+    past = time.time() - 3
+    os.utime(lock, (past, past))
+    started = time.monotonic()
+    _refused(monkeypatch, home)
+    assert time.monotonic() - started < 5
+    assert lock.read_bytes() == payload
+
+
+def _lock_failure(monkeypatch, home: Path, capsys) -> tuple[int, str]:
+    """Launch. Return the exit code and the text the user can see."""
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    nodedir = home / "tahoe"
+    with patch("leasegrid_sync.app.MainWindow", side_effect=AssertionError("window")) as window, patch(
+        "PyQt5.QtWidgets.QMessageBox.information", return_value=0
+    ) as box:
+        code = main(["--offscreen", "--nodedir", str(nodedir)])
+    err = capsys.readouterr().err
+    shown = ""
+    if box.call_count:
+        shown = str(box.call_args[0][2])
+    assert window.call_count == 0
+    return code, err + "\n" + shown
+
+
+def test_lock_path_that_is_a_directory_names_the_next_step(tmp_path: Path, monkeypatch, capsys) -> None:
+    """A directory where the lock file should be fails in one sentence, with a next step."""
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.mkdir()
+    code, text = _lock_failure(monkeypatch, home, capsys)
+    assert code == 1
+    assert "Traceback" not in text
+    assert "lock path is a directory" in text
+    assert "Next:" in text
+    assert "already running" not in text.lower()
+    assert lock.is_dir()
+
+
+def test_lock_file_mode_000_names_the_next_step(tmp_path: Path, monkeypatch, capsys) -> None:
+    """A lock file with mode 000 fails in one sentence. It does not start a second instance."""
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    lock.chmod(0)
+    try:
+        code, text = _lock_failure(monkeypatch, home, capsys)
+        assert code == 1
+        assert "Traceback" not in text
+        assert "could not read its lock file" in text
+        assert "Next:" in text
+        assert "already running" not in text.lower()
+        assert lock.is_file()
+    finally:
+        lock.chmod(0o644)
+
+
 class _Pipe:
     def __init__(self, proc: subprocess.Popen[str]) -> None:
         self.proc = proc

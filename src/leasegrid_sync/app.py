@@ -264,19 +264,69 @@ def _lock_writer_grace() -> None:
 # tryLock refuses it. Older than this, tryLock takes it. This code does not
 # unlink the file: a rename or removeStaleLockFile deletes a rival's new lock.
 _LOCK_PIDLESS_MAX_AGE_S = 2.0
+# Another host's lock is not live-checkable. Younger than Qt's old 30s window
+# it is refused at once (the 2s stale time must not steal it, and launch must
+# not wait). Older than that, tryLock takes it without blocking.
+_OTHER_HOST_STALE_S = 30.0
+_LOCK_DIRECTORY = (
+    "Leasegrid Sync could not lock this home. The lock path is a directory.",
+    "Remove that directory, or set LEASEGRID_SYNC_HOME to another folder, then start again.",
+)
+_LOCK_UNREADABLE = (
+    "Leasegrid Sync could not read its lock file.",
+    "Delete the lock file or restore its permissions, then start again.",
+)
+
+
+def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
+    """A directory or a mode-000 file cannot be a lock. None when the path is usable."""
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return _LOCK_UNREADABLE
+    if stat.S_ISDIR(st.st_mode):
+        return _LOCK_DIRECTORY
+    if stat.S_ISREG(st.st_mode) and (stat.S_IMODE(st.st_mode) & 0o777) == 0:
+        return _LOCK_UNREADABLE
+    return None
+
+
+def _other_host_lock_is_young(path: Path) -> bool:
+    """True for another machine's lock that is still inside the 30s window."""
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return False
+    if age >= _OTHER_HOST_STALE_S:
+        return False
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    if len(lines) < 3 or not lines[0].strip().isdigit():
+        return False
+    host = lines[2].strip()
+    if not host or host == socket.gethostname():
+        return False
+    return True
 
 
 def acquire_instance_lock(home: Path) -> bool:
-    """Lock this Sync home. A dead, empty, garbage, or other-host lock is taken over.
+    """Lock this Sync home. A dead, empty, garbage, or old other-host lock is taken over.
 
-    Qt recovers a dead PID at once. A PID-less file (empty, garbage, or a
-    crash mid-write) is taken only once it is older than 2s. That gate is
+    Qt recovers a dead same-host PID at once. A PID-less file (empty, garbage,
+    or a crash mid-write) is taken only once it is older than 2s. That gate is
     QLockFile's stale time, inside tryLock, so two callers cannot both delete
-    it. A younger PID-less file is left in place and this call refuses. Wait
-    briefly first so a starter that is still writing its PID can finish. A
-    readable PID is refused. The QLockFile object stays referenced until a
+    it. A younger PID-less file is left in place and this call refuses. A lock
+    from another host that is younger than 30s is refused immediately, without
+    waiting and without stealing the file. An older one is taken. Wait briefly
+    first so a starter that is still writing its PID can finish. A readable
+    same-host PID is refused. The QLockFile object stays referenced until a
     clean quit, or the destructor would unlock it early. Returns False when
-    another live process holds the lock.
+    another live process holds the lock. Raises SyncError when the lock path
+    is a directory or a mode-000 file.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile
@@ -286,6 +336,11 @@ def acquire_instance_lock(home: Path) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         return True
+    problem = _lock_path_problem(path)
+    if problem is not None:
+        raise SyncError(problem[0], problem[1])
+    if _other_host_lock_is_young(path):
+        return False
     lock = QLockFile(str(path))
     lock.setStaleLockTime(int(_LOCK_PIDLESS_MAX_AGE_S * 1000))
     if not lock.tryLock(0):
@@ -950,6 +1005,24 @@ def _disarm_already_running_signal_quit(app) -> None:
             sock.close()
         except OSError:
             pass
+
+
+def _show_startup_failure(exc: SyncError) -> None:
+    """Print one sentence and a next step. No traceback if the dialog cannot open."""
+    print(exc.message, file=sys.stderr)
+    if exc.next_hint:
+        print("Next: " + exc.next_hint, file=sys.stderr)
+    text = exc.message
+    if exc.next_hint:
+        text = text + "\nNext: " + exc.next_hint
+    try:
+        _QtCore, _QtGui, QtWidgets = _qt_api()
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+        QtWidgets.QMessageBox.information(None, APP_NAME, text)
+        if app.closingDown():
+            return
+    except Exception:
+        return
 
 
 def _show_already_running() -> None:
@@ -4241,7 +4314,12 @@ def run_app(
 ) -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     # One window per Sync home. Headless CLI commands never reach here.
-    if not acquire_instance_lock(default_home()):
+    try:
+        locked = acquire_instance_lock(default_home())
+    except SyncError as exc:
+        _show_startup_failure(exc)
+        return 1
+    if not locked:
         _show_already_running()
         return 0
     ui = MainWindow(nodedir=nodedir, issuer_url=issuer_url, autoload=False)

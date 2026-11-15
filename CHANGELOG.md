@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android recovery import: a file name in the recovery extra is read from the app files folder. A relative path that leaves that folder (including `../` or a link that points outside) is refused, and the outside file is not read. An absolute path is still used as given ([#26](https://github.com/themark-net/leasegrid-c/issues/26)).
+- Android list and remove errors no longer say "download". A folder list that cannot reach storage says it could not load folders. A remove that cannot reach storage says it could not remove this file ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
+- Android join paste: a soft hyphen (U+00AD) is dropped like the other invisible paste marks, so the link still joins. A right-to-left override, a plus sign, or a second @ in the link is reported as incomplete ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
 - Android Join: Retry after a failure that is not a bad link or an unreachable computer joins the text in the field now. The tap itself still joins the text from that tap if the field changes before the join starts ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
 - Android Import: the system Back button cancels the import, the same as Cancel and the back arrow ([#85](https://github.com/themark-net/leasegrid-c/issues/85)).
 - Android list, download and remove give up after about 25 seconds when storage cannot be reached, and show the error card then. They used to wait out a timeout on every share.

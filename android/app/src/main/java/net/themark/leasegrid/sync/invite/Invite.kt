@@ -4,7 +4,17 @@ data class ParsedInvite(
     val kind: String,
     val furl: String,
     val shares: List<Int>? = null,
+    val code: String = "",
 )
+
+/** What a short-code attempt returned. [status] is ok, expired, rejected, relay, or timeout. */
+data class RedeemOutcome(
+    val status: String,
+    val furl: String = "",
+    val shares: List<Int>? = null,
+)
+
+data class RedeemCopy(val banner: String, val next: String)
 
 class InviteFail(val banner: String, val next: String) : Exception(banner)
 
@@ -29,18 +39,18 @@ object Invite {
     const val SHARE_INVITE = "Share invite"
     const val SHOW_FULL_JOIN_LINK = "Show full join link (advanced)"
 
-    // Parse fails (empty, short code, garbage, web URL, no address, malformed)
-    // show no Next line (#50, Design). A failed learn() shows JOIN_FAILED_NEXT.
+    // Parse fails (empty, garbage, web URL, no address, malformed) show no
+    // Next line (#50). A short code is not one of those (#77). A failed
+    // learn() shows JOIN_FAILED_NEXT. A redeem that did not yield an address
+    // shows one of the four redeem next lines.
     const val NO_NEXT = ""
 
     // Also the Join button label (Design, #50).
     const val TITLE = "Join a shared folder"
     const val BODY =
-        "On your computer, click $SHARE_INVITE in Leasegrid Sync and tick $SHOW_FULL_JOIN_LINK. Copy that link and paste it below."
-    const val INPUT_HINT = "Paste the full join link"
-    const val EMPTY_MSG = "Paste the join link first."
-    const val WORMHOLE_MSG =
-        "That's a short code. This phone can't use short codes yet. On your computer, tick $SHOW_FULL_JOIN_LINK, then paste that link here."
+        "On your computer, click $SHARE_INVITE in Leasegrid Sync. Type the short code below, or tick $SHOW_FULL_JOIN_LINK and paste that link."
+    const val INPUT_HINT = "Short code or join link"
+    const val EMPTY_MSG = "Enter a short code or paste the join link first."
     const val GARBAGE_MSG =
         "That isn't a join link. On your computer, tick $SHOW_FULL_JOIN_LINK, then copy and paste the whole link."
     const val WEB_URL_MSG =
@@ -65,6 +75,21 @@ object Invite {
     // Shown only after the imported session was saved.
     const val IMPORT_SAVED_MSG = "Saved on this phone. Couldn't reach your computer to finish."
 
+    // Redeem did not yield an address, so learn() is not called (#77).
+    // Retry reruns join() on the text in the field now.
+    const val CODE_EXPIRED = "This code expired."
+    const val CODE_EXPIRED_NEXT =
+        "On your computer, click $SHARE_INVITE again. Keep Leasegrid Sync open, type the new short code here, then tap Retry."
+    const val CODE_RELAY = "Couldn't reach the invite relay."
+    const val CODE_RELAY_NEXT =
+        "Check that this phone is online and Leasegrid Sync is still open on your computer, then tap Retry. If it still fails, tick $SHOW_FULL_JOIN_LINK and paste that link here."
+    const val CODE_REJECTED = "This code was not accepted."
+    const val CODE_REJECTED_NEXT =
+        "On your computer, click $SHARE_INVITE again and use the new short code. Keep Leasegrid Sync open, then tap Retry."
+    const val CODE_TIMEOUT = "Nobody answered this code yet."
+    const val CODE_TIMEOUT_NEXT =
+        "Keep Leasegrid Sync open on your computer until this phone joins, then tap Retry. If the code is old, click $SHARE_INVITE again and type the new short code."
+
     /** Parse first. A failed parse never reaches [join]. */
     inline fun <T> attempt(raw: String, fail: (InviteFail) -> T, join: (ParsedInvite) -> T): T {
         val parsed = try {
@@ -75,13 +100,23 @@ object Invite {
         return join(parsed)
     }
 
+    /** Banner for a redeem that did not return an address. Unknown statuses fail closed. */
+    fun redeemCopy(status: String): RedeemCopy = when (status) {
+        "expired" -> RedeemCopy(CODE_EXPIRED, CODE_EXPIRED_NEXT)
+        "relay" -> RedeemCopy(CODE_RELAY, CODE_RELAY_NEXT)
+        "timeout" -> RedeemCopy(CODE_TIMEOUT, CODE_TIMEOUT_NEXT)
+        else -> RedeemCopy(CODE_REJECTED, CODE_REJECTED_NEXT)
+    }
+
     fun parse(raw: String): ParsedInvite {
         val text = peelWrappers(stripPaste(raw))
         if (text.isEmpty()) {
             throw InviteFail(EMPTY_MSG, NO_NEXT)
         }
         if (isShortCode(text)) {
-            throw InviteFail(WORMHOLE_MSG, NO_NEXT)
+            // Lower case: the desktop code is printed in lower case, and a
+            // mixed-case paste is the same code.
+            return ParsedInvite("code", "", code = text.lowercase())
         }
         if (text.startsWith("pb://")) {
             return ParsedInvite("furl", validateFurl(text))
@@ -132,15 +167,21 @@ object Invite {
             val n = params["n"]?.toInt()
             val h = params["h"]?.toInt()
             val t = params["t"]?.toInt()
-            if (n != null && h != null && t != null && n > 0 && n <= h && h <= t) {
-                listOf(n, h, t)
-            } else {
-                null
-            }
+            if (n == null || h == null || t == null) null else keptShares(listOf(n, h, t))
         } catch (_: NumberFormatException) {
             null
         }
         return ParsedInvite("url", validateFurl(furl), shares)
+    }
+
+    /** Share counts from a join link or a redeemed invite. Null means the save path's 2, 3, 3. */
+    internal fun keptShares(shares: List<Int>?): List<Int>? {
+        if (shares == null || shares.size < 3) return null
+        val needed = shares[0]
+        val happy = shares[1]
+        val total = shares[2]
+        if (needed > 0 && needed <= happy && happy <= total) return listOf(needed, happy, total)
+        return null
     }
 
     /** Linear stand-in for `^[0-9]{1,3}(-[a-z0-9]+){2,}$`. No backtracking. */

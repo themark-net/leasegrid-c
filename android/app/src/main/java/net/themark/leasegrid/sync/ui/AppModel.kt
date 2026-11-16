@@ -13,11 +13,13 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +37,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.themark.leasegrid.sync.grid.AndroidGrid
 import net.themark.leasegrid.sync.invite.Invite
+import net.themark.leasegrid.sync.invite.RedeemOutcome
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
 import net.themark.leasegrid.sync.recovery.ImportFail
@@ -108,6 +111,9 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     private val retries = RetryOnce()
     private var recoveryEpoch = 0
 
+    /** True while a short-code handshake is inside the grid call. */
+    @Volatile private var redeeming = false
+
     private val gridRun = GridRun(
         scope = scope,
         setBusy = { busy = it },
@@ -123,6 +129,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         override val session: Session? get() = this@AppModel.session
         override fun launch(label: String, block: suspend () -> Unit) = runGrid(label, block)
         override suspend fun learn(furl: String): List<ServerRef>? = this@AppModel.learn(furl)
+        override suspend fun redeem(code: String): RedeemOutcome = this@AppModel.redeem(code)
         override fun save(next: Session) {
             store.save(next)
             this@AppModel.session = next
@@ -164,6 +171,13 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
     fun recoveryReadCurrent(epoch: Int): Boolean = epoch == recoveryEpoch && place == Place.Import
 
     fun goImport() {
+        // Leaving Invite cancels a short-code attempt. Folders uses this too,
+        // and that path has no handshake to stop.
+        if (place == Place.Welcome) {
+            if (redeeming) abandonRedeem()
+            gridRun.cancel()
+            retries.arm(null)
+        }
         fail = null
         place = Place.Import
     }
@@ -181,6 +195,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         passphrase = ""
         fail = null
         // Bump the ticket so this import's finish cannot clear a later join's busy.
+        if (redeeming) abandonRedeem()
         gridRun.cancel()
         place = Place.Import
         return recoveryEpoch
@@ -815,6 +830,75 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         val dir = ext ?: File(context.filesDir, "Download")
         dir.mkdirs()
         return dir
+    }
+
+    /**
+     * Short-code handshake. The relay address stays in the Python entry point.
+     * A thrown failure becomes relay. Cancellation closes the attempt and escapes.
+     */
+    private suspend fun redeem(code: String): RedeemOutcome {
+        redeeming = true
+        try {
+            val result = try {
+                withContext(io) {
+                    dispatch("redeem", buildJsonObject {
+                        put("code", code)
+                        put("timeout", 120)
+                    }.toString())
+                }
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                Log.w(TAG, "redeem failed: ${exc.javaClass.simpleName}")
+                return RedeemOutcome("relay")
+            }
+            // Leave already cancelled this attempt. Do not learn an address that arrived late.
+            coroutineContext.ensureActive()
+            val status = result.raw["status"]?.jsonPrimitive?.contentOrNull
+            if (result.ok && status == "ok") {
+                val furl = result.raw["furl"]?.jsonPrimitive?.contentOrNull ?: ""
+                return RedeemOutcome("ok", furl, Invite.keptShares(shareCounts(result.raw)))
+            }
+            return RedeemOutcome(
+                when (status) {
+                    "expired", "rejected", "relay", "timeout" -> status
+                    else -> "relay"
+                },
+            )
+        } finally {
+            redeeming = false
+        }
+    }
+
+    /** Ask the handshake to stop. Safe when nothing is open. */
+    private fun abandonRedeem() {
+        try {
+            dispatch("redeem-cancel", "{}")
+        } catch (exc: Exception) {
+            Log.w(TAG, "redeem cancel failed: ${exc.javaClass.simpleName}")
+        }
+    }
+
+    private fun shareCounts(raw: JsonObject): List<Int>? {
+        val arr = raw["shares"]?.jsonArray ?: return null
+        val nums = ArrayList<Int>(arr.size)
+        for (el in arr) {
+            val text = try {
+                el.jsonPrimitive.contentOrNull
+            } catch (_: Exception) {
+                return null
+            } ?: return null
+            val number = text.toIntOrNull() ?: return null
+            nums.add(number)
+        }
+        return nums
+    }
+
+    override fun onCleared() {
+        val stop = redeeming
+        gridRun.cancel()
+        if (stop) abandonRedeem()
+        super.onCleared()
     }
 
     /** Null on any failure. Never shows a banner: SessionFlow owns the copy (#50). */

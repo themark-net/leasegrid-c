@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Android Invite accepts the short code from Share invite in the same field as the full join link. A short code is no longer refused. If the code expired, was not accepted, the invite relay could not be reached, or nobody answered, the screen says so and Retry tries again. The field is kept. Pasting the full join link still joins and skips that step ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).
 - A folder that already has a sync conflict still says Conflict when a newer file has changed, or when that conflict is outside the five newest changes. The folder page names the file and the next step. That line clears once the conflict is gone.
 - Adding a folder whose name is already syncing a different directory stays on the page as a failure. Adding the same directory again does not create a second row.
 - Android: an add when the phone has no room says there is not enough free space and does not upload. Retry tries that add again once there is room. The file is not shown as in the shared folder before that.

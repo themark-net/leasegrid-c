@@ -327,28 +327,25 @@ class InviteTest {
     }
 
     @Test
-    fun wormholeIsInAppFailNotASilentJoin() {
-        try {
-            Invite.parse("7-guitarist-revenge")
-            error("expected fail")
-        } catch (exc: InviteFail) {
-            // Desktop label pinned in Invite.SHOW_FULL_JOIN_LINK; no Next line (#50).
-            assertEquals(Invite.WORMHOLE_MSG, exc.banner)
-            assertTrue(exc.banner, exc.banner.contains(Invite.SHOW_FULL_JOIN_LINK))
-            assertEquals("", exc.next)
-            assertFalse(exc.next.lowercase().contains("pb://"))
-            assertFalse(exc.next.lowercase().contains("furl"))
-        }
+    fun shortCodeParsesAndIsNotASilentFurl() {
+        val parsed = Invite.parse("7-guitarist-revenge")
+        assertEquals("code", parsed.kind)
+        assertEquals("7-guitarist-revenge", parsed.code)
+        assertEquals("", parsed.furl)
+        assertEquals(null, parsed.shares)
+        val copy = Invite.redeemCopy("relay")
+        assertTrue(copy.next, copy.next.contains(Invite.SHOW_FULL_JOIN_LINK))
+        assertFalse(copy.banner.lowercase().contains("pb://"))
+        assertFalse(copy.next.lowercase().contains("furl"))
     }
 
     @Test
     fun inviteFailPathsDoNotNameAFurl() {
-        // Every InviteFail throw: empty, short code, web URL, garbage,
-        // leasegrid link with no hash, fragment with no i=, i= that is not a
-        // pb address, and a malformed pb:// value.
+        // Every InviteFail throw: empty, web URL, garbage, leasegrid link
+        // with no hash, fragment with no i=, i= that is not a pb address,
+        // and a malformed pb:// value. A short code is not an InviteFail.
         val samples = listOf(
             "",
-            "7-guitarist-revenge",
             "https://example.test/tahoe",
             "not-a-code",
             "leasegrid:join",

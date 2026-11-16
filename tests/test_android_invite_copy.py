@@ -30,12 +30,10 @@ _DESIGN = {
     "SHARE_INVITE": "Share invite",
     "SHOW_FULL_JOIN_LINK": "Show full join link (advanced)",
     "TITLE": "Join a shared folder",
-    "BODY": "On your computer, click Share invite in Leasegrid Sync and tick Show full join link (advanced). "
-    "Copy that link and paste it below.",
-    "INPUT_HINT": "Paste the full join link",
-    "EMPTY_MSG": "Paste the join link first.",
-    "WORMHOLE_MSG": "That's a short code. This phone can't use short codes yet. On your computer, "
-    "tick Show full join link (advanced), then paste that link here.",
+    "BODY": "On your computer, click Share invite in Leasegrid Sync. Type the short code below, "
+    "or tick Show full join link (advanced) and paste that link.",
+    "INPUT_HINT": "Short code or join link",
+    "EMPTY_MSG": "Enter a short code or paste the join link first.",
     "GARBAGE_MSG": "That isn't a join link. On your computer, tick Show full join link (advanced), "
     "then copy and paste the whole link.",
     "WEB_URL_MSG": "That's the Sync web page address, not a join link. On your computer, "
@@ -49,9 +47,21 @@ _DESIGN = {
     "then tap Retry.",
     "REFRESH_FAILED_NEXT": "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
     "IMPORT_SAVED_MSG": "Saved on this phone. Couldn't reach your computer to finish.",
+    "CODE_EXPIRED": "This code expired.",
+    "CODE_EXPIRED_NEXT": "On your computer, click Share invite again. Keep Leasegrid Sync open, "
+    "type the new short code here, then tap Retry.",
+    "CODE_RELAY": "Couldn't reach the invite relay.",
+    "CODE_RELAY_NEXT": "Check that this phone is online and Leasegrid Sync is still open on your computer, "
+    "then tap Retry. If it still fails, tick Show full join link (advanced) and paste that link here.",
+    "CODE_REJECTED": "This code was not accepted.",
+    "CODE_REJECTED_NEXT": "On your computer, click Share invite again and use the new short code. "
+    "Keep Leasegrid Sync open, then tap Retry.",
+    "CODE_TIMEOUT": "Nobody answered this code yet.",
+    "CODE_TIMEOUT_NEXT": "Keep Leasegrid Sync open on your computer until this phone joins, then tap Retry. "
+    "If the code is old, click Share invite again and type the new short code.",
 }
 
-_PARSE_FAILS = ("EMPTY_MSG", "WORMHOLE_MSG", "GARBAGE_MSG", "WEB_URL_MSG", "NO_ADDRESS_MSG", "MALFORMED_MSG")
+_PARSE_FAILS = ("EMPTY_MSG", "GARBAGE_MSG", "WEB_URL_MSG", "NO_ADDRESS_MSG", "MALFORMED_MSG")
 
 
 def _kotlin_const(text: str, name: str) -> str:
@@ -256,6 +266,8 @@ def test_invite_copy_matches_design():
     for name, want in _DESIGN.items():
         assert _kotlin_const(text, name) == want, name
     assert "WORMHOLE_NEXT" not in text
+    assert "WORMHOLE_MSG" not in text
+    assert "can't use short codes" not in text
 
 
 def test_show_full_join_link_matches_desktop_label():
@@ -301,13 +313,14 @@ def test_learn_failure_next_line_has_no_paste_advice():
     """Paste advice only for a paste or format problem, not every learn() failure.
 
     A timeout after the link was accepted used to say to paste it again.
-    Empty, short-code, garbage, and malformed pastes still say how to paste.
+    Empty, garbage, and malformed pastes still say how to paste.
+    A short code is no longer one of those pastes.
     """
     text = INVITE.read_text(encoding="utf-8")
     nxt = _kotlin_const(text, "JOIN_FAILED_NEXT").lower()
     assert "paste" not in nxt, nxt
     assert "join link" not in nxt, nxt
-    for name in ("EMPTY_MSG", "WORMHOLE_MSG", "GARBAGE_MSG", "MALFORMED_MSG"):
+    for name in ("EMPTY_MSG", "GARBAGE_MSG", "MALFORMED_MSG"):
         assert "paste" in _kotlin_const(text, name).lower(), name
 
 
@@ -367,6 +380,10 @@ def test_appmodel_flowhost_delegates_exactly():
     # N4b: learn returns the model's result, not null.
     assert (
         "override suspend fun learn(furl: String): List<ServerRef>? = this@AppModel.learn(furl)"
+        in host
+    )
+    assert (
+        "override suspend fun redeem(code: String): RedeemOutcome = this@AppModel.redeem(code)"
         in host
     )
     # N4d: save writes the store, adopts the session, and opens Folders.

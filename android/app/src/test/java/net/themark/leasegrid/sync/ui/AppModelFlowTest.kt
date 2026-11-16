@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -111,6 +112,132 @@ class AppModelFlowTest {
         assertEquals(introducer, model.inviteText)
         assertFalse(model.busy)
         assertNull(model.fail)
+    }
+
+    @Test
+    fun aShortCodeRedeemsWithoutARelayFieldThenLearns() {
+        val ops = mutableListOf<String>()
+        var redeemBody = ""
+        val model = model { op, body ->
+            ops += op
+            if (op == "redeem") {
+                redeemBody = body
+                buildJsonObject {
+                    put("ok", true)
+                    put("status", "ok")
+                    put("furl", introducer)
+                    putJsonArray("shares") {
+                        add(2)
+                        add(3)
+                        add(3)
+                    }
+                }
+            } else {
+                learnReply()
+            }
+        }
+        model.acknowledged = true
+        model.inviteText = "7-guitarist-revenge"
+        model.join()
+        assertEquals(listOf("redeem", "learn"), ops)
+        assertFalse(redeemBody.contains("relay"))
+        assertFalse(redeemBody.contains("ws://"))
+        assertTrue(redeemBody.contains("7-guitarist-revenge"))
+        assertEquals(Place.Folders, model.place)
+        assertEquals(introducer, model.session!!.introducerFurl)
+        assertEquals(listOf(2, 3, 3), model.session!!.shares)
+    }
+
+    @Test
+    fun anExpiredCodeDoesNotLearnAndALaterCodeDoes() {
+        var redeems = 0
+        val model = model { op, _ ->
+            if (op == "redeem") {
+                redeems += 1
+                if (redeems == 1) {
+                    buildJsonObject {
+                        put("ok", false)
+                        put("status", "expired")
+                    }
+                } else {
+                    buildJsonObject {
+                        put("ok", true)
+                        put("status", "ok")
+                        put("furl", introducer)
+                    }
+                }
+            } else {
+                learnReply()
+            }
+        }
+        model.acknowledged = true
+        model.inviteText = "7-guitarist-revenge"
+        model.join()
+        assertEquals(Invite.CODE_EXPIRED, model.fail?.message)
+        assertEquals(Invite.CODE_EXPIRED_NEXT, model.fail?.next)
+        assertNull(model.session)
+        assertEquals(1, redeems)
+        model.retryFail()
+        assertEquals(Place.Folders, model.place)
+        assertEquals(2, redeems)
+        assertEquals(listOf(2, 3, 3), model.session!!.shares)
+    }
+
+    @Test
+    fun aRelayFailureRecoversWhenTheFieldBecomesAJoinLink() {
+        val ops = mutableListOf<String>()
+        val model = model { op, _ ->
+            ops += op
+            if (op == "redeem") {
+                buildJsonObject {
+                    put("ok", false)
+                    put("status", "relay")
+                }
+            } else {
+                learnReply()
+            }
+        }
+        model.acknowledged = true
+        model.inviteText = "7-guitarist-revenge"
+        model.join()
+        assertEquals(Invite.CODE_RELAY, model.fail?.message)
+        assertTrue(model.fail!!.next.contains(Invite.SHOW_FULL_JOIN_LINK))
+        assertEquals(listOf("redeem"), ops)
+        model.inviteText = introducer
+        model.retryFail()
+        assertEquals(listOf("redeem", "learn"), ops)
+        assertEquals(Place.Folders, model.place)
+    }
+
+    @Test
+    fun leavingTheInviteScreenDropsAShortCodeAttempt() {
+        val io = IoQueue()
+        val ops = mutableListOf<String>()
+        val model = model(io = io) { op, _ ->
+            ops += op
+            if (op == "redeem") {
+                buildJsonObject {
+                    put("ok", true)
+                    put("status", "ok")
+                    put("furl", introducer)
+                }
+            } else if (op == "redeem-cancel") {
+                buildJsonObject { put("ok", true) }
+            } else {
+                learnReply()
+            }
+        }
+        model.acknowledged = true
+        model.inviteText = "7-guitarist-revenge"
+        model.join()
+        assertTrue(model.busy)
+        model.goImport()
+        io.drain()
+        assertEquals(Place.Import, model.place)
+        assertNull(model.session)
+        assertFalse(ops.contains("learn"))
+        assertNull(model.fail)
+        assertFalse(model.busy)
     }
 
     @Test

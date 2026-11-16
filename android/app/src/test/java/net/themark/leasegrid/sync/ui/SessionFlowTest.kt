@@ -4,11 +4,13 @@ import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 import net.themark.leasegrid.sync.invite.Invite
+import net.themark.leasegrid.sync.invite.RedeemOutcome
 import net.themark.leasegrid.sync.invite.bannedWords
 import net.themark.leasegrid.sync.session.FolderRef
 import net.themark.leasegrid.sync.session.ServerRef
 import net.themark.leasegrid.sync.session.Session
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -27,9 +29,12 @@ class SessionFlowTest {
         var banner: FailBanner? = null
         var retry: (() -> Unit)? = null
         val learnCalls = mutableListOf<String>()
+        val redeemCalls = mutableListOf<String>()
         val saved = mutableListOf<Session>()
         val answers = ArrayDeque<List<ServerRef>?>()
+        val redeemAnswers = ArrayDeque<RedeemOutcome>()
         var learnThrows: Exception? = null
+        var redeemThrows: Exception? = null
         var saveThrows: Exception? = null
 
         override fun launch(label: String, block: suspend () -> Unit) {
@@ -44,6 +49,12 @@ class SessionFlowTest {
             learnCalls += furl
             learnThrows?.let { throw it }
             return answers.removeFirstOrNull()
+        }
+
+        override suspend fun redeem(code: String): RedeemOutcome {
+            redeemCalls += code
+            redeemThrows?.let { throw it }
+            return redeemAnswers.removeFirstOrNull() ?: RedeemOutcome("expired")
         }
 
         override fun save(next: Session) {
@@ -214,17 +225,147 @@ class SessionFlowTest {
 
     @Test
     fun retryAfterAParseFailUsesTheFieldAsItIsNow() {
-        val host = Host("7-guitarist-revenge")
+        val host = Host("not-a-code")
         host.answers.add(listOf(server))
         val flow = SessionFlow(host)
         flow.join()
-        assertEquals(Invite.WORMHOLE_MSG, host.banner!!.message)
+        assertEquals(Invite.GARBAGE_MSG, host.banner!!.message)
         assertNull(failNextLine(host.banner!!.next))
-        assertTrue("a short code never reaches learn", host.learnCalls.isEmpty())
+        assertTrue("a broken paste must not reach learn", host.learnCalls.isEmpty())
+        assertTrue(host.redeemCalls.isEmpty())
         host.inviteText = link
         host.retry!!.invoke()
         assertEquals(1, host.learnCalls.size)
         assertEquals(1, host.saved.size)
+    }
+
+    @Test
+    fun aJoinLinkDoesNotRedeem() {
+        val host = Host(link)
+        host.answers.add(listOf(server))
+        SessionFlow(host).join()
+        assertTrue(host.redeemCalls.isEmpty())
+        assertEquals(listOf(furl), host.learnCalls)
+        assertNull(host.banner)
+    }
+
+    @Test
+    fun aShortCodeRedeemsThenLearnsAndABadAddressDoesNot() {
+        val host = Host("7-Guitarist-Revenge")
+        host.redeemAnswers.add(RedeemOutcome("ok", furl, listOf(2, 3, 3)))
+        host.answers.add(listOf(server))
+        SessionFlow(host).join()
+        assertEquals(listOf("7-guitarist-revenge"), host.redeemCalls)
+        assertEquals(listOf(furl), host.learnCalls)
+        assertEquals(listOf(2, 3, 3), host.saved.single().shares)
+        assertEquals(furl, host.saved.single().introducerFurl)
+        assertNull(host.banner)
+        assertEquals("7-Guitarist-Revenge", host.inviteText)
+
+        val badShares = Host("7-guitarist-revenge")
+        badShares.redeemAnswers.add(RedeemOutcome("ok", furl, listOf(3, 2, 3)))
+        badShares.answers.add(listOf(server))
+        SessionFlow(badShares).join()
+        assertEquals(listOf(2, 3, 3), badShares.saved.single().shares)
+
+        val badAddress = Host("7-guitarist-revenge")
+        badAddress.redeemAnswers.add(RedeemOutcome("ok", "not-an-address", listOf(2, 3, 3)))
+        SessionFlow(badAddress).join()
+        assertTrue(badAddress.learnCalls.isEmpty())
+        assertTrue(badAddress.saved.isEmpty())
+        assertEquals(Invite.GARBAGE_MSG, badAddress.banner!!.message)
+        assertEquals(Invite.NO_NEXT, badAddress.banner!!.next)
+        assertEquals("7-guitarist-revenge", badAddress.inviteText)
+    }
+
+    @Test
+    fun redeemFailuresDoNotLearnAndRetryCanRecover() {
+        val cases = listOf(
+            "expired" to FailBanner(Invite.CODE_EXPIRED, Invite.CODE_EXPIRED_NEXT),
+            "rejected" to FailBanner(Invite.CODE_REJECTED, Invite.CODE_REJECTED_NEXT),
+            "relay" to FailBanner(Invite.CODE_RELAY, Invite.CODE_RELAY_NEXT),
+            "timeout" to FailBanner(Invite.CODE_TIMEOUT, Invite.CODE_TIMEOUT_NEXT),
+            "mystery" to FailBanner(Invite.CODE_REJECTED, Invite.CODE_REJECTED_NEXT),
+        )
+        for ((status, banner) in cases) {
+            val host = Host("7-guitarist-revenge")
+            host.redeemAnswers.add(RedeemOutcome(status))
+            SessionFlow(host).join()
+            assertEquals(status, banner, host.banner)
+            assertTrue(status, host.learnCalls.isEmpty())
+            assertTrue(status, host.saved.isEmpty())
+            assertEquals("7-guitarist-revenge", host.inviteText)
+            assertClean(host)
+            host.inviteText = link
+            host.answers.add(listOf(server))
+            host.retry!!.invoke()
+            assertEquals(status, listOf(furl), host.learnCalls)
+            assertEquals(status, listOf("7-guitarist-revenge"), host.redeemCalls)
+            assertEquals(status, 1, host.saved.size)
+            assertNull(status, host.banner)
+        }
+    }
+
+    @Test
+    fun retryOnAnExpiredCodeRedeemsAgainAndStillDoesNotLearn() {
+        val host = Host("7-guitarist-revenge")
+        host.redeemAnswers.add(RedeemOutcome("expired"))
+        host.redeemAnswers.add(RedeemOutcome("expired"))
+        SessionFlow(host).join()
+        host.retry!!.invoke()
+        assertEquals(listOf("7-guitarist-revenge", "7-guitarist-revenge"), host.redeemCalls)
+        assertTrue(host.learnCalls.isEmpty())
+        assertTrue(host.saved.isEmpty())
+        assertEquals(Invite.CODE_EXPIRED, host.banner!!.message)
+        assertEquals("7-guitarist-revenge", host.inviteText)
+    }
+
+    @Test
+    fun nobodyAnsweredThenRetryLearnsWhenTheDesktopAnswers() {
+        val host = Host("7-guitarist-revenge")
+        host.redeemAnswers.add(RedeemOutcome("timeout"))
+        host.redeemAnswers.add(RedeemOutcome("ok", furl, null))
+        host.answers.add(listOf(server))
+        SessionFlow(host).join()
+        assertEquals(Invite.CODE_TIMEOUT, host.banner!!.message)
+        assertTrue(host.learnCalls.isEmpty())
+        host.retry!!.invoke()
+        assertEquals(listOf(furl), host.learnCalls)
+        assertEquals(listOf(2, 3, 3), host.saved.single().shares)
+        assertNull(host.banner)
+    }
+
+    @Test
+    fun aLearnFailureAfterRedeemShowsTheLearnCard() {
+        val host = Host("7-guitarist-revenge")
+        host.redeemAnswers.add(RedeemOutcome("ok", furl, listOf(2, 3, 3)))
+        SessionFlow(host).join()
+        assertEquals(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT), host.banner)
+        assertEquals(listOf(furl), host.learnCalls)
+        assertTrue(host.saved.isEmpty())
+        assertClean(host)
+    }
+
+    @Test
+    fun aThrownRedeemDoesNotShowTheExceptionAndDoesNotLearn() {
+        val host = Host("7-guitarist-revenge")
+        host.redeemThrows = IllegalStateException("pb://secret and could not join this friendnet")
+        SessionFlow(host).join()
+        assertEquals(Invite.CODE_RELAY, host.banner!!.message)
+        assertEquals(Invite.CODE_RELAY_NEXT, host.banner!!.next)
+        assertTrue(host.learnCalls.isEmpty())
+        assertClean(host)
+        assertFalse(host.banner!!.message.contains("secret"))
+    }
+
+    @Test
+    fun aCancelledRedeemPaintsNothingAndDoesNotLearn() {
+        val host = Host("7-guitarist-revenge")
+        host.redeemThrows = kotlin.coroutines.cancellation.CancellationException("leave")
+        SessionFlow(host).join()
+        assertEquals(FailBanner("generic", ""), host.banner)
+        assertTrue(host.learnCalls.isEmpty())
+        assertTrue(host.saved.isEmpty())
     }
 
     @Test

@@ -22,8 +22,11 @@ A mutated Python file that does not compile is INVALID, not RED. INVALID
 is not a kill. The process exits 2.
 
 SIGKILL cannot be caught and leaves the mutant applied. The next run
-restores a target whose bytes are exactly that case's mutant, then
-continues. Any other uncommitted change is still refused. Hand recovery:
+restores a target that is exactly that case's mutant, then continues.
+Newline spelling does not count: a CRLF checkout of an LF blob is still
+that mutant. The restored file uses the checkout's newlines, because
+writing the raw blob back leaves ``git status`` dirty under autocrlf.
+Any other uncommitted change is still refused. Hand recovery:
 ``git restore --source=HEAD -- <file>``.
 """
 
@@ -167,8 +170,28 @@ def _head_bytes(path: Path) -> bytes | None:
     return proc.stdout
 
 
+def _fold_newlines(data: bytes) -> bytes:
+    """LF form. A CRLF checkout and the LF blob are the same text."""
+    return data.replace(b"\r\n", b"\n")
+
+
+def _spell_like(blob: bytes, sample: bytes) -> bytes:
+    """``blob`` with the newline bytes ``sample`` uses.
+
+    ``git show`` does not apply autocrlf. Writing that LF blob into a CRLF
+    checkout leaves ``git status`` dirty. ``git checkout`` rewrites CRLF.
+    """
+    if b"\r\n" in sample and b"\r\n" not in blob:
+        return blob.replace(b"\n", b"\r\n")
+    return blob
+
+
 def _exact_leftover(path: Path, old: str, new: str) -> bool:
-    """True when the working tree is exactly one application of this mutant."""
+    """True when the working tree is exactly one application of this mutant.
+
+    The compare folds CRLF to LF. Windows autocrlf stores LF and checks out
+    CRLF, so the SIGKILL leftover is not byte-identical to ``git show``.
+    """
     head = _head_bytes(path)
     if head is None:
         return False
@@ -180,7 +203,7 @@ def _exact_leftover(path: Path, old: str, new: str) -> bool:
         current = path.read_bytes()
     except OSError:
         return False
-    return current == mutant
+    return _fold_newlines(current) == _fold_newlines(mutant)
 
 
 def _pytest(python: str, args: list[str]) -> int:
@@ -256,7 +279,11 @@ def _main(argv: list[str] | None = None) -> int:
             head = _head_bytes(path)
             if head is None:
                 break
-            _restore_bytes(path, head)
+            try:
+                current = path.read_bytes()
+            except OSError:
+                current = head
+            _restore_bytes(path, _spell_like(head, current))
             print(
                 "restored leftover mutant in %s. SIGKILL leaves a mutant applied. "
                 "Hand recovery: git restore --source=HEAD -- %s" % (path, path),

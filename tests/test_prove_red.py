@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import signal
 import subprocess
@@ -48,6 +49,16 @@ def _cases(
         encoding="utf-8",
     )
     return path
+
+
+def _harness():
+    """The prove-red module. Tests reuse its mutant spelling so they cannot drift."""
+    spec = importlib.util.spec_from_file_location("prove_red_harness", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load prove-red")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _run(repo: Path, cases: Path) -> subprocess.CompletedProcess[str]:
@@ -103,6 +114,37 @@ def test_crlf_working_tree_matches_lf_pattern(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "RED" in proc.stdout
     assert "SURVIVED" not in proc.stdout
+
+
+def test_crlf_leftover_mutant_is_restored(tmp_path: Path) -> None:
+    """A SIGKILL leftover in a CRLF checkout is restored, not refused.
+
+    Windows git stores LF and checks out CRLF. The harness writes the mutant
+    with those CRLF bytes. ``git show`` is the LF blob. A raw compare misses
+    the leftover, and writing the blob back leaves the checkout dirty.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.check_call(["git", "init", "-q", str(repo)], stdout=subprocess.DEVNULL)
+    _git(repo, "config", "core.autocrlf", "true")
+    target = repo / "mod.py"
+    # Same bytes Windows write_text produces. A second commit of this text
+    # would be empty: autocrlf already stored the LF form in the first commit.
+    target.write_bytes(MODULE.replace("\n", "\r\n").encode("utf-8"))
+    (repo / "test_mod.py").write_bytes(TEST.replace("\n", "\r\n").encode("utf-8"))
+    _git(repo, "add", "mod.py", "test_mod.py")
+    _git(repo, "commit", "-q", "-m", "crlf")
+    original = target.read_bytes()
+    assert b"return 1\r\n" in original
+    mutant = _harness()._mutant_bytes(original, "return 1\n", "return 2\n")
+    assert b"return 2\r\n" in mutant
+    target.write_bytes(mutant)
+    cases = _cases(repo, "caught-crlf-leftover", "return 1\n", "return 2\n")
+    proc = _run(repo, cases)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "restored leftover mutant" in proc.stderr
+    assert "RED" in proc.stdout
+    assert target.read_bytes() == original
 
 
 def test_surviving_mutant_exits_1(tmp_path: Path) -> None:
@@ -224,7 +266,7 @@ def test_leftover_mutant_from_sigkill_is_restored(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     target = _init_repo(repo, MODULE, TEST)
     original = target.read_bytes()
-    target.write_bytes(original.replace(b"return 1\n", b"return 2\n"))
+    target.write_bytes(_harness()._mutant_bytes(original, "return 1\n", "return 2\n"))
     cases = _cases(repo, "caught", "return 1\n", "return 2\n")
     proc = _run(repo, cases)
     assert proc.returncode == 0, proc.stdout + proc.stderr

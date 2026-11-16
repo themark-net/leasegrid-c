@@ -236,6 +236,13 @@ def test_unreachable_put_stops_at_one_deadline(tmp_path, monkeypatch):
     assert time.monotonic() - began < 3.0
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "chmod(0o555) does not deny creating a file on Windows; "
+        "this test is the Android (POSIX) permission copy"
+    ),
+)
 def test_download_permission_denied_does_not_say_network(tmp_path, monkeypatch):
     """The bytes arrived. The phone refused to save them. That is not the network."""
     monkeypatch.setattr(leasegrid_read, "download_file", lambda cap, servers: b"file body")
@@ -258,6 +265,13 @@ def test_download_permission_denied_does_not_say_network(tmp_path, monkeypatch):
     assert not dest.exists()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "chmod(0) does not deny reading a file on Windows; "
+        "this test is the Android (POSIX) permission copy"
+    ),
+)
 def test_put_permission_denied_does_not_say_pick_it_again(tmp_path):
     """A file the phone cannot read is a permission failure, not a bad pick."""
     src = _put_blob(tmp_path)

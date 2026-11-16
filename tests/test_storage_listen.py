@@ -39,6 +39,18 @@ def _tub(cfg: str) -> tuple[str, str]:
     return port, location
 
 
+def _can_bind_loopback_alias(host: str = "127.0.0.2") -> bool:
+    """True when this host can accept a connection on that loopback address."""
+    sock = socket.socket()
+    try:
+        sock.bind((host, 0))
+    except OSError:
+        return False
+    finally:
+        sock.close()
+    return True
+
+
 def _listen_addrs(port: int) -> set[str]:
     """Local addresses in /proc/net/tcp{,6} that are listening on ``port``."""
     found: set[str] = set()
@@ -59,6 +71,14 @@ def _listen_addrs(port: int) -> set[str]:
     return found
 
 
+@pytest.mark.skipif(
+    not _can_bind_loopback_alias(),
+    reason=(
+        "127.0.0.2 is not assigned on this host "
+        "(macOS lo0 has only 127.0.0.1 unless an alias is added); "
+        "refusing to add that alias"
+    ),
+)
 def test_loopback_storage_override_listens_on_that_address_only(tmp_path: Path, monkeypatch):
     """127.0.0.2 replaces 127.0.0.1, and nothing else can connect to the port."""
     monkeypatch.setenv("LEASEGRID_STORAGE_HOSTNAME", "127.0.0.2")

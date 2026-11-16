@@ -96,6 +96,7 @@ if __name__ == "__main__":
 _MF = r'''
 import os
 import sys
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -113,6 +114,16 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
+class _Server(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind calls socket.getfqdn. On macOS that reverse
+        # lookup can outlast ensure_running's ready budget, and the endpoint
+        # file is written only after this returns.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
+
+
 def main():
     if "run" not in sys.argv:
         raise SystemExit(0)
@@ -121,7 +132,7 @@ def main():
     args = sys.argv[1:]
     if "--config" in args:
         config = Path(args[args.index("--config") + 1])
-    server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+    server = _Server(("127.0.0.1", port), _Handler)
     if config is not None:
         (config / "api_client_endpoint").write_text(
             "tcp:127.0.0.1:%d\n" % port, encoding="utf-8"
@@ -309,6 +320,55 @@ def test_pid_one_in_our_pid_file_is_not_signalled(tmp_path: Path, monkeypatch) -
         assert client._proc is not None and pid_alive(client._proc.pid)
     finally:
         client.stop()
+
+
+def test_magic_folder_stub_writes_endpoint_without_reverse_dns(tmp_path: Path) -> None:
+    """The double writes its endpoint even when getfqdn(127.0.0.1) is blocked.
+
+    ``HTTPServer.server_bind`` reverse-looks-up the bind address. On macOS that
+    lookup can outlast ``ensure_running``'s ready budget: the child stays
+    alive, ``api_client_endpoint`` never appears, and the error is "did not
+    become ready". The Tahoe double already skips the lookup.
+    """
+    slow = tmp_path / "slowdns"
+    slow.mkdir()
+    (slow / "sitecustomize.py").write_text(
+        "import socket\n"
+        "import time\n"
+        "_real = socket.getfqdn\n"
+        "def _slow(name=''):\n"
+        "    if name in ('127.0.0.1', '::1'):\n"
+        "        time.sleep(30)\n"
+        "    return _real(name)\n"
+        "socket.getfqdn = _slow\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "magic-folder"
+    config.mkdir()
+    port = _free_port()
+    binary = _executable(tmp_path / "bin", "magic-folder", _MF)
+    env = os.environ.copy()
+    env["LEASEGRID_TEST_MF_PORT"] = str(port)
+    env["PYTHONPATH"] = str(slow) + os.pathsep + env.get("PYTHONPATH", "")
+    proc = subprocess.Popen(
+        [binary, "--config", str(config), "run"],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    endpoint = config / "api_client_endpoint"
+    try:
+        deadline = time.time() + 2
+        while time.time() < deadline and not endpoint.is_file():
+            if proc.poll() is not None:
+                raise AssertionError("magic-folder double exited %s" % proc.returncode)
+            time.sleep(0.02)
+        assert endpoint.is_file(), "endpoint was not written while getfqdn was blocked"
+        assert ("tcp:127.0.0.1:%d" % port) in endpoint.read_text(encoding="utf-8")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
 
 
 def test_magic_folder_start_stops_our_orphan_only(tmp_path: Path, monkeypatch) -> None:

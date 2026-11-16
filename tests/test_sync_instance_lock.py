@@ -425,6 +425,13 @@ def test_lock_path_that_is_a_directory_names_the_next_step(tmp_path: Path, monke
     assert lock.is_dir()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "chmod(0) only sets the Windows read-only attribute; "
+        "it does not create a mode-000 file or deny the owner read"
+    ),
+)
 def test_lock_file_mode_000_names_the_next_step(tmp_path: Path, monkeypatch, capsys) -> None:
     """A lock file with mode 000 fails in one sentence. It does not start a second instance."""
     home = tmp_path / "home"

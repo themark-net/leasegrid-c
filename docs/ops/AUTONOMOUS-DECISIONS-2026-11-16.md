@@ -1,0 +1,10 @@
+# Autonomous decisions, 2026-11-16
+
+#86 W1: fold CRLF when deciding a leftover mutant, and write the restored blob with the checkout's newlines | compare raw `git show` bytes, or only fix the test's LF `replace` | a CRLF working tree does not match `return 1\n`, so Windows never entered restore and reported RED; once the leftover is real, the LF blob is not the CRLF mutant, and writing that blob back stays dirty under autocrlf
+#86 W2: skip `test_lock_file_mode_000_names_the_next_step` on win32 | treat a read-only lock as mode 000 in the product | `chmod(0)` does not deny the owner read on Windows, and a read-only QLockFile is not that failure
+#86 W3: assert `display_path` (and the folder leaf) | put `str(path)` back into the banner | `d3b5c5c` already masks the account home; Windows temp is under the profile, so the label is the `~\` form; the log's `...` is pytest's ellipsis; U+FFFD in the log is the em dash after a cp1252 capture
+#86 W4: skip `test_download_permission_denied_does_not_say_network` on win32 | monkeypatch `PermissionError` | `chmod(0o555)` does not stop Windows creating a file; the phone is POSIX
+#86 W5: skip `test_put_permission_denied_does_not_say_pick_it_again` on win32 | monkeypatch `PermissionError` | `chmod(0)` still allows the read, so the network copy runs instead
+#86 M1: skip `test_loopback_storage_override_listens_on_that_address_only` only when `bind(("127.0.0.2", 0))` fails | skip every darwin host | windows-2022 did not fail this test; Linux and a Windows loopback /8 still run it; no `ifconfig` alias
+#86 M2: override `server_bind` in the Magic Folder test double so it does not call `socket.getfqdn` | raise the 20s ready budget, or change `ensure_running` | the Tahoe orphan test passed on the same macOS job; only this double blocks in the reverse lookup; real magic-folder does not
+#86: do not install semgrep into the shared venv | `pip install semgrep` | the binary is absent and that venv belongs to Mark's checkout

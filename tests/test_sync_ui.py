@@ -20,6 +20,7 @@ from leasegrid_sync.app import (  # noqa: E402
     InviteShareDialog,
     MainWindow,
     TopUpDialog,
+    display_path,
 )
 from leasegrid_sync.backend import ConnectionStatus, FolderRow, SyncError  # noqa: E402
 from tests.qr_decode import INVITE_JOIN_TAHOE, decode_qr_png, write_executable  # noqa: E402
@@ -586,10 +587,16 @@ _NODEDIR_BANNED = ("LEASEGRID_TAHOE_NODEDIR", "furl", "pb://", "introducer", "wo
 
 
 def _assert_plain_screen(text: str, path: Path) -> str:
-    """The label keeps the local folder and a next step a person can follow."""
+    """The label keeps the local folder and a next step a person can follow.
+
+    The folder is the form ``display_path`` shows. Outside the account home
+    that is the absolute path. Under the home (Windows temp lives there) it
+    is the ``~`` form, not ``str(path)``.
+    """
     assert "FAIL" in text
     assert "\nNext:" in text
-    assert str(path) in text
+    assert display_path(path) in text
+    assert path.name in text
     _message, nxt = text.split("\nNext:", 1)
     low = nxt.lower()
     for word in _NODEDIR_BANNED:
@@ -603,6 +610,27 @@ def _close_window(window: MainWindow) -> None:
     window.win.hide()
     if window.tray is not None:
         window.tray.hide()
+
+
+def test_plain_screen_hides_a_folder_inside_the_account_home(tmp_path: Path, monkeypatch) -> None:
+    """A folder under the account home is shown as ``~/…``, not the raw path.
+
+    Windows puts pytest temp under the profile, so ``str(path)`` is not in the
+    banner. Linux ``/tmp`` is outside the home and does not hit this.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda *_args, **_kwargs: home)
+    folder = home / "empty-tahoe"
+    folder.mkdir()
+    text = SyncError(
+        "could not join this friendnet. No Tahoe client is configured at %s." % folder,
+        "point Sync at a running client, or paste a join link or short code; Retry.",
+    ).banner()
+    assert str(folder) not in text
+    assert display_path(folder) in text
+    assert folder.name in text
+    assert text.startswith("FAIL")
 
 
 def test_bad_tahoe_folder_names_a_plain_next_step(tmp_path: Path):

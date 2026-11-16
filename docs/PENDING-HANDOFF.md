@@ -360,3 +360,32 @@ python3 -m venv .venv && PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh
 
 `.venv` lives under the worktree. `.gitignore` line 4 is `.venv/`, so that directory is ignored. Do not commit it. Never run `ci-local` against `tahoe-venv`. This refresh did not run `scripts/ci-local.sh`.
 
+## #86 cross-OS Pytest
+
+Branch `bot/86-xos-pytest` off `origin/main` `d3b5c5c`. Local commits only. Not pushed, not tagged, version not bumped. Issues #30, #33, and #26 were not touched. Root cause: [`ops/ROOT-CAUSE-86-xos-pytest.md`](ops/ROOT-CAUSE-86-xos-pytest.md). Decisions: [`ops/AUTONOMOUS-DECISIONS-2026-11-16.md`](ops/AUTONOMOUS-DECISIONS-2026-11-16.md).
+
+What changed:
+
+- `scripts/prove-red.py` treats a CRLF checkout and the LF blob as the same leftover mutant, and restores the blob with the checkout's newlines. `AGENTS.md` says the same. `tests/test_prove_red.py` injects the leftover with `_mutant_bytes` and adds `test_crlf_leftover_mutant_is_restored` (`core.autocrlf=true`).
+- `tests/test_sync_ui.py` asserts `display_path` plus the folder leaf. `test_plain_screen_hides_a_folder_inside_the_account_home` locks the under-home form Windows temp hits. The em dash in `SyncError.banner` is unchanged.
+- `tests/test_sync_orphan.py` `_MF` sets `server_name` in `server_bind` and does not call `socket.getfqdn`. `test_magic_folder_stub_writes_endpoint_without_reverse_dns` blocks that lookup and still expects `api_client_endpoint` within 2s.
+
+Skips:
+
+- `test_lock_file_mode_000_names_the_next_step` on win32: `chmod(0)` only sets the read-only attribute; it does not create a mode-000 file or deny the owner read.
+- `test_download_permission_denied_does_not_say_network` on win32: `chmod(0o555)` does not deny creating a file on Windows; this is the Android (POSIX) permission copy.
+- `test_put_permission_denied_does_not_say_pick_it_again` on win32: `chmod(0)` does not deny reading a file on Windows; this is the Android (POSIX) permission copy.
+- `test_loopback_storage_override_listens_on_that_address_only` when `socket.bind(("127.0.0.2", 0))` fails: `127.0.0.2` is not assigned (macOS `lo0` has only `127.0.0.1` unless an alias is added). No alias is added. Hosts where the bind works still run the test. windows-2022 did not fail it.
+
+How to verify, from this worktree, without using Mark's tree as the import root:
+
+```bash
+PYTHONPATH=$PWD/src:$PWD /home/mark/DEVELOP/leasegrid-c/.venv/bin/python -c "import leasegrid_sync; print(leasegrid_sync.__file__)"
+QT_QPA_PLATFORM=offscreen PYTHONPATH=$PWD/src:$PWD /home/mark/DEVELOP/leasegrid-c/.venv/bin/python -m pytest -q
+/home/mark/DEVELOP/leasegrid-c/.venv/bin/python -m ruff check src tests scripts packaging
+```
+
+The import must print a path under this worktree. Semgrep was not run: `tools/semgrep` is present, the `semgrep` binary is not installed, and it was not installed into the shared venv.
+
+What's left: this machine cannot run windows-2022 or macos-15-intel. Those jobs need a CI run on the branch. Nothing here is pushed. Linux on this worktree: 700 passed, 1 skipped (`test_live_journey_matches_replay_stations`, `LEASEGRID_LIVE_GRID` unset), 5 xfailed, ruff clean, 183s.
+

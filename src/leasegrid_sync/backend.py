@@ -1907,6 +1907,42 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+# Magic Folder saves the other author's bytes as ``<name>.conflict-<author>``.
+_CONFLICT_COPY_NAME = re.compile(r"^(?P<original>.+)\.conflict-(?P<author>[^/\\]+)$")
+
+
+def _disk_conflict_relpaths(local_path: str) -> list[str]:
+    """Original paths for conflict copies still sitting in the folder.
+
+    The conflicts list and the five recent changes can both omit a copy.
+    The file name is the notice. An ordinary extra file is not. Names are
+    not followed out of the folder through a link.
+    """
+    if not local_path or not str(local_path).strip():
+        return []
+    root = Path(local_path)
+    try:
+        if not root.is_dir():
+            return []
+    except OSError:
+        return []
+    found: list[str] = []
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames.sort()
+            for filename in sorted(filenames):
+                match = _CONFLICT_COPY_NAME.match(filename)
+                if match is None:
+                    continue
+                rel_dir = Path(dirpath).relative_to(root)
+                rel = (rel_dir / match.group("original")).as_posix()
+                if rel not in found:
+                    found.append(rel)
+    except OSError:
+        return found
+    return found
+
+
 def _directory_has_file(path: str) -> bool:
     """True when ``path`` is a directory that contains at least one file.
 
@@ -2301,7 +2337,7 @@ class MagicFolderCtl:
             return "FAIL", self._refresh_http_message(exc).message
         if _folder_is_missing(local_path):
             return "Missing", "not on this computer"
-        conflicts = self._conflict_relpaths(name, recent)
+        conflicts = self._conflict_relpaths(name, recent, local_path)
         if conflicts:
             if len(conflicts) == 1:
                 return "Conflict", conflicts[0]
@@ -2322,13 +2358,15 @@ class MagicFolderCtl:
             return "Up to date", "%d files · last %s" % (nfiles, last)
         return "Up to date", "%d files" % nfiles
 
-    def _conflict_relpaths(self, name: str, recent: Any) -> list[str]:
+    def _conflict_relpaths(self, name: str, recent: Any, local_path: str = "") -> list[str]:
         """Paths that are in conflict now.
 
         The newest recent change can be a different file, and a conflict can
         sit outside the five changes Sync asks for. ``/conflicts`` is the
         whole set. A daemon without that call still sets ``conflicted`` on
-        each recent change, so every item counts.
+        each recent change, so every item counts. A copy left on disk named
+        ``<file>.conflict-<author>`` counts too, even when both of those are
+        empty.
         """
         found: list[str] = []
         try:
@@ -2349,6 +2387,9 @@ class MagicFolderCtl:
                 text = str(item.get("relpath") or "")
                 if text and text not in found:
                     found.append(text)
+        for rel in _disk_conflict_relpaths(local_path):
+            if rel not in found:
+                found.append(rel)
         return found
 
     def add_folder(self, local_path: str, name: Optional[str] = None, author: Optional[str] = None) -> str:

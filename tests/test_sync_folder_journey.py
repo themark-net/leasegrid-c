@@ -503,6 +503,121 @@ def test_folder_journey_add_share_conflict_remove_restart_offline(tmp_path: Path
         daemon.join(timeout=3)
 
 
+def _open_seeded_folder(tmp_path: Path, monkeypatch, docs: Path):
+    """A joined window whose one folder is ``docs``. The stand-in lists no conflicts."""
+    home = tmp_path / "home"
+    nodedir = home / "tahoe"
+    nodedir.mkdir(parents=True)
+    docs.mkdir(parents=True)
+    (docs / "note.txt").write_text("hello\n", encoding="utf-8")
+    spool = tmp_path / "mf-add.jsonl"
+    welcome = _Welcome()
+    daemon = _MagicFolder(spool)
+    daemon.folders["Docs"] = {
+        "path": str(docs),
+        "files": [{"relpath": "note.txt", "size": 6, "mtime": 1}],
+        "recent": [{"relpath": "note.txt", "conflicted": False}],
+        "conflicts": {},
+    }
+    welcome.start()
+    daemon.start()
+    _wait_until("http://127.0.0.1:%d/?t=json" % welcome.port)
+    _wait_until(
+        urllib.request.Request(
+            "http://127.0.0.1:%d/v1/magic-folder" % daemon.port,
+            headers={"Authorization": "Bearer %s" % daemon.token},
+        )
+    )
+    mf_cfg = home / "magic-folder"
+    mf_cfg.mkdir(parents=True)
+    (mf_cfg / "api_token").write_text(daemon.token + "\n", encoding="utf-8")
+    (mf_cfg / "api_client_endpoint").write_text(
+        "tcp:127.0.0.1:%d\n" % daemon.port, encoding="utf-8"
+    )
+    (nodedir / "node.url").write_text("http://127.0.0.1:%d/\n" % welcome.port, encoding="utf-8")
+    (nodedir / "tahoe.cfg").write_text(
+        "\n".join(
+            [
+                "[node]",
+                "nickname = alice",
+                "[client]",
+                "introducer.furl = %s" % FURL,
+                "shares.needed = 2",
+                "shares.happy = 3",
+                "shares.total = 3",
+                "[storage]",
+                "enabled = false",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    monkeypatch.setenv("LEASEGRID_MF_PORT", str(_free_port()))
+    monkeypatch.delenv("LEASEGRID_GATED", raising=False)
+    mf_bin = write_executable(tmp_path / "bin", "raise SystemExit(0)\n", name="magic-folder")
+    monkeypatch.setenv("LEASEGRID_MAGIC_FOLDER_BIN", mf_bin)
+    window = MainWindow(nodedir=nodedir, home=home, autoload=True)
+    window.poll.stop()
+    window.win.show()
+    window.QtWidgets.QApplication.processEvents()
+    return window, daemon, welcome
+
+
+def test_disk_conflict_copy_shows_until_renamed(tmp_path: Path, monkeypatch):
+    """A ``.conflict-`` file on disk is a conflict until that copy is renamed.
+
+    The conflicts list is empty and the newest change is not conflicted.
+    A nested copy still counts. An ordinary extra file does not. Renaming
+    the copy clears the line and keeps the bytes.
+    """
+    docs = tmp_path / "Docs"
+    window, daemon, welcome = _open_seeded_folder(tmp_path, monkeypatch, docs)
+    try:
+        assert window.stack.currentWidget() is window.main_page
+        assert window.table.item(0, 0).text() == "Docs"
+        assert _status(window) == "Up to date"
+        assert "sync conflict" not in window.folder_error.text()
+
+        notes = docs / "notes"
+        notes.mkdir()
+        (notes / "draft.txt.bak").write_text("local edit\n", encoding="utf-8")
+        window.refresh()
+        assert _status(window) == "Up to date"
+        assert "sync conflict" not in window.folder_error.text()
+
+        marker = notes / "draft.txt.conflict-laptop"
+        marker.write_text("their copy\n", encoding="utf-8")
+        with daemon._lock:
+            assert daemon.folders["Docs"]["conflicts"] == {}
+            assert daemon.folders["Docs"]["recent"] == [
+                {"relpath": "note.txt", "conflicted": False}
+            ]
+        window.refresh()
+        assert _status(window) == "Conflict"
+        conflict = window.folder_error.text()
+        assert "Docs has a sync conflict on notes/draft.txt" in conflict
+        assert "rename or remove the conflict copy" in conflict
+        assert "\nNext: " in conflict
+        assert "pb://" not in conflict
+        assert_no_raw_user_text(conflict)
+
+        renamed = notes / "draft-from-laptop.txt"
+        marker.rename(renamed)
+        window.refresh()
+        assert _status(window) == "Up to date"
+        assert "sync conflict" not in window.folder_error.text()
+        assert renamed.read_text(encoding="utf-8") == "their copy\n"
+        assert not marker.exists()
+        assert (notes / "draft.txt.bak").read_text(encoding="utf-8") == "local edit\n"
+    finally:
+        _close(window)
+        daemon.stop()
+        welcome.stop()
+        welcome.join(timeout=3)
+        daemon.join(timeout=3)
+
+
 def test_conflict_outside_recent_changes_stays_conflict(tmp_path: Path):
     """The conflicts list is the whole set. The newest change is not."""
     ctl = MagicFolderCtl(config_dir=tmp_path / "mf", nodedir=tmp_path / "tahoe", mf_bin="/bin/true")

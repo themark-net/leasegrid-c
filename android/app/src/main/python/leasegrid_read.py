@@ -23,6 +23,14 @@ def dispatch(op: str, payload: str) -> str:
             raise ReadFail("could not complete that. The request was unreadable.", "Retry.")
         if op == "learn":
             result = learn_servers(str(data.get("furl") or ""), float(data.get("timeout") or 25))
+        elif op == "redeem":
+            from lg_redeem import redeem_invite
+
+            result = redeem_invite(data)
+        elif op == "redeem-cancel":
+            from lg_redeem import cancel_redeem
+
+            result = cancel_redeem()
         elif op == "list":
             servers = _servers(data)
             children = list_folder_view(str(data.get("cap") or ""), servers)

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A conflict copy left in the folder (a file named with `.conflict-` and an author, including in a subfolder) shows Conflict and names the file, even when the conflict list and the recent changes do not. An ordinary extra file does not. Renaming or removing that copy clears the line on the next refresh.
+- A leftover Tahoe or Magic Folder process that was started with a relative folder path is stopped on the next launch. The match uses that process's own directory. A process for a different folder, including one whose name only starts with the same letters, is left alone.
 - A folder that already has a sync conflict still says Conflict when a newer file has changed, or when that conflict is outside the five newest changes. The folder page names the file and the next step. That line clears once the conflict is gone.
 - Adding a folder whose name is already syncing a different directory stays on the page as a failure. Adding the same directory again does not create a second row.
 - Android: an add when the phone has no room says there is not enough free space and does not upload. Retry tries that add again once there is room. The file is not shown as in the shared folder before that.

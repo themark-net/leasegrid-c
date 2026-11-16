@@ -203,10 +203,12 @@ def _executable(directory: Path, name: str, body: str) -> str:
     return str(bin_)
 
 
-def _spawn(script: str, args: list[str]) -> subprocess.Popen[bytes]:
+def _spawn(script: str, args: list[str], cwd: Path | None = None) -> subprocess.Popen[bytes]:
     kwargs = {}
     if sys.platform != "win32":
         kwargs["start_new_session"] = True
+    if cwd is not None:
+        kwargs["cwd"] = str(cwd)
     return subprocess.Popen(
         [sys.executable, "-c", script, *args],
         stdout=subprocess.DEVNULL,
@@ -408,3 +410,61 @@ def test_sigterm_during_magic_folder_spawn_reaps_it(tmp_path: Path, monkeypatch)
                 stub = 0
             if stub > 1 and pid_alive(stub):
                 os.kill(stub, signal.SIGKILL)
+
+
+def test_relative_nodedir_orphan_is_stopped_and_a_lookalike_is_not(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A leftover started as ./tahoe is stopped once that folder is resolved.
+
+    The next launch is in another working directory. The old process still
+    has the relative path, so the match has to use that process's directory.
+    A process started as ./tahoe-not is a different folder and stays up, even
+    when its pid is written in this node's pid file.
+    """
+    if not os.path.exists("/proc/self/cwd"):
+        pytest.skip("relative orphan match reads /proc/<pid>/cwd")
+    work = tmp_path / "work"
+    nodedir = work / "tahoe"
+    elsewhere = tmp_path / "elsewhere"
+    home = tmp_path / "home"
+    nodedir.mkdir(parents=True)
+    elsewhere.mkdir()
+    home.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\nnickname = t\n", encoding="utf-8")
+    monkeypatch.setenv("LEASEGRID_SYNC_HOME", str(home))
+    outside_pid = tmp_path / "our.pid"
+    spare_pid_path = tmp_path / "spare.pid"
+    our = _spawn(
+        _SLEEPER,
+        ["./tahoe", str(outside_pid), "-", "--ignore-term"],
+        cwd=work,
+    )
+    spare = _spawn(
+        _SLEEPER,
+        ["./tahoe-not", str(spare_pid_path), "-"],
+        cwd=work,
+    )
+    binary = _executable(tmp_path / "bin", "tahoe", _TAHOE)
+    client = TahoeClient(nodedir=nodedir, tahoe_bin=binary, home=home)
+    try:
+        _wait_file(outside_pid)
+        _wait_file(spare_pid_path)
+        leader = int(outside_pid.read_text(encoding="utf-8").strip())
+        spare_pid = int(spare_pid_path.read_text(encoding="utf-8").strip())
+        (nodedir / "leasegrid-tahoe.pid").write_text("%d\n" % leader, encoding="utf-8")
+        (nodedir / "twistd.pid").write_text("%d\n" % spare_pid, encoding="utf-8")
+        monkeypatch.chdir(elsewhere)
+        client.start(timeout=8)
+        try:
+            our.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            raise AssertionError("relative orphan tahoe was still running") from None
+        assert not pid_alive(leader)
+        assert spare.poll() is None, "a lookalike folder was signalled"
+        assert pid_alive(spare_pid)
+        assert client._proc is not None and pid_alive(client._proc.pid)
+    finally:
+        client.stop()
+        _stop(our)
+        _stop(spare)

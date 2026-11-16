@@ -78,6 +78,12 @@ chaquopy {
             install("cryptography<45")
             install("pyOpenSSL<25")
             install("service-identity<25")
+            // PyNaCl 1.5.0 is the Chaquopy cp311 Android wheel (arm64-v8a and x86_64).
+            // autobahn 24.4.2 is the last pure-Python release that stays under cryptography 45.
+            install("pynacl==1.5.0")
+            install("attrs>=21.3.0")
+            install("autobahn[twisted]==24.4.2")
+            install("magic-wormhole==0.24.0")
         }
     }
 }

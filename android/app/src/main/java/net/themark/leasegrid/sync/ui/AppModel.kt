@@ -863,7 +863,6 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
             Log.w(TAG, "grid failed: ${exc.javaClass.simpleName}")
             show(unexpectedGridCard(exc)) { runGrid(label, block) }
         }, block)
-        if (label.isEmpty()) return
     }
 
     private fun mimeFor(ext: String): String = when (ext) {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Android Invite accepts the short code from Share invite in the same field as the full join link. A short code is no longer refused. If the code expired, was not accepted, the invite relay could not be reached, or nobody answered, the screen says so and Retry tries again. The field is kept. Pasting the full join link still joins and skips that step ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).
 - A conflict copy left in the folder (a file named with `.conflict-` and an author, including in a subfolder) shows Conflict and names the file, even when the conflict list and the recent changes do not. An ordinary extra file does not. Renaming or removing that copy clears the line on the next refresh.
 - A leftover Tahoe or Magic Folder process that was started with a relative folder path is stopped on the next launch. The match uses that process's own directory. A process for a different folder, including one whose name only starts with the same letters, is left alone.
 - A folder that already has a sync conflict still says Conflict when a newer file has changed, or when that conflict is outside the five newest changes. The folder page names the file and the next step. That line clears once the conflict is gone.

@@ -3,6 +3,8 @@ package net.themark.leasegrid.sync.ui
 import kotlin.coroutines.cancellation.CancellationException
 import net.themark.leasegrid.sync.invite.Invite
 import net.themark.leasegrid.sync.invite.InviteFail
+import net.themark.leasegrid.sync.invite.ParsedInvite
+import net.themark.leasegrid.sync.invite.RedeemOutcome
 import net.themark.leasegrid.sync.session.ServerRef
 import net.themark.leasegrid.sync.session.Session
 
@@ -14,6 +16,12 @@ interface FlowHost {
 
     /** The grid's server list, or null on any failure. Never shows anything. */
     suspend fun learn(furl: String): List<ServerRef>?
+
+    /**
+     * Tahoe 1.20 client handshake for a short code.
+     * Returns a status only. Does not show a banner.
+     */
+    suspend fun redeem(code: String): RedeemOutcome
 
     /** Write [next] to the store and make it the current session (Folders screen). */
     fun save(next: Session)
@@ -43,14 +51,19 @@ class SessionFlow(private val host: FlowHost) {
                 raw,
                 fail = { exc: InviteFail -> host.show(FailBanner(exc.banner, exc.next)) { join() } },
             ) { parsed ->
-                val learned = learnOrNull(parsed.furl)
+                val ready = if (parsed.kind == "code") {
+                    redeemReady(parsed.code) ?: return@attempt
+                } else {
+                    parsed
+                }
+                val learned = learnOrNull(ready.furl)
                 if (learned == null) {
                     host.show(FailBanner(Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT)) { join() }
                 } else {
                     host.save(
                         Session(
-                            introducerFurl = parsed.furl,
-                            shares = parsed.shares ?: listOf(2, 3, 3),
+                            introducerFurl = ready.furl,
+                            shares = ready.shares ?: listOf(2, 3, 3),
                             folders = host.session?.folders ?: emptyList(),
                             servers = learned,
                         ),
@@ -82,6 +95,31 @@ class SessionFlow(private val host: FlowHost) {
         if (learned == null) {
             host.show(FailBanner(Invite.IMPORT_SAVED_MSG, Invite.REFRESH_FAILED_NEXT)) { refresh() }
         }
+    }
+
+    /** Null when the banner is already shown. Cancellation still escapes. */
+    private suspend fun redeemReady(code: String): ParsedInvite? {
+        val outcome = try {
+            host.redeem(code)
+        } catch (exc: CancellationException) {
+            throw exc
+        } catch (_: Exception) {
+            val copy = Invite.redeemCopy("relay")
+            host.show(FailBanner(copy.banner, copy.next)) { join() }
+            return null
+        }
+        if (outcome.status != "ok") {
+            val copy = Invite.redeemCopy(outcome.status)
+            host.show(FailBanner(copy.banner, copy.next)) { join() }
+            return null
+        }
+        val furl = try {
+            Invite.validateFurl(outcome.furl)
+        } catch (exc: InviteFail) {
+            host.show(FailBanner(exc.banner, exc.next)) { join() }
+            return null
+        }
+        return ParsedInvite("url", furl, Invite.keptShares(outcome.shares))
     }
 
     private suspend fun learnOrNull(furl: String): List<ServerRef>? = try {

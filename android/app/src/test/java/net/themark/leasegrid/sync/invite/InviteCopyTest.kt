@@ -2,7 +2,6 @@ package net.themark.leasegrid.sync.invite
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -16,7 +15,6 @@ class InviteCopyTest {
     private val samples = listOf(
         "",
         "   ",
-        "7-guitarist-revenge",
         "https://example.test/tahoe",
         "not-a-code",
         "leasegrid:join",
@@ -31,6 +29,8 @@ class InviteCopyTest {
         val screen = listOf(
             Invite.TITLE, Invite.BODY, Invite.INPUT_HINT, Invite.ACK_MSG, Invite.ACK_NEXT,
             Invite.JOIN_FAILED, Invite.JOIN_FAILED_NEXT, Invite.REFRESH_FAILED_NEXT, Invite.IMPORT_SAVED_MSG,
+            Invite.CODE_EXPIRED, Invite.CODE_EXPIRED_NEXT, Invite.CODE_RELAY, Invite.CODE_RELAY_NEXT,
+            Invite.CODE_REJECTED, Invite.CODE_REJECTED_NEXT, Invite.CODE_TIMEOUT, Invite.CODE_TIMEOUT_NEXT,
         )
         for (line in screen + fails) {
             assertEquals("banned word in: $line", emptyList<String>(), bannedWords(line))
@@ -58,17 +58,18 @@ class InviteCopyTest {
             Invite.REFRESH_FAILED_NEXT,
         )
         assertEquals(
-            "On your computer, click Share invite in Leasegrid Sync and tick Show full join link (advanced). " +
-                "Copy that link and paste it below.",
+            "On your computer, click Share invite in Leasegrid Sync. Type the short code below, " +
+                "or tick Show full join link (advanced) and paste that link.",
             Invite.BODY,
         )
-        assertEquals("Paste the full join link", Invite.INPUT_HINT)
+        assertEquals("Short code or join link", Invite.INPUT_HINT)
+        assertFalse(Invite.BODY.lowercase().contains("can't use short codes"))
     }
 
     @Test
     fun failCopyMatchesDesign() {
-        assertEquals("Paste the join link first.", failFor("").banner)
-        assertEquals("Paste the join link first.", failFor("   ").banner)
+        assertEquals("Enter a short code or paste the join link first.", failFor("").banner)
+        assertEquals("Enter a short code or paste the join link first.", failFor("   ").banner)
         assertEquals(
             "That isn't a join link. On your computer, tick Show full join link (advanced), " +
                 "then copy and paste the whole link.",
@@ -95,34 +96,58 @@ class InviteCopyTest {
             "Check that Leasegrid Sync is open on your computer and this phone is online, then tap Retry.",
             Invite.JOIN_FAILED_NEXT,
         )
+        assertEquals("This code expired.", Invite.CODE_EXPIRED)
+        assertEquals(
+            "On your computer, click Share invite again. Keep Leasegrid Sync open, type the new short code here, then tap Retry.",
+            Invite.CODE_EXPIRED_NEXT,
+        )
+        assertEquals("Couldn't reach the invite relay.", Invite.CODE_RELAY)
+        assertEquals(
+            "Check that this phone is online and Leasegrid Sync is still open on your computer, then tap Retry. " +
+                "If it still fails, tick Show full join link (advanced) and paste that link here.",
+            Invite.CODE_RELAY_NEXT,
+        )
+        assertEquals("This code was not accepted.", Invite.CODE_REJECTED)
+        assertEquals(
+            "On your computer, click Share invite again and use the new short code. Keep Leasegrid Sync open, then tap Retry.",
+            Invite.CODE_REJECTED_NEXT,
+        )
+        assertEquals("Nobody answered this code yet.", Invite.CODE_TIMEOUT)
+        assertEquals(
+            "Keep Leasegrid Sync open on your computer until this phone joins, then tap Retry. " +
+                "If the code is old, click Share invite again and type the new short code.",
+            Invite.CODE_TIMEOUT_NEXT,
+        )
+        for (copy in listOf(
+            Invite.redeemCopy("expired"),
+            Invite.redeemCopy("rejected"),
+            Invite.redeemCopy("relay"),
+            Invite.redeemCopy("timeout"),
+            Invite.redeemCopy("mystery"),
+        )) {
+            assertEquals(copy.banner, emptyList<String>(), bannedWords(copy.banner))
+            assertEquals(copy.next, emptyList<String>(), bannedWords(copy.next))
+            assertEquals("Next: ${copy.next}", failNextLine(copy.next))
+        }
+        assertEquals(Invite.CODE_REJECTED, Invite.redeemCopy("mystery").banner)
     }
 
     @Test
-    fun shortCodeShowsShortCodeMessageAndNeverJoins() {
-        var joined = false
-        val exc = Invite.attempt("7-guitarist-revenge", fail = { it }) {
-            joined = true
+    fun shortCodeParsesAsACodeInsteadOfTheOldRefusal() {
+        // #77: the phone can use the desktop short code. Parse still happens
+        // before any redeem, and the old cannot-use-short-code banner is gone.
+        var parsed: ParsedInvite? = null
+        val failed = Invite.attempt("7-guitarist-revenge", fail = { it }) {
+            parsed = it
             null
         }
-        assertFalse("a short code must not reach join", joined)
-        exc!!
-        assertEquals(
-            "That's a short code. This phone can't use short codes yet. On your computer, " +
-                "tick Show full join link (advanced), then paste that link here.",
-            exc.banner,
-        )
-        assertNotEquals(Invite.GARBAGE_MSG, exc.banner)
-    }
-
-    @Test
-    fun shortCodePasteRendersNoNextLineAndNeverJoins() {
-        var joinCalls = 0
-        val exc = Invite.attempt("7-guitarist-revenge", fail = { it }) {
-            joinCalls++
-            null
-        }!!
-        assertEquals(0, joinCalls)
-        assertNull("short code must render no Next line", failNextLine(exc.next))
+        assertTrue("a short code must not be a parse failure", failed !is InviteFail)
+        assertEquals("code", parsed!!.kind)
+        assertEquals("7-guitarist-revenge", parsed!!.code)
+        assertEquals("", parsed!!.furl)
+        assertNull(parsed!!.shares)
+        val mixed = Invite.parse("\u200B7-Guitarist-Revenge")
+        assertEquals("7-guitarist-revenge", mixed.code)
     }
 
     @Test
@@ -153,7 +178,7 @@ class InviteCopyTest {
         // Fake fixture shaped like desktop format_join_url (percent-encoded i=).
         val link = "leasegrid:join#v=1&i=pb%3A%2F%2Fhashhashhash%40127.0.0.1%3A45001%2Fswissnumswiss&n=2&h=3&t=3"
         val design = setOf(
-            Invite.EMPTY_MSG, Invite.WORMHOLE_MSG, Invite.GARBAGE_MSG, Invite.WEB_URL_MSG,
+            Invite.EMPTY_MSG, Invite.GARBAGE_MSG, Invite.WEB_URL_MSG,
             Invite.NO_ADDRESS_MSG, Invite.MALFORMED_MSG,
         )
         var parsed = 0
@@ -163,7 +188,7 @@ class InviteCopyTest {
                 Invite.attempt(prefix, fail = { it }) { it }
             } catch (exc: Exception) {
                 throw AssertionError("prefix $end threw ${exc.javaClass.simpleName}")
-            }!!
+            }
             if (result is InviteFail) {
                 assertTrue("prefix $end: ${result.banner}", result.banner in design)
                 assertEquals("prefix $end", Invite.NO_NEXT, result.next)
@@ -197,7 +222,7 @@ class InviteCopyTest {
         assertFalse(result.banner, result.banner.contains("Exception"))
         assertTrue(result.banner, bannedWords(result.banner).isEmpty())
         // Recover: the parser still accepts a real short code and a real join link.
-        assertEquals(Invite.WORMHOLE_MSG, failFor("7-guitarist-revenge-alpha").banner)
+        assertEquals("code", Invite.parse("7-guitarist-revenge-alpha").kind)
         val link = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3"
         var joined: ParsedInvite? = null
         Invite.attempt(link, fail = { error(it.banner) }) { joined = it }
@@ -267,9 +292,9 @@ class InviteCopyTest {
         assertEquals(Invite.NO_NEXT, empty.next)
         assertFalse(empty.banner, empty.banner.contains("Exception"))
         assertTrue(empty.banner, bannedWords(empty.banner).isEmpty())
-        val worm = failFor("\u200B7-guitarist-revenge")
-        assertEquals(Invite.WORMHOLE_MSG, worm.banner)
-        assertEquals(Invite.NO_NEXT, worm.next)
+        val markedCode = Invite.parse("\u200B7-guitarist-revenge")
+        assertEquals("7-guitarist-revenge", markedCode.code)
+        assertEquals("code", markedCode.kind)
         var joined: ParsedInvite? = null
         Invite.attempt(link, fail = { error(it.banner) }) { joined = it }
         assertEquals(listOf(2, 3, 3), joined!!.shares)
@@ -350,7 +375,8 @@ class InviteCopyTest {
     fun aShortCodeAtTheLengthCapIsAShortCodeAndOneOverIsNot() {
         val atCap = "7-" + "a".repeat(126) + "-" + "b".repeat(127)
         assertEquals(256, atCap.length)
-        assertEquals(Invite.WORMHOLE_MSG, failFor(atCap).banner)
+        assertEquals("code", Invite.parse(atCap).kind)
+        assertEquals(atCap, Invite.parse(atCap).code)
         val over = atCap + "b"
         assertEquals(Invite.GARBAGE_MSG, failFor(over).banner)
         assertEquals(Invite.GARBAGE_MSG, failFor(over + "b".repeat(100_000)).banner)
@@ -406,7 +432,7 @@ class InviteCopyTest {
 
     @Test
     fun linkFailBannersNameTheDesktopLabel() {
-        for (raw in listOf("7-guitarist-revenge", "not-a-code", "https://example.test/tahoe", "leasegrid:join", "pb://short")) {
+        for (raw in listOf("not-a-code", "https://example.test/tahoe", "leasegrid:join", "pb://short")) {
             val exc = failFor(raw)
             assertTrue(exc.banner, exc.banner.contains(Invite.SHOW_FULL_JOIN_LINK))
         }

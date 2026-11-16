@@ -57,7 +57,7 @@ packages = ["leasegrid_zkap", "leasegrid_sync", "twisted.plugins"]
 [tool.pytest.ini_options]
 # android/ is in norecursedirs, so the phone dispatch tests are named here.
 # CI and scripts/ci-local.sh both run pytest, which collects this file.
-testpaths = ["tests", "android/pytests/test_dispatch_copy.py"]
+testpaths = ["tests", "android/pytests/test_dispatch_copy.py", "android/pytests/test_redeem.py"]
 pythonpath = ["src"]
 # Phone read-client sources live under android/ and register a Foolscap
 # remote name that Tahoe also registers. Host pytest must not import them.

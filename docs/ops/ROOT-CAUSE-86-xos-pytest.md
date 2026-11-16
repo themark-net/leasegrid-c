@@ -4,7 +4,7 @@ CI run 43796144756, job `test`, base `d3b5c5c`. Logs: `windows-2022-job133065286
 
 ## W1 leftover mutant is not restored
 
-Symptom: `tests/test_prove_red.py::test_leftover_mutant_from_sigkill_is_restored` — `AssertionError: assert 'restored leftover mutant' in ''`. Stdout ends with `caught  RED`. Exit code of prove-red was 0 (the return-code assert did not fire).
+Symptom: `tests/test_prove_red.py::test_leftover_mutant_from_sigkill_is_restored`: `AssertionError: assert 'restored leftover mutant' in ''`. Stdout ends with `caught  RED`. Exit code of prove-red was 0 (the return-code assert did not fire).
 
 Hypothesis: two line-ending bugs stack. On Windows, `Path.write_text` writes CRLF, and GitHub's git has `core.autocrlf=true`, so the blob is LF and the working tree is CRLF. The test injects the leftover with `original.replace(b"return 1\n", b"return 2\n")`, which does not match `return 1\r\n`, so the file stays clean. prove-red never enters leftover restore, runs the case itself, and prints RED with empty stderr. Under that, `_exact_leftover` compares `git show` bytes (LF blob, no autocrlf smudge) to the working tree. A real SIGKILL leftover is the CRLF mutant `_mutant_bytes` writes. Those bytes are not equal, so the next run would refuse the file as uncommitted instead of restoring it.
 
@@ -16,7 +16,7 @@ Kind: product fix plus test.
 
 ## W2 mode-000 lock file
 
-Symptom: `tests/test_sync_instance_lock.py::test_lock_file_mode_000_names_the_next_step` — `assert 0 == 1` at the exit code. `MainWindow` was not constructed (`_lock_failure` asserts that before returning).
+Symptom: `tests/test_sync_instance_lock.py::test_lock_file_mode_000_names_the_next_step`: `assert 0 == 1` at the exit code. `MainWindow` was not constructed (`_lock_failure` asserts that before returning).
 
 Hypothesis: POSIX-only. `chmod(0)` on Windows only sets the read-only attribute. `stat.S_IMODE` still has the read bits, so `_lock_path_problem` does not see mode 000. The launch then takes the "already running" path (`acquire_instance_lock` returns false, `run_app` returns 0). The file was not unreadable.
 
@@ -28,9 +28,9 @@ Kind: platform skip.
 
 ## W3 bad Tahoe folder path in the banner
 
-Symptom: `tests/test_sync_ui.py::test_bad_tahoe_folder_names_a_plain_next_step` — `assert str(path) in text` failed. `str(path)` is `C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-0\test_bad_tahoe_folder_names_a_0\empty-tahoe`. The label is `FAIL <char> could not join this friendnet. No Tahoe client is configured at ~\AppData\Local\Temp\pytest-of-runneradmin...tahoe_folder_names_a_0\empty-tahoe.`
+Symptom: `tests/test_sync_ui.py::test_bad_tahoe_folder_names_a_plain_next_step`: `assert str(path) in text` failed. `str(path)` is `C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-0\test_bad_tahoe_folder_names_a_0\empty-tahoe`. The label is `FAIL <char> could not join this friendnet. No Tahoe client is configured at ~\AppData\Local\Temp\pytest-of-runneradmin...tahoe_folder_names_a_0\empty-tahoe.`
 
-Hypothesis: the product is doing what `display_path` / `mask_shown_paths` promise. Windows pytest temp lives under the user profile, so the banner hides the account and shows `~\...`. Linux `/tmp` is outside `$HOME`, so `str(path)` is still in the text and the test passes. The `...` in the log is pytest's assertion ellipsis (the Next line is intact on both sides of it), not a product middle-elision. There is no elision helper. The `<char>` bytes in the log are UTF-8 U+FFFD (`EF BF BD`). The source banner is `FAIL — ` (U+2014, bytes `E2 80 94` in `SyncError.banner`). That is the em dash written to a cp1252 pipe (byte `0x97`) and decoded as invalid UTF-8 when the log was stored. The label still contains `FAIL`, and the same em dash is the product string on every OS. Not an encoding bug in the label.
+Hypothesis: the product is doing what `display_path` / `mask_shown_paths` promise. Windows pytest temp lives under the user profile, so the banner hides the account and shows `~\...`. Linux `/tmp` is outside `$HOME`, so `str(path)` is still in the text and the test passes. The `...` in the log is pytest's assertion ellipsis (the Next line is intact on both sides of it), not a product middle-elision. There is no elision helper. The `<char>` bytes in the log are UTF-8 U+FFFD (`EF BF BD`). The source banner is `FAIL U+2014 ` (U+2014, bytes `E2 80 94` in `SyncError.banner`). That is the em dash written to a cp1252 pipe (byte `0x97`) and decoded as invalid UTF-8 when the log was stored. The label still contains `FAIL`, and the same em dash is the product string on every OS. Not an encoding bug in the label.
 
 Evidence: `d3b5c5c` keeps the folder in the sentence and sends it through `banner()` → `mask_shown_paths`. `display_path` documents `~\\…` on Windows. `tests/test_sync_display_path.py` locks the account-hiding behaviour. `app.py` has no middle-elision of paths.
 
@@ -40,7 +40,7 @@ Kind: test fix.
 
 ## W4 download into a mode-0555 directory
 
-Symptom: `android/pytests/test_dispatch_copy.py::test_download_permission_denied_does_not_say_network` — `assert True is False` on `reply["ok"]`. The write succeeded.
+Symptom: `android/pytests/test_dispatch_copy.py::test_download_permission_denied_does_not_say_network`: `assert True is False` on `reply["ok"]`. The write succeeded.
 
 Hypothesis: POSIX-only. `chmod(0o555)` on a directory does not stop Windows from creating a file in it. `leasegrid_read.dispatch` maps `PermissionError` to "would not allow". No `PermissionError` was raised, so the success path ran. The phone is Android, which is Linux permissions. The product check is the right one.
 
@@ -50,7 +50,7 @@ Kind: platform skip.
 
 ## W5 put of a mode-000 file
 
-Symptom: `android/pytests/test_dispatch_copy.py::test_put_permission_denied_does_not_say_pick_it_again` — `{'ok': False, 'message': 'could not add this file.', 'next': 'check network; Retry.'}`. `would not allow` is absent. The log then shows `fetch_share` network warnings.
+Symptom: `android/pytests/test_dispatch_copy.py::test_put_permission_denied_does_not_say_pick_it_again`: `{'ok': False, 'message': 'could not add this file.', 'next': 'check network; Retry.'}`. `would not allow` is absent. The log then shows `fetch_share` network warnings.
 
 Hypothesis: POSIX-only. `chmod(0)` left the file readable, so `_put` read the bytes and the fake servers failed as a network error. The permission copy in `_put` / `_permission_copy` never ran. Same product check as W4.
 
@@ -60,7 +60,7 @@ Kind: platform skip.
 
 ## M1 loopback 127.0.0.2
 
-Symptom: `tests/test_storage_listen.py::test_loopback_storage_override_listens_on_that_address_only` — `TimeoutError: timed out` on `sock.connect(("127.0.0.2", port))`. The assertions on `tub.location` and `tub.port` had already passed (`tcp:127.0.0.2` and `interface=127.0.0.2`).
+Symptom: `tests/test_storage_listen.py::test_loopback_storage_override_listens_on_that_address_only`: `TimeoutError: timed out` on `sock.connect(("127.0.0.2", port))`. The assertions on `tub.location` and `tub.port` had already passed (`tcp:127.0.0.2` and `interface=127.0.0.2`).
 
 Hypothesis: the config is right. macOS `lo0` has only `127.0.0.1` unless an alias is added. Nothing can accept a connection to `127.0.0.2`, so Tahoe's bind does not become reachable and the connect times out. This is not a product listen bug. windows-2022 did not fail this test (five failures, this is not one of them). Linux `lo` has `127.0.0.0/8`.
 
@@ -72,7 +72,7 @@ Kind: platform skip, probe not a blanket darwin skip.
 
 ## M2 Magic Folder orphan never becomes ready
 
-Symptom: `tests/test_sync_orphan.py::test_magic_folder_start_stops_our_orphan_only` — `SyncError: folder not added. Magic Folder daemon did not become ready.` Raised from `MagicFolderCtl.ensure_running` after the 20s loop. That branch runs only while `_leader_state(self._proc) == "running"` and `is_running()` stays false. The sibling `test_start_stops_our_tahoe_orphan_and_spares_another_nodedir` passed on the same macOS job (the failure dot is this test; the next test passed and the relative-path test skipped for lack of `/proc`).
+Symptom: `tests/test_sync_orphan.py::test_magic_folder_start_stops_our_orphan_only`: `SyncError: folder not added. Magic Folder daemon did not become ready.` Raised from `MagicFolderCtl.ensure_running` after the 20s loop. That branch runs only while `_leader_state(self._proc) == "running"` and `is_running()` stays false. The sibling `test_start_stops_our_tahoe_orphan_and_spares_another_nodedir` passed on the same macOS job (the failure dot is this test; the next test passed and the relative-path test skipped for lack of `/proc`).
 
 Hypothesis: not `/var` vs `/private/var`, not a ps cmdline miss, and not a slow real daemon. The Tahoe orphan test uses the same sleeper, the same `stop_orphan_for_directory`, and the same kqueue leader check, and it stopped the orphan and reached a ready HTTP stub. The Magic Folder double is different: `_MF` constructs `ThreadingHTTPServer`, whose `server_bind` calls `socket.getfqdn("127.0.0.1")` before the stub writes `api_client_endpoint`. The Tahoe double overrides `server_bind` and sets `server_name` itself, so it never does that lookup. A blocked `getfqdn` leaves the child alive (so the loop does not say "stopped while starting") and never writes the endpoint (so `is_running` stays false) until the 20s budget ends. Real `magic-folder` does not go through this stub. Raising the timeout would not fix a lookup that has not returned.
 
@@ -98,6 +98,10 @@ Symptom: after `2e4ce83` was fast-forwarded to main, CI run 43928997775 (job 133
 
 Hypothesis: same cause as W3, a second assertion the first fix missed. Round 1 changed `_assert_plain_screen`, but the parked-node block asserts `str(parked)` inline, and the banner masks the account home there too.
 
-Red to green on Linux: run the test with `HOME=/tmp/lg86home` and `--basetemp=/tmp/lg86home/bt`, so pytest temp sits under the home the way Windows temp sits under the profile. Before: fails at line 766 with `~/bt/.../already-here` in the label. After asserting `display_path(parked)`: `tests/test_sync_ui.py` 92 passed with that HOME, and 92 passed with the normal HOME. The whole suite under the under-home simulation: 700 passed, 1 skipped, 5 xfailed. No other `str(path) in` banner assertion is left in `tests/test_sync_ui.py`.
+Red to green on Linux: run the test with `HOME=<tmpdir>` and `--basetemp=<tmpdir>/bt`, so pytest temp sits under the home the way Windows temp sits under the profile. Before: fails at line 766 with `~/bt/.../already-here` in the label. After asserting `display_path(parked)`: `tests/test_sync_ui.py` 92 passed with that HOME, and 92 passed with the normal HOME. The whole suite under the under-home simulation: 700 passed, 1 skipped, 5 xfailed. No other `str(path) in` banner assertion is left in `tests/test_sync_ui.py`.
 
 Kind: test fix.
+
+## Round 3 (final pin)
+
+Reviewer B1 dashes were removed and the version bumped to 0.1.11. No code changes.

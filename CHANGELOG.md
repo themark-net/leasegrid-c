@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.11 (2026-11-16)
+
 - Android Invite accepts the short code from Share invite in the same field as the full join link. A short code is no longer refused. If the code expired, was not accepted, the invite relay could not be reached, or nobody answered, the screen says so and Retry tries again. The field is kept. Pasting the full join link still joins and skips that step. The phone build now includes that short-code client, with PyNaCl for arm64-v8a and x86_64 ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).
 - A Tahoe folder that is missing, empty, or not a client names a plain next step: move that folder aside, point Sync at a running client, or paste a join link or short code. The folder path stays in the message. A node that was already on this computer stays, and Retry can connect once the grid is up.
 - A conflict copy left in the folder (a file named with `.conflict-` and an author, including in a subfolder) shows Conflict and names the file, even when the conflict list and the recent changes do not. An ordinary extra file does not. Renaming or removing that copy clears the line on the next refresh.
@@ -45,6 +47,7 @@
 - A lock written on another computer is not taken over while it is younger than 30 seconds, and that refusal returns at once. A same-host lock whose process is already dead is still reclaimed. A lock path that is a directory, or a lock file with no permissions, says what is wrong and what to do next instead of opening a second window.
 - A quit signal during startup stops the Tahoe or Magic Folder process this launch started. The next launch stops a leftover daemon for this node directory only.
 - The public log filter redacts an underscore-joined secret in one piece, so a digit fragment on the other side of `_` is not left in the CI log.
+- Tests pass on Windows and macOS again (#86); desktop behaviour unchanged by that fix.
 
 ## 0.1.10 (2026-11-02)
 

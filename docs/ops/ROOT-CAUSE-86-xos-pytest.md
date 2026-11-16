@@ -91,3 +91,13 @@ M2, before the stub change: `test_magic_folder_stub_writes_endpoint_without_reve
 W3: `test_plain_screen_hides_a_folder_inside_the_account_home` puts the folder under a fake home. The banner contains `display_path` and does not contain `str(folder)`.
 
 Semgrep: `tools/semgrep` is in the tree. The `semgrep` binary is not on PATH and not in the shared venv. It was not installed. Scan skipped.
+
+## W3b round 2: the parked-node assertion in the same test
+
+Symptom: after `2e4ce83` was fast-forwarded to main, CI run 43928997775 (job 133516051680, windows-2022) failed only `tests/test_sync_ui.py::test_bad_tahoe_folder_names_a_plain_next_step` at line 766: `assert str(parked) in parked_text`, with the label `A Tahoe node already exists at ~\AppData\Local\Temp\...`. ubuntu, macos-15-intel, debug APK and semgrep were green.
+
+Hypothesis: same cause as W3, a second assertion the first fix missed. Round 1 changed `_assert_plain_screen`, but the parked-node block asserts `str(parked)` inline, and the banner masks the account home there too.
+
+Red to green on Linux: run the test with `HOME=/tmp/lg86home` and `--basetemp=/tmp/lg86home/bt`, so pytest temp sits under the home the way Windows temp sits under the profile. Before: fails at line 766 with `~/bt/.../already-here` in the label. After asserting `display_path(parked)`: `tests/test_sync_ui.py` 92 passed with that HOME, and 92 passed with the normal HOME. The whole suite under the under-home simulation: 700 passed, 1 skipped, 5 xfailed. No other `str(path) in` banner assertion is left in `tests/test_sync_ui.py`.
+
+Kind: test fix.

@@ -8,3 +8,4 @@
 #86 M1: skip `test_loopback_storage_override_listens_on_that_address_only` only when `bind(("127.0.0.2", 0))` fails | skip every darwin host | windows-2022 did not fail this test; Linux and a Windows loopback /8 still run it; no `ifconfig` alias
 #86 M2: override `server_bind` in the Magic Folder test double so it does not call `socket.getfqdn` | raise the 20s ready budget, or change `ensure_running` | the Tahoe orphan test passed on the same macOS job; only this double blocks in the reverse lookup; real magic-folder does not
 #86: do not install semgrep into the shared venv | `pip install semgrep` | the binary is absent and that venv belongs to Mark's checkout
+#86 W3b: assert `display_path(parked)` for the parked-node banner too | put `str(path)` back into the banner | same home masking as W3; round-1 fix covered only `_assert_plain_screen`; found by windows-2022 on run 43928997775

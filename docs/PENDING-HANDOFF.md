@@ -362,12 +362,13 @@ python3 -m venv .venv && PYTHON=$PWD/.venv/bin/python bash scripts/ci-local.sh
 
 ## #86 cross-OS Pytest
 
-Branch `bot/86-xos-pytest` off `origin/main` `d3b5c5c`. Local commits only. Not pushed, not tagged, version not bumped. Issues #30, #33, and #26 were not touched. Root cause: [`ops/ROOT-CAUSE-86-xos-pytest.md`](ops/ROOT-CAUSE-86-xos-pytest.md). Decisions: [`ops/AUTONOMOUS-DECISIONS-2026-11-16.md`](ops/AUTONOMOUS-DECISIONS-2026-11-16.md).
+Branch `bot/86-xos-pytest` off `origin/main` `d3b5c5c`, fast-forwarded to main (round 1 `2e4ce83`, then the W3b round). Not tagged, version not bumped; Tester and Reviewer gate the final SHA before any v0.1.11 release. Issues #30, #33, and #26 were not touched. Root cause: [`ops/ROOT-CAUSE-86-xos-pytest.md`](ops/ROOT-CAUSE-86-xos-pytest.md). Decisions: [`ops/AUTONOMOUS-DECISIONS-2026-11-16.md`](ops/AUTONOMOUS-DECISIONS-2026-11-16.md).
 
 What changed:
 
 - `scripts/prove-red.py` treats a CRLF checkout and the LF blob as the same leftover mutant, and restores the blob with the checkout's newlines. `AGENTS.md` says the same. `tests/test_prove_red.py` injects the leftover with `_mutant_bytes` and adds `test_crlf_leftover_mutant_is_restored` (`core.autocrlf=true`).
 - `tests/test_sync_ui.py` asserts `display_path` plus the folder leaf. `test_plain_screen_hides_a_folder_inside_the_account_home` locks the under-home form Windows temp hits. The em dash in `SyncError.banner` is unchanged.
+- Round 2 (W3b): the parked-node banner assertion in `test_bad_tahoe_folder_names_a_plain_next_step` also asserts `display_path`. Linux check that mimics Windows temp under the profile: `HOME=/tmp/lg86home pytest --basetemp=/tmp/lg86home/bt` (whole suite 700 passed).
 - `tests/test_sync_orphan.py` `_MF` sets `server_name` in `server_bind` and does not call `socket.getfqdn`. `test_magic_folder_stub_writes_endpoint_without_reverse_dns` blocks that lookup and still expects `api_client_endpoint` within 2s.
 
 Skips:
@@ -387,5 +388,5 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=$PWD/src:$PWD /home/mark/DEVELOP/leasegrid-
 
 The import must print a path under this worktree. Semgrep was not run: `tools/semgrep` is present, the `semgrep` binary is not installed, and it was not installed into the shared venv.
 
-What's left: this machine cannot run windows-2022 or macos-15-intel. Those jobs need a CI run on the branch. Nothing here is pushed. Linux on this worktree: 700 passed, 1 skipped (`test_live_journey_matches_replay_stations`, `LEASEGRID_LIVE_GRID` unset), 5 xfailed, ruff clean, 183s.
+What's left: nimo cannot run windows-2022 or macos-15-intel; CI on main is the check. Round 1 (`2e4ce83`, run 43928997775): ubuntu, macos-15-intel, debug APK and semgrep green; windows-2022 had only W3b. Final SHA and run IDs are on issue #86. Release v0.1.11 waits for the Tester + Reviewer gate. Linux on this worktree: 700 passed, 1 skipped (`test_live_journey_matches_replay_stations`, `LEASEGRID_LIVE_GRID` unset), 5 xfailed, ruff clean, 183s.
 

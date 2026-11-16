@@ -763,7 +763,7 @@ def test_bad_tahoe_folder_names_a_plain_next_step(tmp_path: Path):
         parked_text = parked_ui.join_error.text()
         assert "already exists" in parked_text
         assert "not connected" in parked_text
-        assert str(parked) in parked_text
+        assert display_path(parked) in parked_text
         for word in _NODEDIR_BANNED:
             assert word.lower() not in parked_text.lower()
         parked_next = _assert_plain_screen(parked_text, parked)

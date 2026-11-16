@@ -132,7 +132,7 @@ same `create-node` path; `--client-only` / uncheck Offer disk adds `--no-storage
 |--------|-----------|
 | Join, `tahoe` not installed | FAIL — The Tahoe client is not installed. Next: pip install '…[sync,tahoe]' |
 | Join, introducer down | FAIL — Introducer is unreachable. Next: check the network path… |
-| Join, node dir exists for another grid | FAIL — A Tahoe node already exists at … but is not connected… Next: set LEASEGRID_TAHOE_NODEDIR |
+| Join, node dir exists for another grid | FAIL: A Tahoe node already exists at … but is not connected. Next: move that folder aside and paste a join link or short code, or check the network, then Retry |
 | Join, Tahoe crashes on start | FAIL — Tahoe exited while starting. Next: see …/logs/tahoe.log |
 
 ## Paid mode

@@ -582,6 +582,190 @@ def test_join_existing_unicode_decode_reenables_button(ui: MainWindow):
     assert ui.invite_edit.isEnabled()
 
 
+_NODEDIR_BANNED = ("LEASEGRID_TAHOE_NODEDIR", "furl", "pb://", "introducer", "wormhole")
+
+
+def _assert_plain_screen(text: str, path: Path) -> str:
+    """The label keeps the local folder and a next step a person can follow."""
+    assert "FAIL" in text
+    assert "\nNext:" in text
+    assert str(path) in text
+    _message, nxt = text.split("\nNext:", 1)
+    low = nxt.lower()
+    for word in _NODEDIR_BANNED:
+        assert word.lower() not in low, nxt
+    return nxt
+
+
+def _close_window(window: MainWindow) -> None:
+    window.tahoe.stop()
+    window.poll.stop()
+    window.win.hide()
+    if window.tray is not None:
+        window.tray.hide()
+
+
+def test_bad_tahoe_folder_names_a_plain_next_step(tmp_path: Path):
+    """Use existing, a non-node folder, and a missing client say what to do next.
+
+    The next line used to name an environment variable or ask for an introducer
+    furl. Moving the folder aside, or pasting a join link, still joins. A node
+    that was already on disk stays, and Retry can connect once the grid is up.
+    """
+    from leasegrid_sync.backend import TahoeClient
+    from tests.test_sync_backend import _fake_tahoe, _welcome_when_node_url
+
+    empty = tmp_path / "empty-tahoe"
+    empty.mkdir()
+    home = tmp_path / "home-empty"
+    window = MainWindow(nodedir=empty, home=home, credit=FakeCredit(), autoload=False)
+    window.threat_ack.setChecked(True)
+    window.win.show()
+    try:
+        with pytest.raises(SyncError) as missing_url:
+            window.tahoe.node_url()
+        window.show_join_error(missing_url.value)
+        url_next = _assert_plain_screen(window.join_error.text(), empty)
+        assert "running client" in url_next
+        for word in _NODEDIR_BANNED:
+            assert word.lower() not in window.join_error.text().lower()
+        (empty / "node.url").write_text("http://127.0.0.1:3456/\n", encoding="utf-8")
+        assert window.tahoe.node_url() == "http://127.0.0.1:3456"
+        (empty / "node.url").unlink()
+
+        with pytest.raises(SyncError) as no_node_start:
+            window.tahoe.start()
+        window.show_join_error(no_node_start.value)
+        start_next = _assert_plain_screen(window.join_error.text(), empty)
+        assert "join link" in start_next or "short code" in start_next
+        for word in _NODEDIR_BANNED:
+            assert word.lower() not in window.join_error.text().lower()
+
+        window.on_join_existing()
+        existing_next = _assert_plain_screen(window.join_error.text(), empty)
+        assert "join link" in existing_next or "short code" in existing_next
+        assert "running client" in existing_next
+        for word in _NODEDIR_BANNED:
+            assert word.lower() not in window.join_error.text().lower()
+        assert window.join_btn.isEnabled()
+        assert window.existing_btn.isEnabled()
+        assert window.invite_edit.isEnabled()
+        assert window.stack.currentWidget() is window.join_page
+        assert not (empty / "tahoe.cfg").exists()
+
+        # An empty folder still blocks create-node. Moving it aside lets the link join.
+        empty.rename(tmp_path / "empty-tahoe-aside")
+        window.tahoe.tahoe_bin = _fake_tahoe(tmp_path)
+        window.invite_edit.setText("7-guitarist-revenge")
+        welcome = _welcome_when_node_url(window.tahoe)
+        with patch.object(window.tahoe, "welcome", side_effect=welcome), patch.object(
+            window.mf, "list_folders", return_value=[]
+        ):
+            window.on_join_invite()
+        assert window.stack.currentWidget() is window.main_page
+        assert window.join_error.text() == ""
+        assert (empty / "tahoe.cfg").is_file()
+    finally:
+        _close_window(window)
+
+    junk = tmp_path / "not-a-node"
+    junk.mkdir()
+    (junk / "notes.txt").write_text("keep me", encoding="utf-8")
+    junk_home = tmp_path / "home-junk"
+    joiner = MainWindow(nodedir=junk, home=junk_home, credit=FakeCredit(), autoload=False)
+    joiner.tahoe.tahoe_bin = _fake_tahoe(tmp_path)
+    joiner.threat_ack.setChecked(True)
+    joiner.win.show()
+    try:
+        joiner.invite_edit.setText("7-guitarist-revenge")
+        joiner.on_join_invite()
+        junk_text = joiner.join_error.text()
+        junk_next = _assert_plain_screen(junk_text, junk)
+        assert "move" in junk_next.lower()
+        assert "folder" in junk_next.lower()
+        for word in _NODEDIR_BANNED:
+            assert word.lower() not in junk_text.lower()
+        assert (junk / "notes.txt").is_file()
+        assert joiner.join_btn.isEnabled()
+        assert joiner.invite_edit.isEnabled()
+        assert joiner.stack.currentWidget() is joiner.join_page
+
+        aside = tmp_path / "not-a-node-aside"
+        junk.rename(aside)
+        welcome = _welcome_when_node_url(joiner.tahoe)
+        with patch.object(joiner.tahoe, "welcome", side_effect=welcome), patch.object(
+            joiner.mf, "list_folders", return_value=[]
+        ):
+            joiner.on_join_invite()
+        assert joiner.stack.currentWidget() is joiner.main_page
+        assert joiner.join_error.text() == ""
+        assert (junk / "tahoe.cfg").is_file()
+        assert (aside / "notes.txt").read_text(encoding="utf-8") == "keep me"
+    finally:
+        _close_window(joiner)
+
+    parked = tmp_path / "already-here"
+    parked.mkdir()
+    (parked / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    parked_home = tmp_path / "home-parked"
+    parked_ui = MainWindow(
+        nodedir=parked, home=parked_home, credit=FakeCredit(), autoload=False
+    )
+    parked_ui.threat_ack.setChecked(True)
+    parked_ui.win.show()
+    offline = ConnectionStatus(state="Offline", detail="grid down")
+    online = ConnectionStatus(
+        state="Connected",
+        detail="grid up",
+        introducer_ok=True,
+        servers_connected=1,
+    )
+    tries = {"n": 0}
+
+    def wait_connected(timeout: float = 60.0):
+        tries["n"] += 1
+        return offline if tries["n"] == 1 else online
+
+    try:
+        parked_ui.invite_edit.setText("7-guitarist-revenge")
+        with patch.object(parked_ui.tahoe, "is_reachable", return_value=True), patch.object(
+            parked_ui.tahoe, "wait_connected", side_effect=wait_connected
+        ):
+            parked_ui.on_join_invite()
+        parked_text = parked_ui.join_error.text()
+        assert "already exists" in parked_text
+        assert "not connected" in parked_text
+        assert str(parked) in parked_text
+        for word in _NODEDIR_BANNED:
+            assert word.lower() not in parked_text.lower()
+        parked_next = _assert_plain_screen(parked_text, parked)
+        assert "move" in parked_next.lower()
+        assert "join link" in parked_next or "short code" in parked_next
+        assert parked_ui.join_btn.isEnabled()
+        assert parked_ui.invite_edit.isEnabled()
+        assert (parked / "tahoe.cfg").is_file()
+        assert parked_ui.stack.currentWidget() is parked_ui.join_page
+
+        with patch.object(parked_ui.tahoe, "is_reachable", return_value=True), patch.object(
+            parked_ui.tahoe, "wait_connected", side_effect=wait_connected
+        ), patch.object(parked_ui.tahoe, "connection_status", return_value=online), patch.object(
+            parked_ui.mf, "list_folders", return_value=[]
+        ):
+            parked_ui.on_join_invite()
+        assert parked_ui.stack.currentWidget() is parked_ui.main_page
+        assert parked_ui.join_error.text() == ""
+        assert (parked / "tahoe.cfg").is_file()
+    finally:
+        _close_window(parked_ui)
+
+    # The headless client raises the same sentences the window shows.
+    bare = TahoeClient(nodedir=tmp_path / "bare-missing", home=tmp_path / "bare-home")
+    with pytest.raises(SyncError) as bare_exc:
+        bare.join_existing()
+    bare_next = _assert_plain_screen(bare_exc.value.banner(), bare.nodedir)
+    assert "running client" in bare_next
+
+
 def test_join_other_oserror_text_is_not_shown(ui: MainWindow):
     """A non-permission OSError must not echo its strerror into the window."""
     _ack_join(ui)

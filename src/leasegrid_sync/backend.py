@@ -1508,7 +1508,7 @@ class TahoeClient:
             raise SyncError(
                 "could not join this friendnet. %s exists but is not a Tahoe node."
                 % self.nodedir,
-                "move that directory aside or set LEASEGRID_TAHOE_NODEDIR; Retry.",
+                "move that folder aside, or point Sync at a running client; Retry.",
             )
         cmd = [self.require_bin()]
         relay = os.environ.get("LEASEGRID_WORMHOLE_SERVER")
@@ -1626,7 +1626,7 @@ class TahoeClient:
         if not self.has_nodedir():
             raise SyncError(
                 "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
-                "paste an introducer furl to create one; Retry.",
+                "paste a join link or short code; Retry.",
             )
         if self._proc is not None:
             if _leader_state(self._proc) == "running":
@@ -1749,7 +1749,7 @@ class TahoeClient:
             raise SyncError(
                 "could not join this friendnet. No Tahoe client is configured at %s."
                 % self.nodedir,
-                "create or point LEASEGRID_TAHOE_NODEDIR at a running client; Retry.",
+                "point Sync at a running client, or paste a join link or short code; Retry.",
             )
         url = path.read_text(encoding="utf-8").strip()
         if not url:
@@ -1889,7 +1889,7 @@ class TahoeClient:
         if not self.has_nodedir():
             raise SyncError(
                 "could not join this friendnet. No Tahoe node at %s." % self.nodedir,
-                "paste an introducer furl, or set LEASEGRID_TAHOE_NODEDIR; Retry.",
+                "paste a join link or short code, or point Sync at a running client; Retry.",
             )
         return self._bring_up()
 
@@ -1918,10 +1918,10 @@ class TahoeClient:
                     raise
                 raise SyncError(
                     "could not join this friendnet. A Tahoe node already exists at %s "
-                    "but is not connected to an introducer."
+                    "but is not connected."
                     % self.nodedir,
-                    "if that node belongs to another grid, set LEASEGRID_TAHOE_NODEDIR "
-                    "to a new path; otherwise check the introducer is up; Retry.",
+                    "if that folder belongs to another grid, move it aside and paste a "
+                    "join link or short code; otherwise check the network, then Retry.",
                 ) from exc
         # A node this attempt creates must not block a corrected invite.
         # A node that was already on disk is the branch above and stays.

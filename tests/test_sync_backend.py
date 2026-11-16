@@ -1554,7 +1554,10 @@ def test_existing_node_furl_join_hides_invite(tmp_path: Path):
         with pytest.raises(SyncError) as exc:
             client.join_invite(_INVITE_FURL)
     blob = exc.value.banner()
-    assert "not connected to an introducer" in blob
+    assert "already exists" in blob
+    assert "not connected" in blob
+    assert "introducer" not in blob.lower()
+    assert "LEASEGRID_TAHOE_NODEDIR" not in blob
     assert "pb://" not in blob
     _assert_no_invite_fragments(blob)
 
@@ -1570,7 +1573,10 @@ def test_existing_node_link_join_hides_invite(tmp_path: Path):
         with pytest.raises(SyncError) as exc:
             client.join_invite(link)
     blob = exc.value.banner()
-    assert "not connected to an introducer" in blob
+    assert "already exists" in blob
+    assert "not connected" in blob
+    assert "introducer" not in blob.lower()
+    assert "LEASEGRID_TAHOE_NODEDIR" not in blob
     assert link not in blob
     assert "pb://" not in blob
     _assert_no_invite_fragments(blob)
@@ -1598,7 +1604,10 @@ def test_recovery_import_existing_node_hides_invite(tmp_path: Path):
         with pytest.raises(SyncError) as exc:
             ctl.restore(key, "pw")
     blob = exc.value.banner()
-    assert "not connected to an introducer" in blob
+    assert "already exists" in blob
+    assert "not connected" in blob
+    assert "introducer" not in blob.lower()
+    assert "LEASEGRID_TAHOE_NODEDIR" not in blob
     assert "pb://" not in blob
     _assert_no_invite_fragments(blob)
 

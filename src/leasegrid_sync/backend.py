@@ -637,13 +637,49 @@ def _darwin_snapshot(pid: int) -> Optional[tuple[int, list[str]]]:
     return int(bits[0]), args
 
 
-def _args_contain_directory(args: list[str], directory: str) -> bool:
-    """True when an argv element is that directory or a path inside it."""
+def _process_cwd(pid: int) -> Optional[str]:
+    """Working directory of pid, or None when this host cannot show it.
+
+    A relative folder argument is joined to that directory. It is not joined
+    to this process's directory. Linux exposes the path as /proc/<pid>/cwd.
+    """
+    if pid <= 0 or sys.platform != "linux":
+        return None
+    try:
+        raw = os.readlink("/proc/%d/cwd" % pid)
+    except OSError:
+        return None
+    if not os.path.isabs(raw):
+        return None
+    return raw
+
+
+def _arg_names_directory(arg: str, directory: str, prefix: str, cwd: Optional[str]) -> bool:
+    """True when this argv element is the directory or a path inside it."""
+    if not arg:
+        return False
+    if os.path.isabs(arg):
+        return arg == directory or arg.startswith(prefix)
+    if not cwd:
+        return False
+    joined = os.path.normpath(os.path.join(cwd, arg))
+    return joined == directory or joined.startswith(prefix)
+
+
+def _args_contain_directory(
+    args: list[str], directory: str, cwd: Optional[str] = None
+) -> bool:
+    """True when an argv element is that directory or a path inside it.
+
+    Absolute elements are compared as written. A relative element is joined
+    to the process working directory. It does not count when that directory
+    is unknown.
+    """
     if not directory:
         return False
     prefix = directory + os.sep
     for arg in args:
-        if arg == directory or arg.startswith(prefix):
+        if _arg_names_directory(arg, directory, prefix, cwd):
             return True
     return False
 
@@ -658,7 +694,7 @@ def _process_matches_directory(pid: int, directory: str) -> bool:
     uid, args = snap
     if uid != os.getuid():
         return False
-    return _args_contain_directory(args, directory)
+    return _args_contain_directory(args, directory, _process_cwd(pid))
 
 
 def _stop_matched_process(pid: int, directory: str) -> None:

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Android Invite: Scan QR reads the code on the desktop share card, or the join link on the invite page, into the same field. Join still waits for the tap. A code that is not a join link leaves the field as it was. If the camera is not allowed, the screen says to paste the link or type the short code ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).
+- Android Scan QR asks for the camera before the scanner opens, so tapping Don't allow shows the paste guidance right away instead of a scanner error. A fail card with nothing to retry shows only Dismiss ([#88](https://github.com/themark-net/leasegrid-c/issues/88)).
 
 ## 0.1.11 (2026-11-16)
 

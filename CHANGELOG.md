@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.12 (2026-11-17)
+
+- No Android APK in this release. Android changes are in the source only.
+- On Windows, a lock file a rival start is still deleting no longer reads as "could not read its lock file". The lock is read only after tryLock fails and no PID can be read, with three reads about 50 ms apart. A lock that disappears while it is read is tried once more instead of reported as already running, and a stat error before tryLock is left to tryLock ([#87](https://github.com/themark-net/leasegrid-c/issues/87)).
 - Android Invite: Scan QR reads the code on the desktop share card, or the join link on the invite page, into the same field. Join still waits for the tap. A code that is not a join link leaves the field as it was. If the camera is not allowed, the screen says to paste the link or type the short code ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).
 - Android Scan QR asks for the camera before the scanner opens, so tapping Don't allow shows the paste guidance right away instead of a scanner error. A fail card with nothing to retry shows only Dismiss ([#88](https://github.com/themark-net/leasegrid-c/issues/88)).
 

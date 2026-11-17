@@ -455,7 +455,8 @@ def test_lock_file_mode_000_names_the_next_step(tmp_path: Path, monkeypatch, cap
 def _raise_permission_on_lock_read(monkeypatch, lock: Path) -> None:
     """builtins.open of this lock, for read, raises PermissionError.
 
-    ``_lock_path_problem`` uses that open. ``pathlib`` reads go through
+    ``_lock_read_state`` (run only after tryLock failed) uses that open;
+    ``_lock_path_problem`` only stats. ``pathlib`` reads go through
     ``io.open``, which this patch leaves alone.
     """
     real_open = open

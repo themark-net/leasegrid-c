@@ -1070,6 +1070,52 @@ class AppModelFlowTest {
         assertNull(model.session)
     }
 
+    @Test
+    fun aScannerResultRoutesARefusalACancelAndAScan() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        // The scanner came back without text because the camera was refused.
+        model.onScanResult(contents = null, missingCameraPermission = true)
+        assertEquals(Invite.SCAN_DENIED_MSG, model.fail?.message)
+        assertFalse(model.canRetry)
+        assertEquals(introducer, model.inviteText)
+        model.dismissFail()
+        // A plain cancel changes nothing.
+        model.onScanResult(contents = null, missingCameraPermission = false)
+        assertNull(model.fail)
+        assertEquals(introducer, model.inviteText)
+        // Text wins over the flag: a real scan fills the field.
+        model.onScanResult(contents = "7-guitarist-revenge", missingCameraPermission = true)
+        assertNull(model.fail)
+        assertEquals("7-guitarist-revenge", model.inviteText)
+        // A bad scan is the bad scan banner, not the camera one.
+        model.onScanResult(contents = "hello", missingCameraPermission = false)
+        assertEquals(Invite.GARBAGE_MSG, model.fail?.message)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+    }
+
+    @Test
+    fun aScanOfExactlyTheCapIsAcceptedAndOneMoreIsRefused() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        val base = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3&note="
+        val atCap = base + "a".repeat(Invite.SCAN_MAX - base.length)
+        assertEquals(Invite.SCAN_MAX, atCap.length)
+        model.onScanned(atCap)
+        assertNull(model.fail)
+        assertEquals(atCap, model.inviteText)
+        model.inviteText = introducer
+        model.onScanned(atCap + "a")
+        assertEquals(Invite.GARBAGE_MSG, model.fail?.message)
+        assertEquals(introducer, model.inviteText)
+        assertTrue(ops.isEmpty())
+    }
+
     /** Grid calls are recorded. A scan must not add one until [AppModel.join]. */
     private fun recording(ops: MutableList<String>): AppModel = model { op, _ ->
         ops += op

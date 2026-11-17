@@ -51,12 +51,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private val scanQr = registerForActivityResult(ScanContract()) { result ->
-        val intent = result.originalIntent
-        if (result.contents == null && intent != null && intent.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION)) {
-            model.onScanDenied()
-            return@registerForActivityResult
-        }
-        model.onScanned(result.contents)
+        model.onScanResult(
+            contents = result.contents,
+            missingCameraPermission = result.originalIntent?.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION) == true,
+        )
     }
 
     private fun openRecoveryPicker() {

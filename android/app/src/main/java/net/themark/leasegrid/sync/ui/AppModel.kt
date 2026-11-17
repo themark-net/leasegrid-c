@@ -276,6 +276,14 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         if (granted) launchScanner() else onScanDenied()
     }
 
+    /**
+     * What the scanner screen returned. No text with the missing-permission flag
+     * is a refused camera. Anything else is a scan or a cancel.
+     */
+    fun onScanResult(contents: String?, missingCameraPermission: Boolean) {
+        if (contents == null && missingCameraPermission) onScanDenied() else onScanned(contents)
+    }
+
     /** The camera was not allowed. The field stays. Join does not start. */
     fun onScanDenied() {
         show(FailBanner(Invite.SCAN_DENIED_MSG, Invite.SCAN_DENIED_NEXT), null)

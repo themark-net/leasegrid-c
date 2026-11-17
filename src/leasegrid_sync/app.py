@@ -306,10 +306,11 @@ def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
     """
     try:
         st = path.stat()
-    except FileNotFoundError:
-        return None
     except OSError:
-        return _LOCK_UNREADABLE
+        # Missing, or a file a rival is deleting (Windows reports delete
+        # pending as access denied). tryLock decides; an unreadable file is
+        # reported only after tryLock has failed (#87 B2).
+        return None
     if stat.S_ISDIR(st.st_mode):
         return _LOCK_DIRECTORY
     if stat.S_ISREG(st.st_mode) and (stat.S_IMODE(st.st_mode) & 0o777) == 0:
@@ -317,24 +318,36 @@ def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
     return None
 
 
-def _lock_unreadable(path: Path, tries: int = 3) -> bool:
-    """True when every read of the lock file raises PermissionError.
+_LOCK_READABLE = "readable"
+_LOCK_MISSING = "missing"
+_LOCK_DENIED = "denied"
 
-    Called only after tryLock failed and no PID could be read. A missing file
-    is not unreadable. A Windows delete-pending file also reads as access
-    denied, so a few short retries let a rival's delete finish first.
+
+def _lock_read_state(path: Path, tries: int = 3) -> str:
+    """Read the lock file up to ``tries`` times, 50 ms apart.
+
+    Returns ``_LOCK_DENIED`` only when every read raises PermissionError,
+    ``_LOCK_MISSING`` as soon as the file is gone, else ``_LOCK_READABLE``.
+    Called only after tryLock failed and no PID could be read. A Windows
+    delete-pending file reads as access denied, so the retries let a rival's
+    delete finish first.
     """
     for attempt in range(tries):
         try:
             with open(path, "rb") as handle:
                 handle.read(1)
-            return False
+            return _LOCK_READABLE
         except FileNotFoundError:
-            return False
+            return _LOCK_MISSING
         except PermissionError:
             if attempt + 1 < tries:
                 time.sleep(0.05)
-    return True
+    return _LOCK_DENIED
+
+
+def _lock_unreadable(path: Path, tries: int = 3) -> bool:
+    """True when every read of the lock file raises PermissionError. A missing file is not unreadable."""
+    return _lock_read_state(path, tries) == _LOCK_DENIED
 
 
 def _other_host_lock_is_young(path: Path) -> bool:
@@ -399,9 +412,15 @@ def acquire_instance_lock(home: Path) -> bool:
         if not lock.tryLock(0):
             if lock.error() == QLockFile.PermissionError:
                 raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
-            if not _lock_pid_readable(lock) and _lock_unreadable(path):
+            if _lock_pid_readable(lock):
+                return False
+            state = _lock_read_state(path)
+            if state == _LOCK_DENIED:
                 raise SyncError(_LOCK_UNREADABLE[0], _LOCK_UNREADABLE[1])
-            return False
+            # The holder's file went away while we read it (#87 B2). A rival
+            # that just quit is not "already running": try once more.
+            if state != _LOCK_MISSING or not lock.tryLock(0):
+                return False
     _INSTANCE_LOCK = lock
     return True
 

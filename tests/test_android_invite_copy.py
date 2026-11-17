@@ -595,8 +595,8 @@ def test_scan_qr_copy_wiring_and_optional_camera():
     assert ".setPrompt(Invite.SCAN_PROMPT)" in activity
     assert ".setBeepEnabled(false)" in activity
     assert ".setOrientationLocked(false)" in activity
-    assert "model.onScanned(result.contents)" in activity
-    assert "model.onScanDenied()" in activity
+    assert "model.onScanResult(" in activity
+    assert "contents = result.contents," in activity
     assert "Intents.Scan.MISSING_CAMERA_PERMISSION" in activity
     model = APP_MODEL.read_text(encoding="utf-8")
     assert "fun onScanned(text: String?)" in model

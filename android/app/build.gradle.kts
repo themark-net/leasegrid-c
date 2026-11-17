@@ -66,6 +66,8 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
     // Camera QR scan. No Play Services. The library merges CAMERA and CaptureActivity.
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Pinned so a transitive bump cannot change the decoder under us (Apache-2.0, see android/THIRD_PARTY_NOTICES.md).
+    implementation("com.google.zxing:core:3.4.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

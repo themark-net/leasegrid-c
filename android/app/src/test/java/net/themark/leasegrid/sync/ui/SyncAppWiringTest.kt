@@ -73,8 +73,8 @@ class SyncAppWiringTest {
         assertTrue(activity.contains(".setPrompt(Invite.SCAN_PROMPT)"))
         assertTrue(activity.contains(".setBeepEnabled(false)"))
         assertTrue(activity.contains(".setOrientationLocked(false)"))
-        assertTrue(activity.contains("model.onScanned(result.contents)"))
-        assertTrue(activity.contains("model.onScanDenied()"))
+        assertTrue(activity.contains("model.onScanResult("))
+        assertTrue(activity.contains("contents = result.contents,"))
         assertTrue(activity.contains("Intents.Scan.MISSING_CAMERA_PERMISSION"))
         // #88 a: ask for the camera before the scanner opens.
         val opener = activity.substring(activity.indexOf("private fun openQrScanner()"))

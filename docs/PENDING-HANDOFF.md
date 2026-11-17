@@ -4,7 +4,7 @@
 
 **Purpose:** Freeze current queue + design map so another model/harness can take over without bot chat history.
 
-**Repo tip:** `main` @ `5ac69aa` (merge of PR #46, 2026-10-04; PR tip `6e7bf01`). P4-B Android write sync issue #44 is SHIPPED. Design pack 55–59 landed in PR #45 (`1c327c9`, merged 2026-10-04). Shell polish #38 / invite #32 remain shipped at `83b3e66` (ancestor). Nimo checkout: `~/DEVELOP/leasegrid-c` (canonical; lab secrets under `lab-private/` if present). That tip line is the 2026-10-09 snapshot. Current `main` is in the version-bump paragraph below.
+**Repo tip:** `main` @ `5ac69aa` (merge of PR #46, 2026-10-04; PR tip `6e7bf01`). P4-B Android write sync issue #44 is SHIPPED. Design pack 55 to 59 landed in PR #45 (`1c327c9`, merged 2026-10-04). Shell polish #38 / invite #32 remain shipped at `83b3e66` (ancestor). That tip line is the 2026-10-09 snapshot. Current `main` is in the version-bump paragraph below.
 
 **Org posture (dated 2026-09-24):** PAUSED. No auto RELEASE / Build / Cursor implement until founder says go. **Public marketing / loud v\* HOLD** (quiet F&F `v0.1.0` already cut). Marketing silent. This paragraph is the 2026-09-24 pause. It is not a new RELEASE. #44 shipped after that pause via PR #45 and PR #46. That ship does not lift the pause.
 
@@ -350,7 +350,7 @@ Design 16 (strike “Credit panel (U2)” from any Settings deferred list), desi
 
 ## Bot/Build caveat — ci-local venv
 
-`scripts/ci-local.sh` lines 7–19 leave `PYTHON` unset, then pick `/home/mark/tahoe-venv/bin/python` when that file is executable. The script runs `"$PYTHON" -m pip install -q -e ".[dev]"` (and the sync and tahoe extras). That install would repoint Mark’s `tahoe-venv` at whichever worktree is current.
+`scripts/ci-local.sh` lines 7 to 19 leave `PYTHON` unset, then pick a shared Tahoe virtualenv Python on the build host when that file is executable. The script runs `"$PYTHON" -m pip install -q -e ".[dev]"` (and the sync and tahoe extras). That install would repoint that shared virtualenv at whichever worktree is current.
 
 Bot or Build runs must set `PYTHON` to a worktree venv before calling the script:
 

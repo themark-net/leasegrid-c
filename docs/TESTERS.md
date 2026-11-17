@@ -1,18 +1,18 @@
 # Leasegrid Sync — friends and family
 
 Leasegrid Sync is the desktop window. One friend invites you; you join, add a folder, and put a file in it. You do not need Python.
-Current build: [v0.1.11](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.11). Newest build: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.11`. The installers are unsigned.
+Current build: [v0.1.12](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.12). Newest build: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.12`. The installers are unsigned.
 
 ## Install
 
 | OS | Download | One-liner |
 |----|----------|-----------|
-| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.11-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.11/Leasegrid_Sync-0.1.11-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
-| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.11-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.11/Leasegrid_Sync-0.1.11-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.11-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.11/Leasegrid_Sync-0.1.11-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
-| Windows x64, no setup | [`Leasegrid_Sync-0.1.11-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.11/Leasegrid_Sync-0.1.11-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
+| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.12-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
+| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.12-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.12-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
+| Windows x64, no setup | [`Leasegrid_Sync-0.1.12-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
 
-**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.11) before you run it.
+**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.12) before you run it.
 
 <details>
 <summary>macOS: “unidentified developer” — Open Anyway steps</summary>
@@ -26,15 +26,12 @@ On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead
 
 Then: open **Join a friendnet**, paste the short code your friend copied with **Copy code**, tick **I understand the four points above.**, click **Join friendnet**, and **Add folder** on **Folders**.
 
-## What's new in v0.1.11
+## What's new in v0.1.12
 
-- On Android, **Invite** accepts the short code from **Share invite** in the same field as the full join link. A short code is no longer refused. Pasting the full join link still joins.
-- A Tahoe folder that is missing, empty, or not a client names a plain next step, and the folder path stays in the message. A conflict copy left in the folder shows **Conflict** and names the file.
-- While Sync is open, a friendnet that cannot be reached, or storage that drops, shows what is wrong and a next step.
-- On Android, an add when the phone has no room says there is not enough free space and does not upload. A download the phone cannot save says the phone would not allow it, then **Retry**.
-- Tests pass on Windows and macOS again (#86); desktop behaviour unchanged by that fix.
+- On Windows, starting Sync while an old lock file is still being cleaned up no longer stops with "could not read its lock file" (#87).
+- Android, in source only (no APK in this release): **Invite** has **Scan QR** for the desktop share card or invite page. Join still waits for the tap. **Scan QR** asks for the camera first, and refusing it says to paste the join link or type the short code. A fail card with nothing to retry shows only **Dismiss** (#77, #88).
 - From v0.1.5, correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
-- Details: [v0.1.11 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.11.md) (and [v0.1.10](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.10.md) before it).
+- Details: [v0.1.12 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.12.md) (and [v0.1.11](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.11.md) before it).
 
 ## Known issues
 

@@ -611,3 +611,86 @@ def test_scan_qr_copy_wiring_and_optional_camera():
     assert 'tools:replace="screenOrientation"' in manifest
     gradle = (INVITE.parents[8] / "build.gradle.kts").read_text(encoding="utf-8")
     assert 'implementation("com.journeyapps:zxing-android-embedded:4.3.0")' in gradle
+
+
+def _block(text: str, start: str, end: str) -> str:
+    """Source from start up to the next end marker. Fails loudly if either is gone."""
+    i = text.index(start)
+    j = text.index(end, i + len(start))
+    return text[i:j]
+
+
+def _report_fail_calls(block: str) -> list[str]:
+    """Each model.reportFail(...) call in block, parens balanced."""
+    calls = []
+    pos = block.find("model.reportFail(")
+    while pos != -1:
+        depth = 0
+        for k in range(pos, len(block)):
+            if block[k] == "(":
+                depth += 1
+            elif block[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    calls.append(block[pos : k + 1])
+                    break
+        pos = block.find("model.reportFail(", pos + 1)
+    return calls
+
+
+def _assert_no_class_on_screen(block: str) -> None:
+    for call in _report_fail_calls(block):
+        assert "simpleName" not in call and "javaClass" not in call and "::class" not in call, call
+        assert "exc" not in call and "message" not in call, call
+
+
+def test_recovery_picker_no_file_chosen_says_what_to_pick_and_retries_the_picker():
+    """#85: the picker came back empty. The card names the file to choose and Retry reopens the picker."""
+    text = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    block = _block(text, "private val pickRecovery", "private val pickAdd")
+    empty = _block(block, "if (uri == null)", "return@registerForActivityResult")
+    calls = _report_fail_calls(empty)
+    assert len(calls) == 1, calls
+    call = calls[0]
+    assert '"could not import this recovery key. No file was chosen."' in call
+    assert '"choose a *.leasegrid-recovery file; Retry."' in call
+    assert "::openRecoveryPicker" in call
+    assert empty.index("model.goImport()") < empty.index("model.reportFail(")
+    _assert_no_class_on_screen(empty)
+    assert _banned_source(empty) == []
+
+
+def test_recovery_handoff_load_failure_uses_the_loader_copy_or_the_path_next_line():
+    """#85: a handed off recovery file that never loads. The loader's banner and next win, else the plain path line."""
+    text = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    block = _block(text, "private fun readRecoveryFile(", "private fun inviteQuery(")
+    calls = _report_fail_calls(block)
+    assert len(calls) == 1, calls
+    call = calls[0]
+    assert 'loaded.banner ?: "could not import this recovery key. The file could not be read."' in call
+    assert 'loaded.next ?: "check the path and storage permission; Retry."' in call
+    assert "again" in call
+    # A rejected file reopens the picker; a slow one reads again.
+    assert "if (loaded.rejected) {\n            ::openRecoveryPicker" in block
+    assert block.index("model.goImport()\n        model.reportFail(") > 0
+    _assert_no_class_on_screen(block)
+    assert _banned_source(block) == []
+
+
+def test_recovery_read_failure_shows_the_path_next_line_and_logs_only_the_class():
+    """#85: the picked file throws while reading. Plain path next line, Retry reopens the picker, class only in Log.w."""
+    text = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    block = _block(text, "private fun readRecovery(uri: Uri, name: String) {", "\n}\n")
+    too_big = _block(block, "catch (_: TooLarge)", "catch (exc: Exception)")
+    thrown = block[block.index("catch (exc: Exception)") :]
+    assert _report_fail_calls(too_big) == ["model.reportFail(IMPORT_FAIL_MSG, IMPORT_FAIL_NEXT, ::openRecoveryPicker)"]
+    calls = _report_fail_calls(thrown)
+    assert len(calls) == 1, calls
+    call = calls[0]
+    assert '"could not import this recovery key. The file could not be read."' in call
+    assert '"check the path and storage permission; Retry."' in call
+    assert "::openRecoveryPicker" in call
+    logs = [ln for ln in thrown.splitlines() if "simpleName" in ln]
+    assert len(logs) == 1 and "Log.w" in logs[0], logs
+    _assert_no_class_on_screen(thrown)
+    assert _banned_source(block) == []

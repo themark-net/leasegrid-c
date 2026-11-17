@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -15,7 +16,7 @@ import pytest
 
 PyQt5 = pytest.importorskip("PyQt5")
 
-from leasegrid_sync.app import ALREADY_RUNNING, instance_lock_path  # noqa: E402
+from leasegrid_sync.app import ALREADY_RUNNING, _lock_path_problem, instance_lock_path  # noqa: E402
 from leasegrid_sync.cli import main  # noqa: E402
 
 # Qt's default stale time is 30s. Aging the file beats sleeping in CI.
@@ -449,6 +450,126 @@ def test_lock_file_mode_000_names_the_next_step(tmp_path: Path, monkeypatch, cap
         assert lock.is_file()
     finally:
         lock.chmod(0o644)
+
+
+def _raise_permission_on_lock_read(monkeypatch, lock: Path) -> None:
+    """builtins.open of this lock, for read, raises PermissionError.
+
+    ``_lock_path_problem`` uses that open. ``pathlib`` reads go through
+    ``io.open``, which this patch leaves alone.
+    """
+    real_open = open
+    target = os.path.normcase(os.path.abspath(lock))
+
+    def guarded(file, mode="r", *args, **kwargs):
+        text = mode if isinstance(mode, str) else ""
+        try:
+            got = os.path.normcase(os.path.abspath(os.fspath(file)))
+        except (TypeError, ValueError):
+            got = ""
+        if got == target and (text.startswith("r") or text == ""):
+            raise PermissionError(13, "Permission denied", os.fspath(file))
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", guarded)
+
+
+def test_lock_file_permission_error_names_the_next_step(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A lock the user cannot read names the next step. It is not already running.
+
+    Mode 000 is not how Windows denies a read. PermissionError on open is.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    _raise_permission_on_lock_read(monkeypatch, lock)
+    code, text = _lock_failure(monkeypatch, home, capsys)
+    assert code == 1
+    assert "Traceback" not in text
+    assert "could not read its lock file" in text
+    assert "Next:" in text
+    assert "already running" not in text.lower()
+    assert lock.is_file()
+
+
+def test_mode_000_is_unreadable_without_opening(tmp_path: Path, monkeypatch) -> None:
+    """Mode 000 is reported before open. Root can read that file; the mode still counts."""
+    lock = tmp_path / ".leasegrid-sync.lock"
+    lock.write_bytes(b"x")
+
+    class _Mode0:
+        st_mode = stat.S_IFREG
+
+    real_stat = Path.stat
+
+    def fake_stat(self, *args, **kwargs):
+        if Path(self) == lock:
+            return _Mode0()
+        return real_stat(self, *args, **kwargs)
+
+    def refuse_open(*args, **kwargs):
+        raise AssertionError("mode 000 must be reported before the file is opened")
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    monkeypatch.setattr("builtins.open", refuse_open)
+    problem = _lock_path_problem(lock)
+    assert problem is not None
+    assert "could not read its lock file" in problem[0]
+    assert "Next:" not in problem[0]
+    assert problem[1]
+
+
+def _icacls_deny(path: Path, rights: str) -> str:
+    user = os.environ.get("USERNAME")
+    if not user:
+        pytest.fail("USERNAME is unset, so icacls cannot name the deny ACE")
+    proc = subprocess.run(
+        ["icacls", os.fspath(path), "/deny", "%s:%s" % (user, rights)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        pytest.fail("icacls /deny failed (%s): %s" % (proc.returncode, detail))
+    return user
+
+
+def _icacls_reset(path: Path) -> None:
+    subprocess.run(
+        ["icacls", os.fspath(path), "/reset"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="icacls deny (R) is the Windows stand-in for a mode-000 lock file",
+)
+def test_lock_file_windows_acl_deny_names_the_next_step(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A Windows read deny on the lock file names the next step, not already running."""
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    _icacls_deny(lock, "(R)")
+    try:
+        code, text = _lock_failure(monkeypatch, home, capsys)
+        assert code == 1
+        assert "Traceback" not in text
+        assert "could not read its lock file" in text
+        assert "Next:" in text
+        assert "already running" not in text.lower()
+        assert lock.is_file()
+    finally:
+        _icacls_reset(lock)
 
 
 def test_lock_home_that_cannot_be_created_names_the_next_step(

@@ -51,6 +51,28 @@ def _can_bind_loopback_alias(host: str = "127.0.0.2") -> bool:
     return True
 
 
+_LOOPBACK_SKIP_REASON = (
+    "127.0.0.2 is not assigned on this host "
+    "(macOS lo0 has only 127.0.0.1 unless an alias is added); "
+    "refusing to add that alias"
+)
+
+
+def loopback_listen_skip_reason(platform: str | None = None) -> str | None:
+    """None when the listen test must run. A reason when this host may skip it.
+
+    Linux never skips: a probe that cannot bind 127.0.0.2 fails the test,
+    so a probe hardcoded to False cannot hide behind a skip. Other platforms
+    skip only when that bind fails. The reason names the missing address.
+    """
+    plat = sys.platform if platform is None else platform
+    if _can_bind_loopback_alias():
+        return None
+    if plat.startswith("linux"):
+        return None
+    return _LOOPBACK_SKIP_REASON
+
+
 def _listen_addrs(port: int) -> set[str]:
     """Local addresses in /proc/net/tcp{,6} that are listening on ``port``."""
     found: set[str] = set()
@@ -72,12 +94,8 @@ def _listen_addrs(port: int) -> set[str]:
 
 
 @pytest.mark.skipif(
-    not _can_bind_loopback_alias(),
-    reason=(
-        "127.0.0.2 is not assigned on this host "
-        "(macOS lo0 has only 127.0.0.1 unless an alias is added); "
-        "refusing to add that alias"
-    ),
+    loopback_listen_skip_reason() is not None,
+    reason=_LOOPBACK_SKIP_REASON,
 )
 def test_loopback_storage_override_listens_on_that_address_only(tmp_path: Path, monkeypatch):
     """127.0.0.2 replaces 127.0.0.1, and nothing else can connect to the port."""
@@ -119,6 +137,57 @@ def test_ipv6_loopback_port_escapes_colons(tmp_path: Path):
     text = cfg.read_text(encoding="utf-8")
     assert "tub.port = tcp:34567:interface=\\:\\:1\n" in text
     assert "tub.location = tcp:[::1]:34567\n" in text
+
+
+def _skipif_marks(fn):
+    marks = getattr(fn, "pytestmark", [])
+    if not isinstance(marks, list):
+        marks = [marks]
+    return [mark for mark in marks if mark.name == "skipif"]
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux is where a failed 127.0.0.2 probe must fail the listen test, not skip it",
+)
+def test_linux_loopback_probe_succeeds_and_the_listen_test_is_not_skipped():
+    """Reviewer mutant M3: a probe that always returns False must not skip on Linux.
+
+    On this host the probe really can bind, and the listen test was collected
+    with the skip condition false.
+    """
+    assert _can_bind_loopback_alias() is True
+    assert loopback_listen_skip_reason() is None
+    assert loopback_listen_skip_reason("darwin") is None
+    skipped = _skipif_marks(test_loopback_storage_override_listens_on_that_address_only)
+    assert len(skipped) == 1
+    assert skipped[0].args[0] is False
+    assert "127.0.0.2" in skipped[0].kwargs["reason"]
+    source = Path(__file__).read_text(encoding="utf-8")
+    assert "loopback_listen_skip_reason() is not None" in source
+
+
+def test_failed_loopback_probe_skips_only_off_linux(monkeypatch):
+    """Linux with a failed probe runs the listen test. darwin skips, with a reason."""
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_can_bind_loopback_alias",
+        lambda host="127.0.0.2": False,
+    )
+    linux = loopback_listen_skip_reason("linux")
+    assert linux is None, "Linux must not skip when the probe fails (%r)" % (linux,)
+    darwin = loopback_listen_skip_reason("darwin")
+    assert darwin is not None
+    assert "127.0.0.2" in darwin
+    assert "alias" in darwin
+    assert loopback_listen_skip_reason("win32") == darwin
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_can_bind_loopback_alias",
+        lambda host="127.0.0.2": True,
+    )
+    assert loopback_listen_skip_reason("linux") is None
+    assert loopback_listen_skip_reason("darwin") is None
 
 
 def test_lan_storage_hostname_stays_reachable_off_box(tmp_path: Path, monkeypatch):

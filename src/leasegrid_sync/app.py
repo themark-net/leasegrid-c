@@ -296,7 +296,13 @@ _LOCK_NOT_WRITABLE = (
 
 
 def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
-    """A directory or a mode-000 file cannot be a lock. None when the path is usable."""
+    """A directory, a mode-000 file, or a file we cannot read cannot be a lock.
+
+    None when the path is missing or usable. Mode 000 returns before open:
+    root can read that file, and it is still this problem. PermissionError
+    on open is the same problem. A file that disappears between stat and
+    open is usable. Windows ACLs do not show up in st_mode.
+    """
     try:
         st = path.stat()
     except FileNotFoundError:
@@ -305,7 +311,17 @@ def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
         return _LOCK_UNREADABLE
     if stat.S_ISDIR(st.st_mode):
         return _LOCK_DIRECTORY
-    if stat.S_ISREG(st.st_mode) and (stat.S_IMODE(st.st_mode) & 0o777) == 0:
+    if not stat.S_ISREG(st.st_mode):
+        return None
+    if (stat.S_IMODE(st.st_mode) & 0o777) == 0:
+        return _LOCK_UNREADABLE
+    try:
+        with open(path, "rb") as handle:
+            handle.read(1)
+    except FileNotFoundError:
+        # A rival removed a stale lock between stat and open. The path is usable.
+        return None
+    except PermissionError:
         return _LOCK_UNREADABLE
     return None
 
@@ -344,7 +360,7 @@ def acquire_instance_lock(home: Path) -> bool:
     clean quit, or the destructor would unlock it early. Returns False when
     another live process holds the lock. Raises SyncError when the home cannot
     be created, the home cannot hold a lock file, or the lock path is a
-    directory or a mode-000 file.
+    directory, a mode-000 file, or a file this user cannot read.
     """
     global _INSTANCE_LOCK
     from PyQt5.QtCore import QLockFile

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -287,6 +289,139 @@ def test_put_permission_denied_does_not_say_pick_it_again(tmp_path):
         reply = json.loads(leasegrid_read.dispatch("put", json.dumps(payload)))
     finally:
         src.chmod(0o644)
+    assert reply["ok"] is False
+    assert "would not allow" in reply["message"].lower(), reply
+    assert "permission" in reply["next"].lower(), reply
+    assert "pick it again" not in reply["next"].lower(), reply
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+
+
+def _open_raises_permission(monkeypatch, path: Path, mode_has: str) -> None:
+    """open() of ``path`` raises PermissionError when the mode contains ``mode_has``."""
+    real_open = open
+
+    def guarded(file, mode="r", *args, **kwargs):
+        text = mode if isinstance(mode, str) else ""
+        if os.fspath(file) == os.fspath(path) and mode_has in text:
+            raise PermissionError(13, "Permission denied", os.fspath(path))
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(leasegrid_read, "open", guarded, raising=False)
+
+
+def _icacls_deny(path: Path, rights: str) -> None:
+    user = os.environ.get("USERNAME")
+    if not user:
+        pytest.fail("USERNAME is unset, so icacls cannot name the deny ACE")
+    proc = subprocess.run(
+        ["icacls", os.fspath(path), "/deny", "%s:%s" % (user, rights)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        pytest.fail("icacls /deny failed (%s): %s" % (proc.returncode, detail))
+
+
+def _icacls_reset(path: Path) -> None:
+    subprocess.run(
+        ["icacls", os.fspath(path), "/reset"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_download_permission_error_does_not_say_network(tmp_path, monkeypatch):
+    """PermissionError while saving is the phone-would-not-allow copy, on every OS."""
+    monkeypatch.setattr(leasegrid_read, "download_file", lambda cap, servers: b"file body")
+    dest = tmp_path / "photo.jpg"
+    _open_raises_permission(monkeypatch, dest, "w")
+    payload = json.dumps({"cap": "URI:CHK:test-only", "dest": str(dest), "servers": []})
+    reply = json.loads(leasegrid_read.dispatch("download", payload))
+    assert reply["ok"] is False
+    assert "would not allow" in reply["message"].lower(), reply
+    assert "permission" in reply["next"].lower(), reply
+    assert "network" not in reply["message"].lower(), reply
+    assert "free space" not in reply["message"].lower(), reply
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+    assert not dest.exists()
+
+
+def test_put_permission_error_does_not_say_pick_it_again(tmp_path, monkeypatch):
+    """PermissionError while reading an add is the would-not-allow copy, on every OS."""
+    src = _put_blob(tmp_path)
+    _open_raises_permission(monkeypatch, src, "r")
+    payload = {
+        "cap": _dir_cap(),
+        "name": "notes.txt",
+        "path": str(src),
+        "shares": [1, 1, 1],
+        "servers": [{"furl": "pb://testid@203.0.113.9:1/swissnumswiss", "nickname": "s1"}],
+    }
+    reply = json.loads(leasegrid_read.dispatch("put", json.dumps(payload)))
+    assert reply["ok"] is False
+    assert "would not allow" in reply["message"].lower(), reply
+    assert "permission" in reply["next"].lower(), reply
+    assert "pick it again" not in reply["next"].lower(), reply
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason=(
+        "icacls deny (OI)(CI)(W) is the Windows stand-in for chmod(0o555) on a directory; "
+        "this host is not Windows"
+    ),
+)
+def test_download_windows_acl_deny_does_not_say_network(tmp_path, monkeypatch):
+    """The bytes arrived. Windows refused to create the file. That is not the network."""
+    monkeypatch.setattr(leasegrid_read, "download_file", lambda cap, servers: b"file body")
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    dest = blocked / "photo.jpg"
+    _icacls_deny(blocked, "(OI)(CI)(W)")
+    try:
+        payload = json.dumps({"cap": "URI:CHK:test-only", "dest": str(dest), "servers": []})
+        reply = json.loads(leasegrid_read.dispatch("download", payload))
+    finally:
+        _icacls_reset(blocked)
+    assert reply["ok"] is False
+    assert "would not allow" in reply["message"].lower(), reply
+    assert "permission" in reply["next"].lower(), reply
+    assert "network" not in reply["message"].lower(), reply
+    assert "free space" not in reply["message"].lower(), reply
+    assert "Retry" in reply["next"], reply
+    _no_class_name(reply)
+    assert not dest.exists()
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason=(
+        "icacls deny (R) is the Windows stand-in for chmod(0) on a file; "
+        "this host is not Windows"
+    ),
+)
+def test_put_windows_acl_deny_does_not_say_pick_it_again(tmp_path):
+    """A file Windows will not let this user read is a permission failure, not a bad pick."""
+    src = _put_blob(tmp_path)
+    _icacls_deny(src, "(R)")
+    try:
+        payload = {
+            "cap": _dir_cap(),
+            "name": "notes.txt",
+            "path": str(src),
+            "shares": [1, 1, 1],
+            "servers": [{"furl": "pb://testid@203.0.113.9:1/swissnumswiss", "nickname": "s1"}],
+        }
+        reply = json.loads(leasegrid_read.dispatch("put", json.dumps(payload)))
+    finally:
+        _icacls_reset(src)
     assert reply["ok"] is False
     assert "would not allow" in reply["message"].lower(), reply
     assert "permission" in reply["next"].lower(), reply

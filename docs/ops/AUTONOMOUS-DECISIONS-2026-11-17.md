@@ -1,0 +1,7 @@
+# Autonomous decisions, 2026-11-17
+
+#87 loopback: Linux never skips the 127.0.0.2 listen test; other platforms skip only when the probe fails, with the #86 reason | keep skipping whenever the probe returns False, or add an ifconfig alias | a probe hardcoded to False was a silent skip on Linux, where lo has 127.0.0.0/8; macOS lo0 still has only 127.0.0.1 and no alias is added
+#87 lock: PermissionError on open of the lock file uses the mode-000 sentence; mode 000 still returns before open; FileNotFoundError between stat and open means the path is usable | xfail the Windows test, or treat QLockFile LockFailedError as a permission problem | Windows st_mode does not show an ACL deny, so the launch took the already-running path; a live QLockFile allows read, so a second instance still reads and stays "already running"; root can read mode 000, so the mode check stays; an unlink of a stale lock between stat and open must not kill the caller
+#87 download and put: Windows icacls deny plus a monkeypatched PermissionError on every OS | xfail, or change dispatch | dispatch already maps PermissionError to "would not allow"; chmod does not raise it on Windows; the phone stays POSIX
+#87 CI: pytest -q -rs | leave -q, or -ra | skip reasons from #86 were not in the CI log
+#87 docs-policy item: leave it with the CEO, no edit | rewrite policy docs on this branch | this drop-in is the code items only

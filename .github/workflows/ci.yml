@@ -54,7 +54,7 @@ jobs:
       - name: Ruff
         run: python -m ruff check src tests scripts packaging
       - name: Pytest
-        run: python -m pytest -q
+        run: python -m pytest -q -rs
 
   # Semgrep publishes no native Windows wheel. The scan is Linux-only.
   semgrep:

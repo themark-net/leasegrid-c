@@ -838,6 +838,190 @@ class AppModelFlowTest {
         assertFalse(put, put.contains("\"name\":\"notes (phone).txt\""))
     }
 
+    @Test
+    fun aScannedDesktopJoinLinkFillsTheFieldAndWaitsForJoin() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        val link = desktopJoinLink()
+        model.onScanned("hello")
+        assertNotNull(model.fail)
+        model.onScanned(link)
+        assertEquals(link, model.inviteText)
+        assertNull(model.fail)
+        assertFalse(model.joinEnabled())
+        model.acknowledged = true
+        assertTrue(model.joinEnabled())
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+        assertFalse(model.busy)
+        model.join()
+        assertEquals(listOf("learn"), ops)
+        assertEquals(Place.Folders, model.place)
+        assertEquals(introducer, model.session!!.introducerFurl)
+    }
+
+    @Test
+    fun aScannedShortCodeFillsTheFieldAndWaitsForJoin() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.onScanned("7-guitarist-revenge")
+        assertEquals("7-guitarist-revenge", model.inviteText)
+        assertTrue(model.joinEnabled())
+        assertNull(model.fail)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+        assertFalse(model.busy)
+        model.join()
+        assertEquals(listOf("redeem", "learn"), ops)
+        assertEquals(Place.Folders, model.place)
+    }
+
+    @Test
+    fun aScannedJoinLinkDropsWhitespaceATrailingPeriodAndInvisibleMarks() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        val link = desktopJoinLink()
+        val dirty = " \u200B$link.\uFEFF "
+        model.onScanned(dirty)
+        assertEquals(link, model.inviteText)
+        assertEquals(Invite.parse(dirty).furl, Invite.parse(model.inviteText).furl)
+        assertEquals(listOf(2, 3, 3), Invite.parse(model.inviteText).shares)
+        assertTrue(model.joinEnabled())
+        assertNull(model.fail)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+    }
+
+    @Test
+    fun aScannedShortCodeDropsWhitespaceATrailingPeriodAndInvisibleMarks() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.onScanned(" \u200B7-guitarist-revenge.\uFEFF ")
+        assertEquals("7-guitarist-revenge", model.inviteText)
+        assertEquals("code", Invite.parse(model.inviteText).kind)
+        assertTrue(model.joinEnabled())
+        assertNull(model.fail)
+        assertTrue(ops.isEmpty())
+    }
+
+    @Test
+    fun aScannedAddressAndNativeLinkFillTheField() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.onScanned(" \u200B$introducer ")
+        assertEquals(introducer, model.inviteText)
+        val native = "leasegrid:join#v=1&i=${java.net.URLEncoder.encode(introducer, "UTF-8")}&n=2&h=3&t=3"
+        model.onScanned(native)
+        assertEquals(native, model.inviteText)
+        assertEquals(introducer, Invite.parse(model.inviteText).furl)
+        assertTrue(model.joinEnabled())
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+        assertFalse(model.busy)
+    }
+
+    @Test(timeout = 5000)
+    fun aScannedGarbageKeepsTheFieldAndShowsTheJoinLinkBanner() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        val cases = listOf(
+            "https://example.com" to Invite.WEB_URL_MSG,
+            "hello" to Invite.GARBAGE_MSG,
+            "" to Invite.EMPTY_MSG,
+        )
+        for ((raw, banner) in cases) {
+            model.onScanned(raw)
+            assertEquals(raw, banner, model.fail?.message)
+            assertEquals(Invite.NO_NEXT, model.fail?.next)
+            assertEquals(introducer, model.inviteText)
+            assertTrue(model.joinEnabled())
+            assertTrue(ops.isEmpty())
+            assertNull(model.session)
+            assertFalse(model.busy)
+        }
+        // Longer than the scan cap, and still a join link if it were pasted.
+        val base = "leasegrid:join#v=1&i=pb://hashhashhash@127.0.0.1:45001/swissnumswiss&n=2&h=3&t=3&note="
+        val huge = base + "a".repeat(200 * 1024)
+        assertTrue(huge.length > Invite.SCAN_MAX)
+        assertEquals("url", Invite.parse(huge).kind)
+        model.onScanned(huge)
+        assertEquals(Invite.GARBAGE_MSG, model.fail?.message)
+        assertEquals(Invite.NO_NEXT, model.fail?.next)
+        assertEquals(introducer, model.inviteText)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+        assertFalse(model.busy)
+    }
+
+    @Test
+    fun aCancelledScanChangesNothing() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        model.onScanned(null)
+        assertEquals(introducer, model.inviteText)
+        assertNull(model.fail)
+        assertTrue(model.joinEnabled())
+        assertTrue(ops.isEmpty())
+        model.onScanned("hello")
+        val shown = model.fail
+        assertNotNull(shown)
+        model.onScanned(null)
+        assertEquals(shown, model.fail)
+        assertEquals(introducer, model.inviteText)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+        assertFalse(model.busy)
+    }
+
+    @Test
+    fun aDeniedCameraKeepsTheFieldAndSaysToPasteOrType() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        model.onScanDenied()
+        assertEquals(introducer, model.inviteText)
+        assertEquals(Invite.SCAN_DENIED_MSG, model.fail?.message)
+        assertEquals(Invite.SCAN_DENIED_NEXT, model.fail?.next)
+        assertTrue(model.fail!!.next.lowercase().contains("paste"))
+        assertTrue(model.fail!!.next.lowercase().contains("short code"))
+        assertNull(model.session)
+        assertFalse(model.busy)
+        model.retryFail()
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+        assertEquals(introducer, model.inviteText)
+        assertFalse(model.busy)
+    }
+
+    /** Grid calls are recorded. A scan must not add one until [AppModel.join]. */
+    private fun recording(ops: MutableList<String>): AppModel = model { op, _ ->
+        ops += op
+        if (op == "redeem") {
+            buildJsonObject {
+                put("ok", true)
+                put("status", "ok")
+                put("furl", introducer)
+            }
+        } else {
+            learnReply()
+        }
+    }
+
+    /** The join URL the desktop invite page encodes in its QR. */
+    private fun desktopJoinLink(): String {
+        val encoded = java.net.URLEncoder.encode(introducer, "UTF-8")
+        return "http://leasegrid.i2p/join#v=1&i=$encoded&n=2&h=3&t=3"
+    }
+
     /**
      * One phone home, reused so a second [clashPhone] is the next process.
      * [names] are the files the folder already lists.

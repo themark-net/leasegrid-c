@@ -9,6 +9,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import com.google.zxing.client.android.Intents
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import net.themark.leasegrid.sync.invite.Invite
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
 import net.themark.leasegrid.sync.recovery.MAX_RECOVERY_BYTES
@@ -43,8 +47,27 @@ class MainActivity : ComponentActivity() {
         readAddedFile(folder, uri)
     }
 
+    private val scanQr = registerForActivityResult(ScanContract()) { result ->
+        val intent = result.originalIntent
+        if (result.contents == null && intent != null && intent.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION)) {
+            model.onScanDenied()
+            return@registerForActivityResult
+        }
+        model.onScanned(result.contents)
+    }
+
     private fun openRecoveryPicker() {
         pickRecovery.launch(arrayOf("*/*"))
+    }
+
+    private fun openQrScanner() {
+        scanQr.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt(Invite.SCAN_PROMPT)
+                .setBeepEnabled(false)
+                .setOrientationLocked(false),
+        )
     }
 
     private fun openAddPicker() {
@@ -66,7 +89,7 @@ class MainActivity : ComponentActivity() {
         // A restored activity already applied this intent. Applying it again wipes the home.
         noteIntent(intent)
         setContent {
-            SyncApp(model, ::openRecoveryPicker, ::openAddPicker)
+            SyncApp(model, ::openRecoveryPicker, ::openAddPicker, ::openQrScanner)
         }
     }
 

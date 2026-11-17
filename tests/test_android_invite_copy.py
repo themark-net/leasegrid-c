@@ -562,3 +562,52 @@ def test_mainactivity_read_failures_keep_the_class_off_the_next_line():
             continue
         assert "Log.w" in line, line
         assert "reportFail" not in line and "FailBanner" not in line and "Text(" not in line
+
+
+def test_scan_qr_copy_wiring_and_optional_camera():
+    """Scan QR strings live in Invite.kt, so the banned-word scan covers them.
+
+    The button and the camera launcher are source pins. Gradle is what compiles them.
+    """
+    invite = INVITE.read_text(encoding="utf-8")
+    scan_qr = _kotlin_const(invite, "SCAN_QR")
+    prompt = _kotlin_const(invite, "SCAN_PROMPT")
+    denied = _kotlin_const(invite, "SCAN_DENIED_MSG")
+    nxt = _kotlin_const(invite, "SCAN_DENIED_NEXT")
+    assert scan_qr == "Scan QR"
+    assert prompt == "Point at the code on your computer."
+    assert denied == "The camera was not allowed."
+    assert nxt == "Paste the join link or type the short code."
+    assert _banned([scan_qr, prompt, denied, nxt]) == []
+    assert "fun acceptScan(" in invite
+    ui = SYNC_APP.read_text(encoding="utf-8")
+    assert "onScanQr: () -> Unit" in ui
+    assert "Place.Welcome -> Welcome(model, onPickRecovery, onScanQr)" in ui
+    assert (
+        "OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) { Text(Invite.SCAN_QR) }"
+        in ui
+    )
+    assert ui.count("Text(Invite.SCAN_QR)") == 1
+    activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    assert "SyncApp(model, ::openRecoveryPicker, ::openAddPicker, ::openQrScanner)" in activity
+    assert "registerForActivityResult(ScanContract())" in activity
+    assert ".setDesiredBarcodeFormats(ScanOptions.QR_CODE)" in activity
+    assert ".setPrompt(Invite.SCAN_PROMPT)" in activity
+    assert ".setBeepEnabled(false)" in activity
+    assert ".setOrientationLocked(false)" in activity
+    assert "model.onScanned(result.contents)" in activity
+    assert "model.onScanDenied()" in activity
+    assert "Intents.Scan.MISSING_CAMERA_PERMISSION" in activity
+    model = APP_MODEL.read_text(encoding="utf-8")
+    assert "fun onScanned(text: String?)" in model
+    assert "fun onScanDenied()" in model
+    assert "Invite.acceptScan(text)" in model
+    assert "Invite.SCAN_DENIED_MSG" in model
+    manifest = (INVITE.parents[6] / "AndroidManifest.xml").read_text(encoding="utf-8")
+    assert 'android:name="android.hardware.camera" android:required="false"' in manifest
+    assert 'android:name="android.hardware.camera" android:required="true"' not in manifest
+    assert 'android:hardwareAccelerated="true"' in manifest
+    assert 'android:screenOrientation="fullSensor"' in manifest
+    assert 'tools:replace="screenOrientation"' in manifest
+    gradle = (INVITE.parents[8] / "build.gradle.kts").read_text(encoding="utf-8")
+    assert 'implementation("com.journeyapps:zxing-android-embedded:4.3.0")' in gradle

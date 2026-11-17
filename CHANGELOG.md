@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Android Invite: Scan QR reads the code on the desktop share card, or the join link on the invite page, into the same field. Join still waits for the tap. A code that is not a join link leaves the field as it was. If the camera is not allowed, the screen says to paste the link or type the short code ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).
+
 ## 0.1.11 (2026-11-16)
 
 - Android Invite accepts the short code from Share invite in the same field as the full join link. A short code is no longer refused. If the code expired, was not accepted, the invite relay could not be reached, or nobody answered, the screen says so and Retry tries again. The field is kept. Pasting the full join link still joins and skips that step. The phone build now includes that short-code client, with PyNaCl for arm64-v8a and x86_64 ([#77](https://github.com/themark-net/leasegrid-c/issues/77)).

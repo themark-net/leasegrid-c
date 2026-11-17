@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- A phone with no camera can still install. The scanner asks only when Scan QR is tapped. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <queries>
         <intent>
@@ -14,6 +18,7 @@
         android:name=".LeasegridApplication"
         android:allowBackup="false"
         android:icon="@android:drawable/ic_menu_save"
+        android:hardwareAccelerated="true"
         android:label="Leasegrid Sync"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
@@ -62,6 +67,12 @@
                 <data android:scheme="leasegrid" android:host="dogfood" />
             </intent-filter>
         </activity>
+
+        <!-- Library default is landscape. Unlock so the scan screen can follow the phone. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="screenOrientation" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

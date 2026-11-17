@@ -63,7 +63,12 @@ private val THREAT = listOf(
 )
 
 @Composable
-fun SyncApp(model: AppModel, onPickRecovery: () -> Unit, onAddFile: () -> Unit) {
+fun SyncApp(
+    model: AppModel,
+    onPickRecovery: () -> Unit,
+    onAddFile: () -> Unit,
+    onScanQr: () -> Unit,
+) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -74,7 +79,7 @@ fun SyncApp(model: AppModel, onPickRecovery: () -> Unit, onAddFile: () -> Unit) 
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (val place = model.place) {
-                    Place.Welcome -> Welcome(model, onPickRecovery)
+                    Place.Welcome -> Welcome(model, onPickRecovery, onScanQr)
                     Place.Import -> Import(model, onPickRecovery)
                     Place.Folders -> Folders(model)
                     is Place.Folder -> FolderDetail(model, place, onAddFile)
@@ -89,7 +94,7 @@ fun SyncApp(model: AppModel, onPickRecovery: () -> Unit, onAddFile: () -> Unit) 
 }
 
 @Composable
-private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
+private fun Welcome(model: AppModel, onPickRecovery: () -> Unit, onScanQr: () -> Unit) {
     Text("Leasegrid Sync", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
     Text("See your folders on this phone. Download files when you need them.")
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -138,6 +143,7 @@ private fun Welcome(model: AppModel, onPickRecovery: () -> Unit) {
         ),
         keyboardActions = KeyboardActions(onDone = { if (joinOn) model.join() }),
     )
+    OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) { Text(Invite.SCAN_QR) }
     ProbeButton(
         name = "join_button",
         enabled = joinOn,

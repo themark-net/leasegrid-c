@@ -23,6 +23,13 @@ object Invite {
     // The old regex overflowed the stack on a few KB of "-a" groups (#78).
     private const val SHORT_CODE_MAX = 256
 
+    /**
+     * A camera result longer than this is not a join link. 4096 is the desktop
+     * handoff bound, and more than a QR holds. A typed paste is not capped here,
+     * so a long join link still parses.
+     */
+    const val SCAN_MAX = 4096
+
     // Foolscap swissnums are longer than this. The fixture swissnumswiss is 13
     // and must still parse. Empty and cut-short values are an incomplete link (#80 F1).
     private const val MIN_SWISSNUM = 8
@@ -90,6 +97,11 @@ object Invite {
     const val CODE_TIMEOUT_NEXT =
         "Keep Leasegrid Sync open on your computer until this phone joins, then tap Retry. If the code is old, click $SHARE_INVITE again and type the new short code."
 
+    const val SCAN_QR = "Scan QR"
+    const val SCAN_PROMPT = "Point at the code on your computer."
+    const val SCAN_DENIED_MSG = "The camera was not allowed."
+    const val SCAN_DENIED_NEXT = "Paste the join link or type the short code."
+
     /** Parse first. A failed parse never reaches [join]. */
     inline fun <T> attempt(raw: String, fail: (InviteFail) -> T, join: (ParsedInvite) -> T): T {
         val parsed = try {
@@ -147,6 +159,18 @@ object Invite {
 
     fun joinEnabled(acknowledged: Boolean, invite: String): Boolean {
         return acknowledged && invite.isNotBlank()
+    }
+
+    /**
+     * Text a scan may put in the field. Same cleanup as a paste: invisible marks,
+     * trim, wrapped quotes or brackets, then a trailing sentence mark.
+     * Throws [InviteFail] when that text is not a short code or a join link.
+     */
+    fun acceptScan(raw: String): String {
+        if (raw.length > SCAN_MAX) throw InviteFail(GARBAGE_MSG, NO_NEXT)
+        val text = peelWrappers(stripPaste(raw)).trimEnd(::trailingPasteJunk).trim()
+        parse(text)
+        return text
     }
 
     private fun fromFragment(frag: String): ParsedInvite {

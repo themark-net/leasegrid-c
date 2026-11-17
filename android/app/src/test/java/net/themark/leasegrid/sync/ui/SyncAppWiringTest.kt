@@ -2,6 +2,7 @@ package net.themark.leasegrid.sync.ui
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,5 +48,45 @@ class SyncAppWiringTest {
         val backs = text.lines().map { it.trim() }.filter { it.startsWith("BackHandler(") }
         assertEquals(listOf("BackHandler(onBack = { model.cancelImport() })"), backs)
         assertTrue(importFn.contains("BackHandler(onBack = { model.cancelImport() })"))
+    }
+
+    @Test
+    fun scanQrButtonOnInviteCallsTheScanner() {
+        val ui = source()
+        val welcome = functionBody(ui, "private fun Welcome(")
+        val lines = welcome.lines().map { it.trim() }
+        assertTrue(
+            lines.contains(
+                "OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) { Text(Invite.SCAN_QR) }",
+            ),
+        )
+        assertEquals(1, ui.lines().count { it.contains("Text(Invite.SCAN_QR)") })
+        assertTrue(ui.contains("Place.Welcome -> Welcome(model, onPickRecovery, onScanQr)"))
+        assertTrue(ui.contains("onScanQr: () -> Unit"))
+        val activity = readRelative(
+            "src/main/java/net/themark/leasegrid/sync/MainActivity.kt",
+            "app/src/main/java/net/themark/leasegrid/sync/MainActivity.kt",
+        )
+        assertTrue(activity.contains("SyncApp(model, ::openRecoveryPicker, ::openAddPicker, ::openQrScanner)"))
+        assertTrue(activity.contains("registerForActivityResult(ScanContract())"))
+        assertTrue(activity.contains(".setDesiredBarcodeFormats(ScanOptions.QR_CODE)"))
+        assertTrue(activity.contains(".setPrompt(Invite.SCAN_PROMPT)"))
+        assertTrue(activity.contains(".setBeepEnabled(false)"))
+        assertTrue(activity.contains(".setOrientationLocked(false)"))
+        assertTrue(activity.contains("model.onScanned(result.contents)"))
+        assertTrue(activity.contains("model.onScanDenied()"))
+        assertTrue(activity.contains("Intents.Scan.MISSING_CAMERA_PERMISSION"))
+        val manifest = readRelative("src/main/AndroidManifest.xml", "app/src/main/AndroidManifest.xml")
+        assertTrue(manifest.contains("android:name=\"android.hardware.camera\" android:required=\"false\""))
+        assertFalse(manifest.contains("android:name=\"android.hardware.camera\" android:required=\"true\""))
+        assertTrue(manifest.contains("android:hardwareAccelerated=\"true\""))
+        assertTrue(manifest.contains("android:screenOrientation=\"fullSensor\""))
+        assertTrue(manifest.contains("tools:replace=\"screenOrientation\""))
+    }
+
+    private fun readRelative(vararg paths: String): String {
+        val file = paths.map { File(it) }.firstOrNull { it.isFile }
+            ?: error("${paths.first()} not found from ${File(".").absolutePath}")
+        return file.readText()
     }
 }

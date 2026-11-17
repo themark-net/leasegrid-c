@@ -22,3 +22,36 @@ Open product issues checked on 2026-11-17: #77, #81, #85 (#84 is closed). #30, #
 
 - A device check of scan to join (CI has no camera or emulator). Needed before #77 can close, together with the next F&F release.
 - No release, tag or version bump. No change to the installers workflow. The next F&F release goes through Tester and Reviewer, and the #87 lock-path change must be flagged to them then.
+
+## What changed
+
+Invite on the phone has a Scan QR button under the field. It opens the ZXing capture screen (`com.journeyapps:zxing-android-embedded:4.3.0`). A result goes through `Invite.acceptScan`, then into `inviteText`. Join still waits for the tap.
+
+The desktop share card QR is the short code (`InviteSharePanel._paint_qr(code)`). The invite page QR is the http join URL (`invite_page_html` calls `qr_svg` on that URL). A raw `pb://` address and a `leasegrid:` link are accepted too, because paste already accepts them. Whitespace, invisible paste marks, and a trailing sentence mark are stripped before the check. A scan longer than 4096 characters is refused. That is the desktop handoff bound. A typed paste is not capped, so the long join-link paste still parses.
+
+Cancel leaves the field and any banner. A refused camera says the camera was not allowed, and the next line says to paste the join link or type the short code. A scan that is not a short code or a join link keeps the old field and shows the same banner a paste of that text would (empty field, web page, or "That isn't a join link.").
+
+Camera hardware is optional (`uses-feature` `android.hardware.camera` `required=false`). The capture activity is `fullSensor` so `setOrientationLocked(false)` is not stuck in the library's landscape lock. Hardware acceleration stays on.
+
+## How to verify
+
+This machine has no Android SDK, so Gradle was not run. After a push on a `feat/**` branch (the plan name is `feat/77-qr-scan`; this worktree stays `bot/77-qr-scan` and was not pushed):
+
+- CI job `test` on ubuntu-latest, windows-2022, and macos-15-intel, plus CI job `semgrep`.
+- Android Slice A job `debug APK`: `./gradlew :app:testDebugUnitTest :app:assembleDebug` from `android/`.
+
+Local, before that push: `QT_QPA_PLATFORM=offscreen PYTHONPATH=src pytest -q -rs`, ruff, and a dash check on the diff against `45e32da`. `tests/test_android_invite_copy.py` pins the new strings, the Scan QR button, the launcher, the optional camera feature, and the dependency line.
+
+On a device: desktop Share invite, phone Invite, Scan QR, the short code lands in the field, tick the four points, Join. Scan the invite page QR the same way and the join link lands in the field. Back out of the camera and the field stays. Deny the camera and the paste or type line shows. Join does not run until the Join tap.
+
+## Remaining slices
+
+- A device check of scan to join, then #77 can close. CI has no camera.
+- Scan on the Import screen is out of scope.
+- No release, tag, or version bump here. The next F&F release goes through Tester and Reviewer. Flag the #87 lock-path change to them then.
+
+## Design note
+
+Library: `zxing-android-embedded` 4.3.0, Apache-2.0, ZXing, no Google Play Services, so a de-Googled phone can scan. The library merges the CAMERA permission and `CaptureActivity`, and asks for the camera when Scan QR is tapped. Camera hardware is not required, so a phone with no camera can still install. The library's capture activity is landscape. This manifest sets `fullSensor` with `tools:replace` so the unlocked orientation extra can follow the phone. Hardware acceleration is set on the application because the scanner uses a texture view. `tools:overrideLibrary` is not used: minSdk is 26 and the library's floor is 19.
+
+Fail and recover: cancel is a null result and changes nothing. A missing-camera extra shows `SCAN_DENIED_MSG` / `SCAN_DENIED_NEXT` and does not join; Retry on that card does not join either. Any other result is cleaned (invisible marks, trim, quotes or brackets, trailing `. , ; : ! ?` and closing marks) and must be something `Invite.parse` accepts. If it is, the field is replaced and the old banner is cleared. If it is not, the field stays and the banner is the one parse already uses for that text. An empty scan says to enter a code or paste the link. A web address says it is the web page, not a join link. Other garbage, including a scan over 4096 characters, says "That isn't a join link." The 4096 cap is only on the scan. A typed paste of a long join link still parses.

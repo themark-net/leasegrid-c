@@ -37,6 +37,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.themark.leasegrid.sync.grid.AndroidGrid
 import net.themark.leasegrid.sync.invite.Invite
+import net.themark.leasegrid.sync.invite.InviteFail
 import net.themark.leasegrid.sync.invite.RedeemOutcome
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
@@ -238,6 +239,29 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
             return
         }
         flow.join()
+    }
+
+    /**
+     * A camera scan. Null means cancelled: the field and the banner stay.
+     * A join link or short code replaces the field and does not join.
+     * Anything else keeps the field and shows the same banner a paste of that text would.
+     */
+    fun onScanned(text: String?) {
+        if (text == null) return
+        val cleaned = try {
+            Invite.acceptScan(text)
+        } catch (exc: InviteFail) {
+            // No Retry: retrying would join the old field text. Scan again instead.
+            show(FailBanner(exc.banner, exc.next), null)
+            return
+        }
+        inviteText = cleaned
+        dismissFail()
+    }
+
+    /** The camera was not allowed. The field stays. Join does not start. */
+    fun onScanDenied() {
+        show(FailBanner(Invite.SCAN_DENIED_MSG, Invite.SCAN_DENIED_NEXT), null)
     }
 
     fun onPicked(name: String, bytes: ByteArray) {

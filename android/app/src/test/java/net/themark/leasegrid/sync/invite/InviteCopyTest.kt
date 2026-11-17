@@ -439,6 +439,18 @@ class InviteCopyTest {
         assertTrue(Invite.BODY.contains(Invite.SHOW_FULL_JOIN_LINK))
         assertTrue(Invite.BODY.contains(Invite.SHARE_INVITE))
     }
+
+    @Test
+    fun scanCopyPassesTheBannedWordGuard() {
+        for (line in listOf(Invite.SCAN_QR, Invite.SCAN_PROMPT, Invite.SCAN_DENIED_MSG, Invite.SCAN_DENIED_NEXT)) {
+            assertTrue(line, bannedWords(line).isEmpty())
+            assertFalse(line, line.contains('\u2013'))
+            assertFalse(line, line.contains('\u2014'))
+        }
+        assertEquals("Scan QR", Invite.SCAN_QR)
+        assertEquals("The camera was not allowed.", Invite.SCAN_DENIED_MSG)
+        assertEquals("Paste the join link or type the short code.", Invite.SCAN_DENIED_NEXT)
+    }
 }
 
 /** Words a phone user must never see (#50): internals, "friendnet", "could not join". */

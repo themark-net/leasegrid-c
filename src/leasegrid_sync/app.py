@@ -296,12 +296,13 @@ _LOCK_NOT_WRITABLE = (
 
 
 def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
-    """A directory, a mode-000 file, or a file we cannot read cannot be a lock.
+    """A directory or a mode-000 file cannot be a lock. None when the path is usable.
 
-    None when the path is missing or usable. Mode 000 returns before open:
-    root can read that file, and it is still this problem. PermissionError
-    on open is the same problem. A file that disappears between stat and
-    open is usable. Windows ACLs do not show up in st_mode.
+    This runs before tryLock and does not open the file. On Windows a lock a
+    rival is deleting reads as access denied, and an open handle here would
+    block that rival's delete. A file this user cannot read (a Windows ACL
+    deny does not show in st_mode) is checked by ``_lock_unreadable`` after
+    tryLock has failed.
     """
     try:
         st = path.stat()
@@ -311,19 +312,29 @@ def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
         return _LOCK_UNREADABLE
     if stat.S_ISDIR(st.st_mode):
         return _LOCK_DIRECTORY
-    if not stat.S_ISREG(st.st_mode):
-        return None
-    if (stat.S_IMODE(st.st_mode) & 0o777) == 0:
-        return _LOCK_UNREADABLE
-    try:
-        with open(path, "rb") as handle:
-            handle.read(1)
-    except FileNotFoundError:
-        # A rival removed a stale lock between stat and open. The path is usable.
-        return None
-    except PermissionError:
+    if stat.S_ISREG(st.st_mode) and (stat.S_IMODE(st.st_mode) & 0o777) == 0:
         return _LOCK_UNREADABLE
     return None
+
+
+def _lock_unreadable(path: Path, tries: int = 3) -> bool:
+    """True when every read of the lock file raises PermissionError.
+
+    Called only after tryLock failed and no PID could be read. A missing file
+    is not unreadable. A Windows delete-pending file also reads as access
+    denied, so a few short retries let a rival's delete finish first.
+    """
+    for attempt in range(tries):
+        try:
+            with open(path, "rb") as handle:
+                handle.read(1)
+            return False
+        except FileNotFoundError:
+            return False
+        except PermissionError:
+            if attempt + 1 < tries:
+                time.sleep(0.05)
+    return True
 
 
 def _other_host_lock_is_young(path: Path) -> bool:
@@ -388,6 +399,8 @@ def acquire_instance_lock(home: Path) -> bool:
         if not lock.tryLock(0):
             if lock.error() == QLockFile.PermissionError:
                 raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
+            if not _lock_pid_readable(lock) and _lock_unreadable(path):
+                raise SyncError(_LOCK_UNREADABLE[0], _LOCK_UNREADABLE[1])
             return False
     _INSTANCE_LOCK = lock
     return True

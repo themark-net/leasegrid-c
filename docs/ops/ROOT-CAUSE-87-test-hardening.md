@@ -89,3 +89,17 @@ The first open check also failed `test_six_callers_never_double_hold` on the age
 Download and put needed no product change. On Linux the chmod tests still pass. The new monkeypatched PermissionError tests pass. The three `icacls` tests skip on this host with their reasons (`-rs`). Windows CI is what runs them.
 
 Targeted run after the permission copy landed: 10 passed, 3 skipped (the three icacls tests). After the `FileNotFoundError` catch, `test_six_callers_never_double_hold` passed with the three lock copy tests (4 passed). Full Linux suite: 706 passed, 4 skipped, 5 xfailed, 182s. Ruff on `src tests scripts packaging` and on `android/pytests/test_dispatch_copy.py` is clean. The dash check on added lines is empty.
+
+## 6. Round 2: windows-2022 timed out at 89502ee
+
+Symptom: CI run 44138425560, job 134234248066 (`test (windows-2022)`), was cancelled at the 30 minute job limit. The progress line shows one `F` at item 277 and no output after item 296. Mapped against the collection order (one module collapses to a single skip on Windows), the `F` is `tests/test_sync_instance_lock.py::test_six_callers_never_double_hold`. ubuntu, macos-15-intel, semgrep, android and installers were green at the same SHA.
+
+Hypothesis: the round 1 lock change opened the lock file with Python `open` before `tryLock`. On Windows that breaks the race in two ways. A file a rival is deleting (a stale lock being removed) is delete pending, and opening it fails with access denied, which Python raises as `PermissionError`. The pre-check then reported "could not read its lock file" for a lock that was about to be gone. Also, Qt 5.15 holds its lock with `FILE_SHARE_READ` only and removes a stale lock with a plain delete. A brief Python handle (the CRT does not share delete) can make that delete fail, so a round can end with no holder. Either breaks the six-caller race. A later launch that hits the false "could not read" sentence shows a message box, which is a plausible cause of the hang that followed.
+
+Evidence: Qt 5.15 `qlockfile_win.cpp` uses `dwShareMode = FILE_SHARE_READ`. Round 1 already hit the Linux form of this race (`FileNotFoundError` between stat and open, which killed `test_six_callers_never_double_hold` locally) and patched only that errno. On Windows the same race raises `PermissionError`.
+
+Fix (product): `_lock_path_problem` no longer opens the file. It keeps only the directory and mode-000 checks it had before #87. A new `_lock_unreadable` runs only after the second `tryLock` has failed and no PID could be read. It retries three times, 50 ms apart, and reports unreadable only if every read raises `PermissionError`. A missing file is not unreadable. A Windows ACL deny still fails every read, so the icacls test keeps its copy. A rival's delete finishes within the retries.
+
+Red to green: `test_transient_permission_error_on_a_stale_lock_still_takes_it` ages a PID-less lock past the stale time and makes the first Python `open` of it raise `PermissionError`. At 89502ee it failed with `SyncError: Leasegrid Sync could not read its lock file.`. After the fix, `tryLock` takes the stale lock without a Python open, and the test passes. `tests/test_sync_instance_lock.py`: 23 passed, 1 skipped on Linux.
+
+Kind: product fix plus test.

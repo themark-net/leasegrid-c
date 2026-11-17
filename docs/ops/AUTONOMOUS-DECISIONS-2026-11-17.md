@@ -5,3 +5,4 @@
 #87 download and put: Windows icacls deny plus a monkeypatched PermissionError on every OS | xfail, or change dispatch | dispatch already maps PermissionError to "would not allow"; chmod does not raise it on Windows; the phone stays POSIX
 #87 CI: pytest -q -rs | leave -q, or -ra | skip reasons from #86 were not in the CI log
 #87 docs-policy item: leave it with the CEO, no edit | rewrite policy docs on this branch | this drop-in is the code items only
+#87 lock round 2: probe readability only after tryLock fails with no readable PID, three tries 50 ms apart | keep the pre-tryLock open and also ignore PermissionError on win32, or revert the lock change and xfail the Windows ACL test | an open before tryLock races Qt's stale-lock delete on Windows (delete pending reads as access denied, and the handle blocks the delete); after tryLock fails the path is only reached by a real refusal, and an ACL deny still fails every try

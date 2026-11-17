@@ -922,3 +922,40 @@ def test_six_callers_never_double_hold(tmp_path: Path) -> None:
             assert " zero=%d " % rounds in line, line
         else:
             assert " zero=0 " in line, line
+
+
+def test_transient_permission_error_on_a_stale_lock_still_takes_it(tmp_path: Path, monkeypatch) -> None:
+    """A Python open of the lock that fails once must not block a takeable lock.
+
+    Windows reports a file a rival is deleting (delete pending) as access
+    denied. A read probe before tryLock then said "could not read its lock
+    file" while the stale lock was about to be gone, and its open handle could
+    block the rival's delete. The probe now runs only after tryLock has failed
+    and no PID could be read.
+    """
+    from leasegrid_sync.app import acquire_instance_lock, release_instance_lock
+
+    home = tmp_path / "home"
+    home.mkdir()
+    lock = instance_lock_path(home)
+    lock.write_bytes(b"")
+    _age_lock(lock)
+    real_open = open
+    target = os.path.normcase(os.path.abspath(lock))
+    calls = {"n": 0}
+
+    def flaky(file, mode="r", *args, **kwargs):
+        try:
+            got = os.path.normcase(os.path.abspath(os.fspath(file)))
+        except (TypeError, ValueError):
+            got = ""
+        if got == target and calls["n"] == 0:
+            calls["n"] += 1
+            raise PermissionError(13, "Permission denied", os.fspath(file))
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", flaky)
+    try:
+        assert acquire_instance_lock(home) is True
+    finally:
+        release_instance_lock()

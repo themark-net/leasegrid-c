@@ -694,3 +694,25 @@ def test_recovery_read_failure_shows_the_path_next_line_and_logs_only_the_class(
     assert len(logs) == 1 and "Log.w" in logs[0], logs
     _assert_no_class_on_screen(thrown)
     assert _banned_source(block) == []
+
+
+def test_scan_asks_for_the_camera_first_and_the_fail_card_hides_retry_without_an_action():
+    """#88: a refused camera never reaches the scanner, and Retry shows only when something can rerun."""
+    activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
+    opener = _block(activity, "private fun openQrScanner()", "\n    private fun ")
+    assert "model.onScanTapped(" in opener
+    assert "Manifest.permission.CAMERA" in opener
+    assert "scanQr.launch(" not in opener
+    assert "registerForActivityResult(ActivityResultContracts.RequestPermission())" in activity
+    assert "model.onCameraAnswer(granted, ::launchQrScanner)" in activity
+    assert activity.count("scanQr.launch(") == 1
+    ui = (INVITE.parents[1] / "ui" / "SyncApp.kt").read_text(encoding="utf-8")
+    card = _block(ui, "private fun FailCard(", "\n}\n")
+    lines = [ln.strip() for ln in card.splitlines()]
+    gate = lines.index("if (model.canRetry) {")
+    assert lines[gate + 1] == 'Button(onClick = { model.retryFail() }) { Text("Retry") }'
+    assert lines.index('OutlinedButton(onClick = { model.dismissFail() }) { Text("Dismiss") }') > gate + 1
+    model = (INVITE.parents[1] / "ui" / "AppModel.kt").read_text(encoding="utf-8")
+    on_denied = _block(model, "fun onScanDenied()", "\n    }\n")
+    assert ", null)" in on_denied
+    assert "show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }" not in model

@@ -1,7 +1,9 @@
 package net.themark.leasegrid.sync.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RetryOnceTest {
@@ -26,5 +28,20 @@ class RetryOnceTest {
         slot.pull()?.invoke()
         assertEquals(11, runs)
         assertNull("the new action stayed armed after it ran", slot.pull())
+    }
+
+    @Test
+    fun armedIsTrueOnlyWhileARealActionWaits() {
+        val slot = RetryOnce()
+        assertFalse(slot.armed)
+        slot.arm(null)
+        assertFalse("no action, so the card must not offer Retry", slot.armed)
+        slot.arm { }
+        assertTrue(slot.armed)
+        slot.pull()
+        assertFalse("a pulled action leaves nothing to retry", slot.armed)
+        slot.arm { }
+        slot.arm(null)
+        assertFalse(slot.armed)
     }
 }

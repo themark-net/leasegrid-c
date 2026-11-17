@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Asked only when Scan QR is tapped, before the scanner opens (#88). -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- A phone with no camera can still install. The scanner asks only when Scan QR is tapped. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />

@@ -217,6 +217,10 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         place = Place.Settings
     }
 
+    /** The card offers Retry only when a real action is armed. Otherwise only Dismiss (#88). */
+    val canRetry: Boolean
+        get() = retries.armed
+
     fun dismissFail() {
         fail = null
         retries.arm(null)
@@ -257,6 +261,19 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         }
         inviteText = cleaned
         dismissFail()
+    }
+
+    /**
+     * Scan QR tapped. Ask for the camera before the scanner opens, so a refusal
+     * reaches our card and never the scanner's own error dialog (#88).
+     */
+    fun onScanTapped(cameraGranted: Boolean, launchScanner: () -> Unit, askCamera: () -> Unit) {
+        if (cameraGranted) launchScanner() else askCamera()
+    }
+
+    /** The answer to the camera prompt. Allowed opens the scanner. Refused shows the paste guidance. */
+    fun onCameraAnswer(granted: Boolean, launchScanner: () -> Unit) {
+        if (granted) launchScanner() else onScanDenied()
     }
 
     /** The camera was not allowed. The field stays. Join does not start. */
@@ -371,7 +388,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         val name = try {
             baseName(displayName)
         } catch (_: IllegalArgumentException) {
-            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT), null)
             return
         }
         val dest = pendingFile(folder.cap, name)
@@ -394,7 +411,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
                     onFilePicked(folder, displayName, bytes)
                 }
             } else {
-                show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+                show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT), null)
             }
             return
         }
@@ -427,7 +444,7 @@ class AppModel internal constructor(app: Application, seams: AppSeams) : Android
         if (bytes == null) {
             board.cancelSheet()
             rememberPendingAdds()
-            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT)) { }
+            show(FailBanner(WriteCopy.READ_FAIL, WriteCopy.READ_NEXT), null)
             touch()
             return
         }

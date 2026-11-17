@@ -1,6 +1,8 @@
 package net.themark.leasegrid.sync
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -9,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -60,7 +63,20 @@ class MainActivity : ComponentActivity() {
         pickRecovery.launch(arrayOf("*/*"))
     }
 
+    private val askCamera = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        model.onCameraAnswer(granted, ::launchQrScanner)
+    }
+
     private fun openQrScanner() {
+        model.onScanTapped(
+            cameraGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED,
+            launchScanner = ::launchQrScanner,
+            askCamera = { askCamera.launch(Manifest.permission.CAMERA) },
+        )
+    }
+
+    private fun launchQrScanner() {
         scanQr.launch(
             ScanOptions()
                 .setDesiredBarcodeFormats(ScanOptions.QR_CODE)

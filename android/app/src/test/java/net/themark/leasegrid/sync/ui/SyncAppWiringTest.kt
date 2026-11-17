@@ -76,12 +76,37 @@ class SyncAppWiringTest {
         assertTrue(activity.contains("model.onScanned(result.contents)"))
         assertTrue(activity.contains("model.onScanDenied()"))
         assertTrue(activity.contains("Intents.Scan.MISSING_CAMERA_PERMISSION"))
+        // #88 a: ask for the camera before the scanner opens.
+        val opener = activity.substring(activity.indexOf("private fun openQrScanner()"))
+            .substringBefore("\n    private fun ")
+        assertTrue(opener, opener.contains("model.onScanTapped("))
+        assertTrue(opener, opener.contains("Manifest.permission.CAMERA"))
+        assertFalse("the scanner launches only from launchQrScanner", opener.contains("scanQr.launch("))
+        assertTrue(activity.contains("registerForActivityResult(ActivityResultContracts.RequestPermission())"))
+        assertTrue(activity.contains("model.onCameraAnswer(granted, ::launchQrScanner)"))
+        assertEquals(1, activity.lines().count { it.contains("scanQr.launch(") })
+        assertTrue(
+            readRelative("src/main/AndroidManifest.xml", "app/src/main/AndroidManifest.xml")
+                .contains("<uses-permission android:name=\"android.permission.CAMERA\" />"),
+        )
         val manifest = readRelative("src/main/AndroidManifest.xml", "app/src/main/AndroidManifest.xml")
         assertTrue(manifest.contains("android:name=\"android.hardware.camera\" android:required=\"false\""))
         assertFalse(manifest.contains("android:name=\"android.hardware.camera\" android:required=\"true\""))
         assertTrue(manifest.contains("android:hardwareAccelerated=\"true\""))
         assertTrue(manifest.contains("android:screenOrientation=\"fullSensor\""))
         assertTrue(manifest.contains("tools:replace=\"screenOrientation\""))
+    }
+
+    @Test
+    fun theFailCardOffersRetryOnlyWhenThereIsSomethingToRetry() {
+        val card = functionBody(source(), "private fun FailCard(")
+        val lines = card.lines().map { it.trim() }
+        val gate = lines.indexOf("if (model.canRetry) {")
+        val retry = lines.indexOf("Button(onClick = { model.retryFail() }) { Text(\"Retry\") }")
+        val dismiss = lines.indexOf("OutlinedButton(onClick = { model.dismissFail() }) { Text(\"Dismiss\") }")
+        assertTrue(card, gate >= 0 && retry == gate + 1)
+        assertTrue("Dismiss stays outside the Retry gate", dismiss > retry + 1)
+        assertEquals(1, card.lines().count { it.contains("model.retryFail()") })
     }
 
     private fun readRelative(vararg paths: String): String {

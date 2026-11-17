@@ -467,7 +467,9 @@ private fun FailCard(model: AppModel) {
             Text("FAIL: ${banner.message}", fontWeight = FontWeight.SemiBold)
             failNextLine(banner.next)?.let { Text(it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { model.retryFail() }) { Text("Retry") }
+                if (model.canRetry) {
+                    Button(onClick = { model.retryFail() }) { Text("Retry") }
+                }
                 OutlinedButton(onClick = { model.dismissFail() }) { Text("Dismiss") }
             }
         }

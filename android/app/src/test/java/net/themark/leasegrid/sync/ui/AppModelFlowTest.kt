@@ -1002,6 +1002,74 @@ class AppModelFlowTest {
         assertFalse(model.busy)
     }
 
+    @Test
+    fun aBadScanAndARefusedCameraOfferDismissButNoRetry() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        model.onScanned("hello")
+        assertNotNull(model.fail)
+        assertFalse("a bad scan has nothing to retry (#88 b)", model.canRetry)
+        model.dismissFail()
+        assertNull(model.fail)
+        model.onScanDenied()
+        assertEquals(Invite.SCAN_DENIED_MSG, model.fail?.message)
+        assertFalse("a refused camera has nothing to retry (#88 b)", model.canRetry)
+        model.dismissFail()
+        assertNull(model.fail)
+        assertEquals(introducer, model.inviteText)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+    }
+
+    @Test
+    fun aJoinParseFailStillOffersARealRetryWithTheFieldAsItIsNow() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = "hello"
+        model.join()
+        assertNotNull(model.fail)
+        assertTrue("join Retry reruns join with the current field", model.canRetry)
+        model.inviteText = "7-guitarist-revenge"
+        model.retryFail()
+        assertFalse(model.canRetry)
+        assertEquals(listOf("redeem", "learn"), ops)
+        assertEquals(Place.Folders, model.place)
+    }
+
+    @Test
+    fun scanAsksForTheCameraFirstAndARefusalNeverOpensTheScanner() {
+        val ops = mutableListOf<String>()
+        val model = recording(ops)
+        model.acknowledged = true
+        model.inviteText = introducer
+        var launched = 0
+        var asked = 0
+        model.onScanTapped(cameraGranted = false, launchScanner = { launched += 1 }, askCamera = { asked += 1 })
+        assertEquals(1, asked)
+        assertEquals("the scanner must not open before the camera is allowed (#88 a)", 0, launched)
+        assertNull(model.fail)
+        model.onCameraAnswer(granted = false, launchScanner = { launched += 1 })
+        assertEquals("a refusal goes straight to our card, not the scanner", 0, launched)
+        assertEquals(Invite.SCAN_DENIED_MSG, model.fail?.message)
+        assertEquals(Invite.SCAN_DENIED_NEXT, model.fail?.next)
+        assertFalse(model.canRetry)
+        assertEquals(introducer, model.inviteText)
+        assertTrue(ops.isEmpty())
+        model.dismissFail()
+        model.onCameraAnswer(granted = true, launchScanner = { launched += 1 })
+        assertEquals(1, launched)
+        assertNull(model.fail)
+        model.onScanTapped(cameraGranted = true, launchScanner = { launched += 1 }, askCamera = { asked += 1 })
+        assertEquals(2, launched)
+        assertEquals(1, asked)
+        assertNull(model.fail)
+        assertTrue(ops.isEmpty())
+        assertNull(model.session)
+    }
+
     /** Grid calls are recorded. A scan must not add one until [AppModel.join]. */
     private fun recording(ops: MutableList<String>): AppModel = model { op, _ ->
         ops += op

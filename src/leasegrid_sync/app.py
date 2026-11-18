@@ -296,6 +296,58 @@ _LOCK_NOT_WRITABLE = (
 )
 
 
+#: Windows QLockFile reports PermissionError while a rival holds or is deleting
+#: the lock file (delete pending). That is contention, not a broken home: retry
+#: with growing waits, about 1.35 s in total (#90).
+_LOCK_CONTENTION_WAITS = (0.05, 0.1, 0.2, 0.4, 0.6)
+_LOCK_HELD = "held"
+_LOCK_BUSY = "busy"
+_LOCK_CONTENDED = "contended"
+
+
+def _lock_contention_sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _lock_file_contended(path: Path) -> bool:
+    """True when the lock file is there or is being deleted (stat denied)."""
+    try:
+        os.stat(path)
+    except FileNotFoundError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _try_lock(lock, path: Path) -> str:
+    """One tryLock, retrying a PermissionError as contention.
+
+    Returns ``_LOCK_HELD``, ``_LOCK_BUSY`` (refused, not for permission) or
+    ``_LOCK_CONTENDED`` (still refused for permission after every wait while
+    the lock file exists or is being deleted). Raises the lock-write SyncError
+    only when the refusals continue with no lock file at all: a real
+    permission problem with no rival.
+    """
+    from PyQt5.QtCore import QLockFile
+
+    waits = iter(_LOCK_CONTENTION_WAITS)
+    while True:
+        if lock.tryLock(0):
+            return _LOCK_HELD
+        if lock.error() != QLockFile.PermissionError:
+            return _LOCK_BUSY
+        wait = next(waits, None)
+        if wait is None:
+            break
+        _lock_contention_sleep(wait)
+    if _lock_file_contended(path):
+        return _LOCK_CONTENDED
+    raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
+
+
 def _lock_path_problem(path: Path) -> Optional[tuple[str, str]]:
     """A directory or a mode-000 file cannot be a lock. None when the path is usable.
 
@@ -383,7 +435,9 @@ def acquire_instance_lock(home: Path) -> bool:
     first so a starter that is still writing its PID can finish. A readable
     same-host PID is refused. The QLockFile object stays referenced until a
     clean quit, or the destructor would unlock it early. Returns False when
-    another live process holds the lock. Raises SyncError when the home cannot
+    another live process holds the lock. A Qt PermissionError while the lock
+    file exists or is being deleted (Windows) is retried for about 1.35 s and
+    then also returns False; it never starts a second instance. Raises SyncError when the home cannot
     be created, the home cannot hold a lock file, or the lock path is a
     directory, a mode-000 file, or a file this user cannot read.
     """
@@ -402,17 +456,19 @@ def acquire_instance_lock(home: Path) -> bool:
         return False
     lock = QLockFile(str(path))
     lock.setStaleLockTime(int(_LOCK_PIDLESS_MAX_AGE_S * 1000))
-    if not lock.tryLock(0):
-        if lock.error() == QLockFile.PermissionError:
-            raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
+    first = _try_lock(lock, path)
+    if first == _LOCK_CONTENDED:
+        return False
+    if first != _LOCK_HELD:
         if not _lock_pid_readable(lock):
             # The other starter may be between O_EXCL create and the PID write.
             _lock_writer_grace()
         if _lock_pid_readable(lock):
             return False
-        if not lock.tryLock(0):
-            if lock.error() == QLockFile.PermissionError:
-                raise SyncError(_LOCK_NOT_WRITABLE[0], _LOCK_NOT_WRITABLE[1])
+        second = _try_lock(lock, path)
+        if second == _LOCK_CONTENDED:
+            return False
+        if second != _LOCK_HELD:
             if _lock_pid_readable(lock):
                 return False
             state = _lock_read_state(path)

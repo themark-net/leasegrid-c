@@ -80,7 +80,7 @@ def _setup(tmp_path: Path, monkeypatch, script: list[str], lock_file: bool = Tru
     sleeps: list[float] = []
     monkeypatch.setattr(QtCore, "QLockFile", _Scripted)
     monkeypatch.setattr(appmod, "_lock_writer_grace", lambda: None)
-    monkeypatch.setattr(appmod, "_lock_contention_sleep", sleeps.append, raising=False)
+    monkeypatch.setattr(appmod, "_lock_contention_sleep", sleeps.append)
     return home, lock, sleeps
 
 

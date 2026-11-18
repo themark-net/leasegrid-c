@@ -184,8 +184,11 @@ def _pending_lock(tmp_path: Path):
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_bytes(b"")
     close = _delete_pending(lock)
+    # Delete pending: the name is still listed (os.stat falls back to the
+    # directory entry), but opening it is denied until the handle closes.
+    assert os.path.exists(lock)
     with pytest.raises(PermissionError):
-        os.stat(lock)  # delete pending: the name is there, access is denied
+        open(lock, "rb").close()
     return home, lock, close
 
 

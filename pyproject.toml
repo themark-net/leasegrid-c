@@ -22,6 +22,9 @@ leasegrid-sync = "leasegrid_sync.cli:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=7",
+  # Per-test timeout so a hung test fails with a stack dump instead of
+  # sitting until the CI job limit (#90).
+  "pytest-timeout>=2.3",
   # 0.17.1 is the version this gate was verified with. S403 is preview-only
   # there; a later ruff can move or drop it and change what CI rejects.
   "ruff==0.17.1",
@@ -62,6 +65,9 @@ pythonpath = ["src"]
 # Phone read-client sources live under android/ and register a Foolscap
 # remote name that Tahoe also registers. Host pytest must not import them.
 norecursedirs = ["android", "build", "dist", "*.egg-info", ".*"]
+# pytest-timeout: any single test over this many seconds fails with a stack
+# dump. Slow tests raise it with @pytest.mark.timeout(N).
+timeout = 120
 
 [tool.ruff]
 line-length = 100

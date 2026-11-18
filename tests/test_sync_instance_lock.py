@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import socket
 import stat
 import subprocess
@@ -792,64 +793,141 @@ def test_six_concurrent_starts_open_one_window(tmp_path: Path) -> None:
 # Six real processes call acquire_instance_lock on one home per round.
 # Holders are counted before any of them releases.
 _LOCK_RACE = r'''
+import faulthandler
 import os
+import signal
 import sys
 import time
+import traceback
 from pathlib import Path
 
 N = 6
+# Seconds one round may take before the race gives up. Every wait below is
+# bounded, so a dead or stuck worker fails the race instead of hanging it.
+ROUND_S = float(os.environ.get("LEASEGRID_RACE_ROUND_S") or "30")
+
+
+def _wait_for(path, what):
+    deadline = time.monotonic() + 3 * ROUND_S
+    while not path.exists():
+        if time.monotonic() > deadline:
+            sys.stderr.write("worker gave up waiting for %s (%s)\n" % (what, path))
+            sys.stderr.flush()
+            os._exit(3)
+        time.sleep(0.0005)
 
 
 def worker(k, root, trials):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    (root / ("pid%d" % k)).write_text(str(os.getpid()), encoding="utf-8")
     from leasegrid_sync.app import acquire_instance_lock, release_instance_lock
 
     for t in range(trials):
         d = root / str(t)
-        while not (d / "go").exists():
-            time.sleep(0.0005)
+        _wait_for(d / "go", "go %d" % t)
+        if os.environ.get("LEASEGRID_RACE_FAULT") == "crash:%d:%d" % (k, t):
+            raise RuntimeError("injected worker crash k=%d t=%d" % (k, t))
+        # If acquire_instance_lock itself blocks, dump where before the
+        # round times out, so a hang in the app's lock path is visible.
+        faulthandler.dump_traceback_later(ROUND_S * 0.8, exit=False)
         ok = acquire_instance_lock(d)
+        faulthandler.cancel_dump_traceback_later()
         (d / ("r%d_%d" % (k, int(ok)))).write_text("1", encoding="utf-8")
-        while not (d / "done").exists():
-            time.sleep(0.0005)
+        _wait_for(d / "done", "done %d" % t)
         if ok:
             release_instance_lock()
+
+
+def _run_worker(k, root, trials):
+    try:
+        worker(k, root, trials)
+    except BaseException:
+        traceback.print_exc()
+        sys.stderr.flush()
+        os._exit(1)
+    sys.stderr.flush()
     os._exit(0)
 
 
-def _wait_kids(kids):
-    if os.name == "posix":
-        for pid in kids:
-            os.waitpid(pid, 0)
-        return
-    for proc in kids:
-        proc.wait(timeout=120)
+def _kill_kids(kids):
+    for kid in kids:
+        try:
+            if os.name == "posix":
+                os.kill(kid, signal.SIGKILL)
+                os.waitpid(kid, 0)
+            else:
+                kid.kill()
+                kid.wait(timeout=10)
+        except Exception:
+            pass
+
+
+def _wait_kids(kids, root):
+    deadline = time.monotonic() + 3 * ROUND_S
+    bad = []
+    for k, kid in enumerate(kids):
+        if os.name == "posix":
+            while True:
+                pid, status = os.waitpid(kid, os.WNOHANG)
+                if pid:
+                    code = os.waitstatus_to_exitcode(status)
+                    break
+                if time.monotonic() > deadline:
+                    code = None
+                    break
+                time.sleep(0.01)
+        else:
+            try:
+                code = kid.wait(timeout=max(0.1, deadline - time.monotonic()))
+            except Exception:
+                code = None
+        if code != 0:
+            bad.append((k, code))
+    if bad:
+        _kill_kids(kids)
+        _fail("workers did not exit cleanly: %s" % bad, root)
+
+
+def _fail(msg, root):
+    print(msg)
+    for k in range(N):
+        log = root / ("w%d.log" % k)
+        text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
+        if text.strip():
+            print("--- worker %d ---" % k)
+            print(text.rstrip())
+    sys.stdout.flush()
+    os._exit(2)
 
 
 def main():
     trials = int(sys.argv[1])
     root = Path(sys.argv[2])
     kind = sys.argv[3]
+    kids = []
     if os.name == "posix":
-        kids = []
         for k in range(N):
+            log = open(root / ("w%d.log" % k), "w", encoding="utf-8")
             pid = os.fork()
             if pid == 0:
-                try:
-                    worker(k, root, trials)
-                except Exception:
-                    os._exit(1)
+                os.dup2(log.fileno(), 1)
+                os.dup2(log.fileno(), 2)
+                _run_worker(k, root, trials)
+            log.close()
             kids.append(pid)
     else:
         import subprocess
 
-        kids = []
         for k in range(N):
-            kids.append(
-                subprocess.Popen(
-                    [sys.executable, __file__, "worker", str(k), str(root), str(trials)]
+            with open(root / ("w%d.log" % k), "w", encoding="utf-8") as log:
+                kids.append(
+                    subprocess.Popen(
+                        [sys.executable, __file__, "worker", str(k), str(root), str(trials)],
+                        stdin=subprocess.DEVNULL,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                    )
                 )
-            )
     # Let the workers import Qt before the first round.
     time.sleep(2)
     multi = 0
@@ -866,11 +944,12 @@ def main():
         elif kind == "garbage":
             (d / ".leasegrid-sync.lock").write_text("junk\n", encoding="utf-8")
         (d / "go").write_text("", encoding="utf-8")
-        deadline = time.time() + 30
+        deadline = time.monotonic() + ROUND_S
         while len([p for p in d.iterdir() if p.name.startswith("r")]) < N:
-            if time.time() > deadline:
-                print("TIMEOUT round %d" % t)
-                os._exit(2)
+            if time.monotonic() > deadline:
+                seen = sorted(p.name for p in d.iterdir() if p.name.startswith("r"))
+                _kill_kids(kids)
+                _fail("TIMEOUT round %d: reported %s" % (t, seen), root)
             time.sleep(0.001)
         wins = len([p for p in d.iterdir() if p.name.endswith("_1")])
         if wins > 1:
@@ -878,18 +957,122 @@ def main():
         if wins == 0:
             zero += 1
         (d / "done").write_text("", encoding="utf-8")
-    _wait_kids(kids)
+    _wait_kids(kids, root)
     print("multi=%d zero=%d trials=%d kind=%s" % (multi, zero, trials, kind))
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "worker":
-        worker(int(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4]))
+        _run_worker(int(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4]))
     else:
         main()
 '''
 
 
+def _kill_pid(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGKILL if os.name == "posix" else signal.SIGTERM)
+    except OSError:
+        pass
+
+
+def _run_lock_race(script, rounds, root, kind, env, timeout):
+    """Run one race script and return (code, stdout, stderr) within timeout.
+
+    Output goes to files, not pipes. Workers inherit the race's stdout and
+    stderr, and with pipes a leftover worker kept them open, so reading to
+    end of file never finished. On Windows subprocess.run(timeout=...) then
+    reads again after the kill with no timeout, which hung CI for 30 minutes.
+    Any worker still alive afterwards is killed by the PID it wrote.
+    """
+    out_path = root.parent / (root.name + ".stdout")
+    err_path = root.parent / (root.name + ".stderr")
+    with open(out_path, "w", encoding="utf-8") as out, open(err_path, "w", encoding="utf-8") as err:
+        proc = subprocess.Popen(
+            [sys.executable, str(script), str(rounds), str(root), kind],
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=err,
+            env=env,
+        )
+        try:
+            code = proc.wait(timeout=timeout)
+            note = ""
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=30)
+            code = -1
+            note = "\nrace harness timed out after %ss\n" % timeout
+    for pid_file in root.glob("pid*"):
+        try:
+            pid = int(pid_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if _pid_alive(pid):
+            _kill_pid(pid)
+            note += "killed leftover race worker %d\n" % pid
+    stdout = out_path.read_text(encoding="utf-8", errors="replace")
+    stderr = err_path.read_text(encoding="utf-8", errors="replace") + note
+    return code, stdout, stderr
+
+
+def _pid_alive(pid: int) -> bool:
+    if os.name == "posix":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        try:
+            done, _ = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            done = 0
+        return done == 0
+    import ctypes
+
+    k32 = ctypes.windll.kernel32
+    handle = k32.OpenProcess(0x1000 | 0x00100000, False, pid)
+    if not handle:
+        return False
+    try:
+        return k32.WaitForSingleObject(handle, 0) == 0x102
+    finally:
+        k32.CloseHandle(handle)
+
+
+def test_lock_race_fails_fast_and_leaves_no_workers_when_one_dies(tmp_path: Path) -> None:
+    """A dead race worker must fail the race quickly, not hang CI.
+
+    CI run 44232510371 (Windows) sat in this module until the 30 minute job
+    timeout. When one worker died, the others waited forever for the next
+    round while still holding the parent's stdout and stderr pipes, so the
+    harness never saw end of file. The race must report the dead worker,
+    stop within its own budget, and leave no worker running.
+    """
+    script = tmp_path / "race.py"
+    script.write_text(_LOCK_RACE, encoding="utf-8")
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["LEASEGRID_RACE_FAULT"] = "crash:0:1"
+    env["LEASEGRID_RACE_ROUND_S"] = "5"
+    root = tmp_path / "faulty"
+    root.mkdir()
+    started = time.monotonic()
+    code, out, err = _run_lock_race(script, 3, root, "none", env, timeout=60)
+    took = time.monotonic() - started
+    assert code != 0, out + err
+    assert "injected worker crash k=0 t=1" in out + err
+    assert took < 45, "race took %.0fs to report a dead worker" % took
+    pids = [int(p.read_text()) for p in root.glob("pid*")]
+    assert len(pids) == 6, pids
+    deadline = time.monotonic() + 10
+    while any(_pid_alive(pid) for pid in pids) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not [pid for pid in pids if _pid_alive(pid)], "race workers still running"
+
+
+@pytest.mark.timeout(600)
 def test_six_callers_never_double_hold(tmp_path: Path) -> None:
     """Concurrent acquire_instance_lock calls never overlap on one home.
 
@@ -908,16 +1091,9 @@ def test_six_callers_never_double_hold(tmp_path: Path) -> None:
     for kind, expect_zero in (("empty", True), ("none", False), ("aged", False)):
         root = tmp_path / kind
         root.mkdir()
-        proc = subprocess.run(
-            [sys.executable, str(script), str(rounds), str(root), kind],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=180,
-            check=False,
-        )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        line = proc.stdout.strip().splitlines()[-1]
+        code, out, err = _run_lock_race(script, rounds, root, kind, env, timeout=180)
+        assert code == 0, out + err
+        line = out.strip().splitlines()[-1]
         assert line.startswith("multi=0 "), line
         if expect_zero:
             assert " zero=%d " % rounds in line, line

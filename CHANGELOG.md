@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Tests: the six-process lock race could hang Windows CI until the 30 minute job limit when one worker died, because the other workers kept the harness's output pipes open. The race now writes output to files, bounds every wait, reports the dead worker and kills leftovers. pytest-timeout fails any single test after 120 seconds with a stack dump ([#90](https://github.com/themark-net/leasegrid-c/issues/90)).
 - Docs, lab scripts and tests no longer name the internal lab hosts, the lab LAN or a developer checkout path. Lab docs use role names (`lab-introducer`, `lab-storage-a`, `<introducer-ip>`). Lab secrets default to `$LEASEGRID_LAB_DIR`, else `~/leasegrid-lab-private`, and a test fails if the old names come back ([#90](https://github.com/themark-net/leasegrid-c/issues/90)).
 
 ## 0.1.13 (2026-11-17)

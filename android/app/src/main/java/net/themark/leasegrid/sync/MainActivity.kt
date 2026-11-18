@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
         readAddedFile(folder, uri)
     }
 
-    private val qr = ScanQrWiring(
+    private val qr: ScanQrWiring = ScanQrWiring(
         model = { model },
         checkPermission = { name -> ContextCompat.checkSelfPermission(this, name) },
         requestPermission = { name -> askCamera.launch(name) },
@@ -63,7 +64,8 @@ class MainActivity : ComponentActivity() {
         pickRecovery.launch(arrayOf("*/*"))
     }
 
-    private val askCamera = registerForActivityResult(ActivityResultContracts.RequestPermission(), qr::onPermissionAnswer)
+    private val askCamera: ActivityResultLauncher<String> =
+        registerForActivityResult(ActivityResultContracts.RequestPermission(), qr::onPermissionAnswer)
 
     private fun openQrScanner() {
         qr.onScanTapped()

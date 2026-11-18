@@ -80,7 +80,7 @@ class SyncAppWiringTest {
         val opener = activity.substring(activity.indexOf("private fun openQrScanner()"))
             .substringBefore("\n    private fun ")
         assertTrue(opener, opener.contains("model.onScanTapped("))
-        assertTrue(opener, opener.contains("Manifest.permission.CAMERA"))
+        assertTrue(opener, opener.contains("CameraGate.PERMISSION"))
         assertFalse("the scanner launches only from launchQrScanner", opener.contains("scanQr.launch("))
         assertTrue(activity.contains("registerForActivityResult(ActivityResultContracts.RequestPermission())"))
         assertTrue(activity.contains("model.onCameraAnswer(granted, ::launchQrScanner)"))

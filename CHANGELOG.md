@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Docs and scripts no longer name a real home directory. They use `~/` or `$HOME`, and a test fails if a tracked file adds a `/home/<user>` or `/Users/<user>` path ([#89](https://github.com/themark-net/leasegrid-c/issues/89)).
+- Android Scan QR: the camera-permission check, the permission name and the scanner's refusal flag are decided in `CameraGate`, covered by a JVM test. MainActivity only passes the Android values in ([#89](https://github.com/themark-net/leasegrid-c/issues/89)).
+
 ## 0.1.12 (2026-11-17)
 
 - No Android APK in this release. Android changes are in the source only.

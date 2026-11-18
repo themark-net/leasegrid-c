@@ -701,7 +701,9 @@ def test_scan_asks_for_the_camera_first_and_the_fail_card_hides_retry_without_an
     activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
     opener = _block(activity, "private fun openQrScanner()", "\n    private fun ")
     assert "model.onScanTapped(" in opener
-    assert "Manifest.permission.CAMERA" in opener
+    assert "CameraGate.PERMISSION" in opener
+    gate = (APP_MODEL.parent / "CameraGate.kt").read_text(encoding="utf-8")
+    assert "const val PERMISSION: String = Manifest.permission.CAMERA" in gate
     assert "scanQr.launch(" not in opener
     assert "registerForActivityResult(ActivityResultContracts.RequestPermission())" in activity
     assert "model.onCameraAnswer(granted, ::launchQrScanner)" in activity

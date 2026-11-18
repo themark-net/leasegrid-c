@@ -1,8 +1,6 @@
 package net.themark.leasegrid.sync
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -20,6 +18,7 @@ import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
 import net.themark.leasegrid.sync.recovery.MAX_RECOVERY_BYTES
 import net.themark.leasegrid.sync.ui.AppModel
+import net.themark.leasegrid.sync.ui.CameraGate
 import net.themark.leasegrid.sync.ui.SyncApp
 import net.themark.leasegrid.sync.ui.TooLarge
 import net.themark.leasegrid.sync.ui.WriteCopy
@@ -53,7 +52,7 @@ class MainActivity : ComponentActivity() {
     private val scanQr = registerForActivityResult(ScanContract()) { result ->
         model.onScanResult(
             contents = result.contents,
-            missingCameraPermission = result.originalIntent?.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION) == true,
+            missingCameraPermission = CameraGate.scanRefused(result.originalIntent?.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION)),
         )
     }
 
@@ -67,10 +66,9 @@ class MainActivity : ComponentActivity() {
 
     private fun openQrScanner() {
         model.onScanTapped(
-            cameraGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
+            cameraGranted = CameraGate.isGranted(ContextCompat.checkSelfPermission(this, CameraGate.PERMISSION)),
             launchScanner = ::launchQrScanner,
-            askCamera = { askCamera.launch(Manifest.permission.CAMERA) },
+            askCamera = { askCamera.launch(CameraGate.PERMISSION) },
         )
     }
 

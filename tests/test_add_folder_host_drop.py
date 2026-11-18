@@ -44,6 +44,8 @@ def _mf_cli(spool: Path, drop_on: Path, mode_file: Path) -> str:
       blip  - the hosts blink out during the add and are back when it ends; exit 1
       slow  - the add stalls on a dropped host (sleeps past the timeout); exit 1
       lost  - the daemon finished the add but the answer was lost; exit 1
+      partial - one of three hosts drops during the add, which still
+                completes at shares.needed (2) below shares.happy (3); exit 0
     leave removes the folder from the daemon's list.
     """
     return "\n".join(
@@ -72,6 +74,10 @@ def _mf_cli(spool: Path, drop_on: Path, mode_file: Path) -> str:
             "        drop_on.write_text('dropped', encoding='utf-8')",
             "    if mode == 'slow':",
             "        time.sleep(4)",
+            "    if mode == 'partial':",
+            "        Path(%r).write_text('2', encoding='utf-8')" % str(drop_on.with_name("hosts-left")),
+            "        save(rows() + [{'name': name, 'path': args[-1]}])",
+            "        raise SystemExit(0)",
             "    if mode == 'lost':",
             "        save(rows() + [{'name': name, 'path': args[-1]}])",
             "    sys.stderr.write('Traceback: tahoe 500 UploadUnhappinessError at pb://secret@x/y\\n')",
@@ -79,6 +85,20 @@ def _mf_cli(spool: Path, drop_on: Path, mode_file: Path) -> str:
             "raise SystemExit(0)",
         ]
     )
+
+
+class _PartialGrid(_Grid):
+    """The fake grid, plus ``hosts-left``: when the fake add writes it, only that many stay up."""
+
+    def body(self) -> dict:
+        left = self.drop_on.with_name("hosts-left")
+        if left.exists() and not self.drop_on.exists():
+            up = int(left.read_text(encoding="utf-8"))
+            data = super().body()
+            for i, server in enumerate(data["servers"], start=1):
+                server["connection_status"] = "connected" if i <= up else ""
+            return data
+        return super().body()
 
 
 @pytest.fixture
@@ -93,7 +113,7 @@ def drop_rig(tmp_path: Path, monkeypatch):
 
     def build(mode: str):
         mode_file.write_text(mode, encoding="utf-8")
-        g = _Grid(3, drop_on)
+        g = _PartialGrid(3, drop_on)
         d = _Daemon(spool)
         g.start()
         d.start()
@@ -122,6 +142,9 @@ def drop_rig(tmp_path: Path, monkeypatch):
         )
         window = MainWindow(nodedir=nodedir, home=home, autoload=False)
         window.poll.stop()
+        # Joined, so refresh() really lists folders. Without this the "no row"
+        # checks below would pass on an empty table that was never filled.
+        window._joined = True
         made["w"] = window
         return window, d, spool
 
@@ -148,8 +171,10 @@ def _click_add(window: MainWindow, folder: Path) -> tuple[str, float]:
 def _assert_clean(window: MainWindow, daemon: _Daemon, spool: Path, text: str, folder: Path) -> None:
     assert spool.with_suffix(".called").exists(), "magic-folder add never ran"
     assert daemon.folders() == {}, "the failed add left a folder in Magic Folder"
+    rows_before = window.table.rowCount()
     window.refresh()
     assert window.table.rowCount() == 0, "the failed add shows up in the folder list"
+    assert rows_before == 0
     for bad in ("#30", "Traceback", "500", "pb://", "Retry", "Added folder", str(folder)):
         assert bad not in text, (bad, text)
 
@@ -240,3 +265,23 @@ def test_after_a_drop_the_next_add_with_all_hosts_back_succeeds(drop_rig, tmp_pa
         text, _ = _click_add(window, tmp_path / "docs")
     assert "Added folder docs" in text
     assert list(d.folders()) == ["docs"]
+
+
+@pytest.mark.timeout(60)
+def test_an_add_that_completes_at_needed_below_happy_succeeds_with_no_error_pair(drop_rig, tmp_path: Path):
+    """PM 3:37am (option A): one of three hosts drops mid-add and the add still completes.
+
+    Magic Folder's mutable directories need shares.needed (2) hosts, so the
+    folder is real and readable. Sync reports it as added, with no hosts pair
+    and no generic pair, and keeps it (no leave).
+    """
+    window, d, spool = drop_rig("partial")
+    text, _ = _click_add(window, tmp_path / "docs")
+    assert text == "Added folder docs"
+    for bad in (HOSTS_MSG, "hosts are connected", GENERIC_MSG, "FAIL", "Next:", "Retry"):
+        assert bad not in text, (bad, text)
+    status = window.tahoe.connection_status()
+    assert status.servers_connected == 2, "the grid did not drop a host during the add"
+    assert list(d.folders()) == ["docs"]
+    assert not spool.with_suffix(".left").exists(), "Sync removed a folder that was added"
+    assert window.table.rowCount() == 1

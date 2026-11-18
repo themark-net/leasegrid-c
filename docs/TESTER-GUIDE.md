@@ -102,17 +102,17 @@ The chip at the top right does not print the word Connected:
 
 **Storage servers** uses the word **Connected** on a computer whose Tahoe connection is up. Click the chip to open that list. Folder Status (**Up to date**, **Idle**, **Conflict**, **FAIL**) is a different column.
 
-## Known issue: Add folder HTTP 500 ([#30](https://github.com/themark-net/leasegrid-c/issues/30))
+## Add folder and hosts ([#30](https://github.com/themark-net/leasegrid-c/issues/30), fixed)
 
-[#30](https://github.com/themark-net/leasegrid-c/issues/30) is open. It does not mean the AppImage failed to start.
+A new folder needs hosts connected to store it. Before a v0.1.4 fix, unpaid Join between the two lab hosts reached Connected while the storage count settled from 3 to 0, and **Add folder** then returned Magic Folder HTTP 500. That is fixed; the window and `--dogfood-folder` never show an issue number.
 
-A new folder needs enough hosts connected to store it (the grid's `shares.happy`). On an AppImage built for glibc 2.35 or newer, unpaid Join between the two lab hosts reached Connected while the storage count settled from 3 to 0, and **Add folder** then returned Magic Folder HTTP 500. The same class of error later cleared when both homes were on one of the hosts. It did not clear on the other.
+**Add folder** checks the hosts first:
 
-On this build, **Add folder** checks the hosts first:
-
-- Too few hosts: it says **Can't add a folder yet. Only X of N hosts are connected.** with **Next: Wait until Hosts shows N connected, then click Add folder again.** X and N are the live counts. The folder picker does not open. Wait for the **Hosts** line on **Folders** to reach N, then click **Add folder** again.
-- Hosts that drop while the folder is being added get the same line.
-- Enough hosts and still HTTP 500, or the host count can't be read: it says **Couldn't add the folder.** with **Next: Wait a minute, then click Add folder again.** The window and `--dogfood-folder` never show an issue number. The row never says **Up to date**. Say that in the bug report, with the **Hosts** line, and mention #30.
+- Too few hosts before the add: it says **Can't add a folder yet. Only X of N hosts are connected.** with **Next: Wait until Hosts shows N connected, then click Add folder again.** X and N are the live counts (N is the grid's `shares.happy`). The folder picker does not open.
+- A host that drops while the folder is being added: the add can still finish. A new folder needs only `shares.needed` hosts (2 on a 2/3/3 grid), so with 2 of 3 hosts the folder is added and shows **Added folder NAME** with no error. The other host gets its copy when it reconnects. This is expected, not a bug.
+- The add fails and fewer than N hosts are connected: **Can't add a folder yet. Only X of N hosts are connected.** with its Next line, and no folder row is left behind.
+- A host that hangs during the add (still shown as connected): after about two minutes, **Couldn't add the folder.** with **Next: Wait a minute, then click Add folder again.** No folder row is left behind, and clicking **Add folder** again once the host is back works.
+- Enough hosts and still a failure, or the host count can't be read: the same **Couldn't add the folder.** pair. Say that in the bug report, with the **Hosts** line.
 
 A join link cut short in chat or mail says **That join link is cut off.** with **Next: Ask the person who invited you to send the whole link again, then paste all of it here.** in the window and in `leasegrid-sync --join`.
 

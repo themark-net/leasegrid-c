@@ -1344,9 +1344,8 @@ def test_magic_folder_http_get_hides_body(tmp_path: Path, monkeypatch):
     with pytest.raises(SyncError) as exc:
         ctl._http_get("/v1/magic-folder")
     blob = exc.value.banner()
-    assert "#30" in blob
-    assert "Magic Folder HTTP 500" in blob
-    assert "docs/TESTERS.md" in blob
+    assert "Couldn't add the folder." in blob
+    assert "#30" not in blob
     assert_no_raw_user_text(blob)
     with pytest.raises(SyncError) as exc:
         ctl._http_get("/v1/magic-folder/Photos/file-status")
@@ -1411,8 +1410,8 @@ def test_magic_folder_http_post_hides_body(tmp_path: Path, monkeypatch):
     with pytest.raises(SyncError) as exc:
         ctl._http_post("/v1/magic-folder/Photos/scan-local")
     blob = exc.value.banner()
-    assert "#30" in blob
-    assert "Magic Folder HTTP 500" in blob
+    assert "Couldn't add the folder." in blob
+    assert "#30" not in blob
     assert_no_raw_user_text(blob)
     with pytest.raises(SyncError) as exc:
         ctl._http_post("/v1/magic-folder/Photos/participants", body={"author": {"name": "a"}})
@@ -1679,17 +1678,16 @@ def test_refresh_http_500_does_not_say_folder_not_added(tmp_path: Path, monkeypa
         with pytest.raises(SyncError) as exc:
             ctl.list_folders()
     blob = exc.value.banner()
-    assert "folder not added" not in blob.lower()
-    assert "could not refresh folders" in blob
-    assert "Magic Folder HTTP 500" in blob
-    assert "#30" in blob
+    assert "Couldn't add the folder." not in blob
+    assert "Couldn't refresh folders." in blob
+    assert "#30" not in blob
     assert_no_raw_user_text(blob)
 
     with pytest.raises(SyncError) as exc:
         ctl._http_get("/v1/magic-folder")
     direct = exc.value.banner()
-    assert "folder not added" in direct
-    assert "could not refresh folders" not in direct
+    assert "Couldn't add the folder." in direct
+    assert "Couldn't refresh folders." not in direct
 
 
 def test_refresh_row_http_500_does_not_say_folder_not_added(tmp_path: Path, monkeypatch):
@@ -1716,9 +1714,9 @@ def test_refresh_row_http_500_does_not_say_folder_not_added(tmp_path: Path, monk
         rows = ctl.list_folders()
     assert len(rows) == 1
     assert rows[0].status == "FAIL"
-    assert "folder not added" not in rows[0].detail.lower()
-    assert "could not refresh folders" in rows[0].detail
-    assert "HTTP 500" in rows[0].detail
+    assert "Couldn't add the folder." not in rows[0].detail
+    assert "Couldn't refresh folders." in rows[0].detail
+    assert "#30" not in rows[0].detail
     assert_no_raw_user_text(rows[0].detail)
 
 
@@ -1808,23 +1806,18 @@ def test_add_folder_daemon_exit_still_says_folder_not_added(tmp_path: Path, monk
 def test_refresh_http_500_maps_on_status_code_not_text(tmp_path: Path, monkeypatch):
     """#30 on refresh is the HTTP status, not the words "HTTP 500" in the sentence."""
     ctl = _mf_api_ready(tmp_path)
-    fake = SyncError(
-        "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
-        "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
-    )
+    fake = SyncError("Couldn't add the folder.", "Wait a minute, then click Add folder again.")
     assert fake.http_status is None
     mapped = ctl._refresh_http_message(fake)
-    assert "could not refresh folders" not in mapped.message
-    assert "folder not added" in mapped.message
+    assert "Couldn't refresh folders." not in mapped.message
+    assert mapped.message == "Couldn't add the folder."
     assert mapped.http_status != 500
 
     other = SyncError(
-        "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
-        "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
-        http_status=404,
+        "Couldn't add the folder.", "Wait a minute, then click Add folder again.", http_status=404
     )
     mapped_other = ctl._refresh_http_message(other)
-    assert "could not refresh folders" not in mapped_other.message
+    assert "Couldn't refresh folders." not in mapped_other.message
     assert mapped_other.http_status == 404
 
     def raise_fake(_path, base=None, timeout=10.0):
@@ -1835,8 +1828,8 @@ def test_refresh_http_500_maps_on_status_code_not_text(tmp_path: Path, monkeypat
     ):
         with pytest.raises(SyncError) as listed:
             ctl.list_folders()
-    assert "could not refresh folders" not in listed.value.message
-    assert "folder not added" in listed.value.message
+    assert "Couldn't refresh folders." not in listed.value.message
+    assert listed.value.message == "Couldn't add the folder."
     assert listed.value.http_status != 500
 
     def boom(req, timeout=10):
@@ -1848,11 +1841,9 @@ def test_refresh_http_500_maps_on_status_code_not_text(tmp_path: Path, monkeypat
             ctl.list_folders()
     assert exc.value.http_status == 500
     blob = exc.value.banner()
-    assert "could not refresh folders" in blob
-    assert "folder not added" not in blob.lower()
-    assert "Magic Folder HTTP 500" in blob
-    assert "#30" in blob
-    assert "docs/TESTERS.md" in blob
+    assert "Couldn't refresh folders." in blob
+    assert "Couldn't add the folder." not in blob
+    assert "#30" not in blob
     assert_no_raw_user_text(blob)
 
 
@@ -1877,7 +1868,8 @@ def test_http_failure_names_30_only_for_500(tmp_path: Path, code: int, is_30: bo
     err = ctl._http_failure(_poison_http(code))
     blob = err.message + " " + err.next_hint
     assert err.http_status == code
-    assert ("#30" in blob) is is_30
+    assert "#30" not in blob
+    assert (err.message == "Couldn't add the folder.") is is_30
     if not is_30:
         assert "Magic Folder API error (%d)." % code == err.message
     assert_no_raw_user_text(blob)
@@ -1889,7 +1881,7 @@ def test_http_failure_names_30_only_for_500(tmp_path: Path, code: int, is_30: bo
 def test_add_and_refresh_name_30_only_for_500(
     tmp_path: Path, monkeypatch, code: int, is_30: bool
 ):
-    """Add says #30 only on 500; refresh rewrites to 'could not refresh' only on 500."""
+    """500 gets Design's generic pair on add and the refresh pair on a list. No issue number."""
     ctl = _mf_api_ready(tmp_path)
 
     def boom(req, timeout=10):
@@ -1905,11 +1897,11 @@ def test_add_and_refresh_name_30_only_for_500(
     add = posted.value.message + " " + posted.value.next_hint
     assert listed.value.http_status == code
     assert posted.value.http_status == code
-    assert ("#30" in refresh) is is_30
-    assert ("#30" in add) is is_30
-    assert ("could not refresh folders" in refresh) is is_30
-    assert ("folder not added" in add) is is_30
-    assert "folder not added" not in refresh
+    assert "#30" not in refresh
+    assert "#30" not in add
+    assert ("Couldn't refresh folders." in refresh) is is_30
+    assert ("Couldn't add the folder." in add) is is_30
+    assert "Couldn't add the folder." not in refresh
     assert_no_raw_user_text(refresh)
     assert_no_raw_user_text(add)
 
@@ -1921,13 +1913,11 @@ def test_refresh_http_message_rewrites_only_status_500(tmp_path: Path, code: int
     """The refresh rewrite keys on http_status == 500 alone, even for add-shaped text."""
     ctl = _mf_api_ready(tmp_path)
     err = SyncError(
-        "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
-        "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
-        http_status=code,
+        "Couldn't add the folder.", "Wait a minute, then click Add folder again.", http_status=code
     )
     mapped = ctl._refresh_http_message(err)
     assert mapped.http_status == code
-    assert ("could not refresh folders" in mapped.message) is is_30
+    assert (mapped.message == "Couldn't refresh folders.") is is_30
     assert (mapped is err) is (not is_30)
 
 

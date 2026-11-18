@@ -71,7 +71,8 @@ def test_http_wui_still_rejected():
 def test_join_url_without_fragment_fails_clearly():
     with pytest.raises(SyncError) as exc:
         parse_invite("http://alice.i2p/join")
-    assert "full link" in exc.value.next_hint.lower() or "#" in exc.value.next_hint
+    assert exc.value.message == "That join link is cut off."
+    assert "whole link" in exc.value.next_hint
 
 
 def test_invite_page_is_self_contained_i2p_html():

@@ -225,7 +225,8 @@ def test_too_few_hosts_exits_nonzero_before_magic_folder_is_asked(grid, tmp_path
     rc = _run(window, tmp_path / "sync")
     err = capsys.readouterr().err
     assert rc != 0
-    assert "folder not added. Hosts connected: 1 of 3 needed." in err
+    assert "Can't add a folder yet. Only 1 of 3 hosts are connected." in err
+    assert "Next: Wait until Hosts shows 3 connected, then click Add folder again." in err
     assert "#30" not in err
     assert not spool.with_suffix(".called").exists(), "magic-folder add ran with too few hosts"
 
@@ -256,11 +257,11 @@ def test_hosts_dropping_mid_add_name_the_hosts_not_issue_30(grid, tmp_path: Path
     err = capsys.readouterr().err
     assert spool.with_suffix(".called").exists()
     assert rc != 0
-    assert "folder not added. Hosts connected: 0 of 3 needed." in err
+    assert "Can't add a folder yet. Only 0 of 3 hosts are connected." in err
     assert "#30" not in err
 
 
-def test_http_500_with_enough_hosts_still_names_issue_30(grid, tmp_path: Path, capsys):
+def test_http_500_with_enough_hosts_prints_the_generic_pair(grid, tmp_path: Path, capsys):
     window, _g, d, _spool = grid(hosts=3)
     real_add = window.mf.add_folder
 
@@ -272,5 +273,7 @@ def test_http_500_with_enough_hosts_still_names_issue_30(grid, tmp_path: Path, c
         rc = _run(window, tmp_path / "sync")
     err = capsys.readouterr().err
     assert rc != 0
-    assert "#30" in err
-    assert "Hosts connected" not in err
+    assert "Couldn't add the folder." in err
+    assert "Next: Wait a minute, then click Add folder again." in err
+    assert "#30" not in err
+    assert "hosts are connected" not in err

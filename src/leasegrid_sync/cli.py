@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="INVITE",
         default=None,
         help="Headless: join from a link (http://….i2p/join#… or leasegrid:join#…), a short "
-        "`tahoe invite` code (7-word-word), or a pb:// introducer furl. Creates and starts "
+        "`tahoe invite` code (7-word-word), or a pb:// introducer address. Creates and starts "
         "a Tahoe node (client+storage) if needed; pass --client-only to skip offering disk.",
     )
     p.add_argument(

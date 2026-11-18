@@ -110,9 +110,11 @@ A new folder needs enough hosts connected to store it (the grid's `shares.happy`
 
 On this build, **Add folder** checks the hosts first:
 
-- Too few hosts: it says **folder not added. Hosts connected: N of M needed.** with **Next: wait until Hosts shows M connected, then Retry Add folder.** The folder picker does not open. Wait for the **Hosts** line on **Folders** to reach M, then click **Add folder** again.
+- Too few hosts: it says **Can't add a folder yet. Only X of N hosts are connected.** with **Next: Wait until Hosts shows N connected, then click Add folder again.** X and N are the live counts. The folder picker does not open. Wait for the **Hosts** line on **Folders** to reach N, then click **Add folder** again.
 - Hosts that drop while the folder is being added get the same line.
-- Enough hosts and still HTTP 500: it says **folder not added. This is known issue #30 (Magic Folder HTTP 500).** The row never says **Up to date**. Say that in the bug report, with the **Hosts** line, and mention #30.
+- Enough hosts and still HTTP 500, or the host count can't be read: it says **Couldn't add the folder.** with **Next: Wait a minute, then click Add folder again.** The window and `--dogfood-folder` never show an issue number. The row never says **Up to date**. Say that in the bug report, with the **Hosts** line, and mention #30.
+
+A join link cut short in chat or mail says **That join link is cut off.** with **Next: Ask the person who invited you to send the whole link again, then paste all of it here.** in the window and in `leasegrid-sync --join`.
 
 A grid that charges for storage can also refuse an upload until **More → Credit** has a balance. That banner points at Credit. #30 was an unpaid join.
 

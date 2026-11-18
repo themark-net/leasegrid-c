@@ -235,7 +235,8 @@ def test_bad_furl_then_a_good_one_joins(ui: MainWindow, tmp_path: Path):
         joiner.invite_edit.setText("pb://short")
         joiner.on_join_invite()
         malformed = joiner.join_error.text()
-        assert "malformed" in malformed.lower()
+        assert "That join link is cut off." in malformed
+        assert "furl" not in malformed.lower()
         assert "pb://short" not in malformed
         assert "pb://" not in malformed
         assert joiner.stack.currentWidget() is joiner.join_page
@@ -2816,8 +2817,7 @@ def test_add_folder_with_no_hosts_connected_stops_before_the_picker(ui: MainWind
     assert not dlg.called
     assert not add.called
     text = ui.folder_error.text()
-    assert "folder not added" in text
-    assert "0 of 3" in text
+    assert "Can't add a folder yet. Only 0 of 3 hosts are connected." in text
     assert "Hosts shows 3 connected" in text
     assert "#30" not in text
 
@@ -2861,22 +2861,43 @@ def test_add_folder_500_after_hosts_dropped_names_the_hosts_not_issue_30(ui: Mai
     with patch.object(ui.tahoe, "connection_status", side_effect=lambda: next(statuses)), \
          patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
          patch.object(ui.mf, "add_folder", side_effect=SyncError(
-             "folder not added. This is known issue #30 (Magic Folder HTTP 500).", "Retry.", http_status=500)):
+             "Couldn't add the folder.", "Wait a minute, then click Add folder again.", http_status=500)):
         ui.on_add_folder()
     text = ui.folder_error.text()
-    assert "0 of 3" in text
+    assert "Only 0 of 3 hosts are connected." in text
     assert "#30" not in text
 
 
-def test_add_folder_500_with_enough_hosts_still_names_issue_30(ui: MainWindow, tmp_path: Path):
+def test_add_folder_500_with_enough_hosts_shows_the_generic_pair(ui: MainWindow, tmp_path: Path):
     _enter(ui)
     _happy(ui, 3)
     with patch.object(ui.tahoe, "connection_status", return_value=_hosts(3)), \
          patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
          patch.object(ui.mf, "add_folder", side_effect=SyncError(
-             "folder not added. This is known issue #30 (Magic Folder HTTP 500).", "Retry.", http_status=500)):
+             "Couldn't add the folder.", "Wait a minute, then click Add folder again.", http_status=500)):
         ui.on_add_folder()
-    assert "#30" in ui.folder_error.text()
+    text = ui.folder_error.text()
+    assert "Couldn't add the folder." in text
+    assert "Wait a minute, then click Add folder again." in text
+    assert "#30" not in text
+
+
+def test_add_folder_500_when_the_host_count_cannot_be_read_shows_the_generic_pair(
+    ui: MainWindow, tmp_path: Path
+):
+    """Design (#90): no readable count and a 500 is the generic pair, never an issue number."""
+    _enter(ui)
+    _happy(ui, 3)
+    with patch.object(ui.tahoe, "connection_status", side_effect=RuntimeError("status gone")), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", side_effect=SyncError(
+             "Couldn't add the folder.", "Wait a minute, then click Add folder again.", http_status=500)):
+        ui.on_add_folder()
+    text = ui.folder_error.text()
+    assert "Couldn't add the folder." in text
+    assert "Wait a minute, then click Add folder again." in text
+    assert "#" not in text
+    assert "Retry" not in text
 
 
 def test_add_folder_when_tahoe_is_unreachable_keeps_the_old_path(ui: MainWindow, tmp_path: Path):

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
-from .backend import SyncError, is_wormhole_code, validate_introducer_furl
+from .backend import CUT_LINK_MSG, CUT_LINK_NEXT, SyncError, is_wormhole_code, validate_introducer_furl
 from .pgp_words import WORMHOLE_WORDS
 
 # Tahoe 1.20 prints this once the inviter is parked on the relay.
@@ -133,10 +133,7 @@ def parse_invite(raw: str) -> ParsedInvite:
         parsed = urlparse(text)
         frag = parsed.fragment or parsed.query
         if not frag:
-            raise SyncError(
-                "could not join this friendnet. That link has no address.",
-                "paste the full link (it includes a #…); Retry.",
-            )
+            raise SyncError(CUT_LINK_MSG, CUT_LINK_NEXT)
         out = _from_fragment(frag)
         out.url = text
         out.origin = NATIVE_SCHEME
@@ -158,10 +155,7 @@ def parse_invite(raw: str) -> ParsedInvite:
             out.url = text
             return out
         if looks_join:
-            raise SyncError(
-                "could not join this friendnet. That page has no invite in the link.",
-                "ask for the full link (it includes a #…); Retry.",
-            )
+            raise SyncError(CUT_LINK_MSG, CUT_LINK_NEXT)
         raise SyncError(
             "could not join this friendnet. That looks like a web URL.",
             "Leasegrid Sync does not use the Tahoe web UI. Paste a short code or a join link.",
@@ -174,10 +168,7 @@ def _from_fragment(frag: str, origin: str = "") -> ParsedInvite:
     data = parse_qs(frag, keep_blank_values=True)
     vals = data.get("i") or []
     if not vals:
-        raise SyncError(
-            "could not join this friendnet. That link has no address.",
-            "ask for the full link (it includes a #…); Retry.",
-        )
+        raise SyncError(CUT_LINK_MSG, CUT_LINK_NEXT)
     furl = validate_introducer_furl(vals[0])
     shares = None
     try:

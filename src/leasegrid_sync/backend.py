@@ -122,6 +122,19 @@ class FolderRow:
 ISSUE_30_HTTP_STATUS = 500
 
 
+#: Design's copy for a join link cut short in chat or mail (#90). The window
+#: and the CLI show it as written: no "furl", no issue number, no Retry.
+CUT_LINK_MSG = "That join link is cut off."
+CUT_LINK_NEXT = "Ask the person who invited you to send the whole link again, then paste all of it here."
+#: Design's generic Add folder failure: a 500 with enough hosts, or a host
+#: count that cannot be read.
+ADD_FOLDER_FAIL_MSG = "Couldn't add the folder."
+ADD_FOLDER_FAIL_NEXT = "Wait a minute, then click Add folder again."
+#: The same 500 while only listing folders. Listing never adds a folder.
+REFRESH_FAIL_MSG = "Couldn't refresh folders."
+REFRESH_FAIL_NEXT = "Wait a minute, then Restart Sync."
+
+
 def is_issue_30_status(status: Optional[int]) -> bool:
     """True only for HTTP 500 (#30). ``None`` (no HTTP response) is never #30."""
     return status is not None and status == ISSUE_30_HTTP_STATUS
@@ -1418,13 +1431,13 @@ def validate_introducer_furl(raw: str) -> str:
     if not text:
         raise SyncError(
             "could not join this friendnet. Invite is empty.",
-            "paste the invite from your inviter (a short code like 7-word-word, or a pb:// furl).",
+            "paste the invite from your inviter (a short code like 7-word-word, or a pb:// address).",
         )
     low = text.lower()
     if low.startswith("http://") or low.startswith("https://"):
         raise SyncError(
             "could not join this friendnet. That looks like a web URL.",
-            "Leasegrid Sync does not use the Tahoe web UI. Paste the invite code or pb:// furl.",
+            "Leasegrid Sync does not use the Tahoe web UI. Paste the invite code or pb:// address.",
         )
     if not text.startswith("pb://"):
         raise SyncError(
@@ -1447,10 +1460,7 @@ def validate_introducer_furl(raw: str) -> str:
         or "@" in location
         or len(swiss) < FURL_MIN_SWISSNUM
     ):
-        raise SyncError(
-            "could not join this friendnet. Invite furl is malformed.",
-            "get a fresh code from your inviter; check network; Retry.",
-        )
+        raise SyncError(CUT_LINK_MSG, CUT_LINK_NEXT)
     return text
 
 
@@ -2273,18 +2283,15 @@ class MagicFolderCtl:
         """Buyer copy for a Magic Folder HTTP error.
 
         The body and ``exc.reason`` can hold a traceback or a furl. Drain the
-        body and do not copy it. Status 500 is known issue #30.
+        body and do not copy it. Status 500 (#30) gets Design's generic pair;
+        the window and the CLI never show the issue number.
         """
         try:
             exc.read()
         except Exception:
             pass
         if is_issue_30_status(exc.code):
-            return SyncError(
-                "folder not added. This is known issue #30 (Magic Folder HTTP 500).",
-                "Retry. If it keeps failing, file a bug per docs/TESTERS.md.",
-                http_status=exc.code,
-            )
+            return SyncError(ADD_FOLDER_FAIL_MSG, ADD_FOLDER_FAIL_NEXT, http_status=exc.code)
         return SyncError(
             "Magic Folder API error (%s)." % exc.code,
             "Restart Sync. If it keeps failing, file a bug per docs/TESTERS.md.",
@@ -2324,6 +2331,8 @@ class MagicFolderCtl:
 
     def _refresh_add_copy(self, exc: SyncError) -> SyncError:
         """A folder list did not try to add a folder. Keep the Next line."""
+        if exc.message == ADD_FOLDER_FAIL_MSG and is_issue_30_status(exc.http_status):
+            return SyncError(REFRESH_FAIL_MSG, REFRESH_FAIL_NEXT, http_status=exc.http_status)
         prefix = "folder not added. "
         if not exc.message.startswith(prefix):
             return exc

@@ -58,7 +58,8 @@ def test_cut_link_fails_before_a_node_is_made(tmp_path: Path, furl: str):
             with pytest.raises(SyncError) as exc:
                 client.join_invite(form)
         blob = exc.value.banner()
-        assert "malformed" in blob, form
+        assert "That join link is cut off." in blob, form
+        assert "furl" not in blob.lower()
         assert "Introducer is unreachable" not in blob
         assert "\nNext:" in blob
         assert furl not in blob
@@ -96,4 +97,4 @@ def test_real_shape_furls_still_parse():
 def test_seven_character_swissnum_is_cut():
     with pytest.raises(SyncError) as exc:
         parse_invite("pb://hashhashhash@127.0.0.1:45001/swissnu")
-    assert "malformed" in exc.value.banner()
+    assert "That join link is cut off." in exc.value.banner()

@@ -1152,8 +1152,9 @@ def _storage_count(status: ConnectionStatus) -> int:
 
 
 #: #30: a new folder makes Tahoe directories, which need shares.happy hosts.
-ADD_FOLDER_HOSTS_MSG = "folder not added. Hosts connected: %d of %d needed."
-ADD_FOLDER_HOSTS_NEXT = "wait until Hosts shows %d connected, then Retry Add folder."
+#: Design's copy (#90): live counts, no issue number, no Retry.
+ADD_FOLDER_HOSTS_MSG = "Can't add a folder yet. Only %d of %d hosts are connected."
+ADD_FOLDER_HOSTS_NEXT = "Wait until Hosts shows %d connected, then click Add folder again."
 #: --dogfood-folder runs right after a join, when a healthy grid can still be
 #: settling (wait_connected stops at one host). It waits this long for
 #: shares.happy hosts. The window does not wait: a person can Retry.

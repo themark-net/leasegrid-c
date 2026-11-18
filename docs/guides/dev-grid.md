@@ -1,6 +1,6 @@
 # Local client/server in two shells
 
-Runs the whole Leasegrid loop on one Linux box with no friendnet, no nimo, no
+Runs the whole Leasegrid loop on one Linux box with no friendnet, no lab-client, no
 VMs: a Tahoe introducer, three storage nodes, the lab ZKAP issuer/faucet, and the
 native **Leasegrid Sync** window joining from an invite like a new user would.
 
@@ -100,7 +100,7 @@ leasegrid-sync --offscreen --dogfood-folder ~/Leasegrid/demo --screenshot /tmp/s
 
 | Situation | Node dir |
 |-----------|----------|
-| `--nodedir` or `LEASEGRID_TAHOE_NODEDIR` set | that path (nimo: `~/.tahoe`) |
+| `--nodedir` or `LEASEGRID_TAHOE_NODEDIR` set | that path (lab-client: `~/.tahoe`) |
 | `~/.tahoe/tahoe.cfg` exists | `~/.tahoe` (pre-existing operator client) |
 | otherwise | `~/.local/share/leasegrid-sync/tahoe` (Sync creates it on Join) |
 

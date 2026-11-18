@@ -52,12 +52,12 @@ def test_validate_http_url_is_not_wui_cta():
 
 
 def test_validate_good_furl():
-    furl = "pb://hashhashhash@10.42.0.70:42831/swissnumswiss"
+    furl = "pb://hashhashhash@192.0.2.70:42831/swissnumswiss"
     assert validate_introducer_furl(furl) == furl
 
 
 def test_redact_furl_does_not_leak():
-    furl = "pb://secrethashvalue@10.42.0.70:42831/swissnum"
+    furl = "pb://secrethashvalue@192.0.2.70:42831/swissnum"
     out = redact_furl(furl)
     assert "secrethashvalue" not in out
     assert out.startswith("pb://")
@@ -114,10 +114,10 @@ def test_join_existing_connected(tmp_path: Path):
     (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
     (nodedir / "node.url").write_text("http://127.0.0.1:3456/\n", encoding="utf-8")
     welcome = {
-        "introducers": {"statuses": ["Connected to tcp:10.42.0.70:42831 via tcp"]},
+        "introducers": {"statuses": ["Connected to tcp:192.0.2.70:42831 via tcp"]},
         "servers": [
-            {"nickname": "maximum", "connection_status": "connected"},
-            {"nickname": "leasegrid-2", "connection_status": "connected"},
+            {"nickname": "storage-c", "connection_status": "connected"},
+            {"nickname": "storage-a", "connection_status": "connected"},
         ],
     }
     client = TahoeClient(nodedir=nodedir)
@@ -126,7 +126,7 @@ def test_join_existing_connected(tmp_path: Path):
     assert st.state == "Connected"
     assert st.introducer_ok
     assert st.servers_connected == 2
-    assert st.announced_servers[0]["nickname"] == "maximum"
+    assert st.announced_servers[0]["nickname"] == "storage-c"
     assert st.announced_servers[1]["connection_status"] == "connected"
 
 
@@ -1057,7 +1057,7 @@ def test_list_folders_parses_api(tmp_path: Path):
         "Photos": {
             "magic_path": str(photos),
             "poll_interval": 5,
-            "author": {"name": "nimo"},
+            "author": {"name": "laptop"},
         }
     }
 
@@ -1151,8 +1151,8 @@ def test_local_files_before_the_scan_lists_them_are_syncing(tmp_path: Path):
 def test_welcome_json_roundtrip_shape():
     raw = json.dumps(
         {
-            "introducers": {"statuses": ["Connected to tcp:10.42.0.70:42831 via tcp"]},
-            "servers": [{"nickname": "maximum", "connection_status": "connected"}],
+            "introducers": {"statuses": ["Connected to tcp:192.0.2.70:42831 via tcp"]},
+            "servers": [{"nickname": "storage-c", "connection_status": "connected"}],
         }
     )
     data = json.loads(raw)

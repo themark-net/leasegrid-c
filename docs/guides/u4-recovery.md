@@ -47,10 +47,10 @@ Headless (same as the e2e run on the dev grid). Export without the three ACKs FA
 ```bash
 export LEASEGRID_RECOVERY_PASSPHRASE='correct horse'
 # device A
-leasegrid-sync --export-recovery ~/leasegrid-nimo.leasegrid-recovery \
+leasegrid-sync --export-recovery ~/leasegrid-laptop.leasegrid-recovery \
   --ack-threat --ack-loss --ack-store
 # device B (empty LEASEGRID_SYNC_HOME)
-LEASEGRID_RESTORE_LINGER=45 leasegrid-sync --restore-recovery ~/leasegrid-nimo.leasegrid-recovery \
+LEASEGRID_RESTORE_LINGER=45 leasegrid-sync --restore-recovery ~/leasegrid-laptop.leasegrid-recovery \
   --ack-threat
 ls ~/Leasegrid/<folder>       # files back from the friendnet
 ```

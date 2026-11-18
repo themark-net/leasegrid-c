@@ -31,7 +31,7 @@ class RecoveryCodecTest {
         val bundle = RecoveryCodec.decode(fixture("ok-plain.leasegrid-recovery"), "")
         assertEquals("pb://hashhashhash@127.0.0.1:45001/swissnumswiss", bundle.introducerFurl)
         assertEquals(listOf(2, 3, 3), bundle.shares)
-        assertEquals("nimo", bundle.nickname)
+        assertEquals("laptop", bundle.nickname)
         assertEquals("Photos", bundle.folders.single().name)
         assertTrue(bundle.folders.single().collective.startsWith("URI:DIR2:"))
     }

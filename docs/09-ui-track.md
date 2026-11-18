@@ -24,7 +24,7 @@ Related: [`03-roadmap.md`](03-roadmap.md) Phase 1. Conditional Go / corner C rai
 
 1. **`Leasegrid Sync`** (buyer) — Phase 1 MVP  
    - Installs: desktop app, local Tahoe client config, Magic Folder, credit/balance view, XMR top-up flow (when 0c ready; faucet stub until then).  
-   - Platforms: **Linux AppImage + .deb first** (lab/friendnet on nimo); macOS/Windows when buyer demand says so.  
+   - Platforms: **Linux AppImage + .deb first** (lab/friendnet on lab-client); macOS/Windows when buyer demand says so.  
    - First-run wizard: join friendnet (invite code) → pick sync folder → see balance → recovery key export.
 
 2. **`Leasegrid Node`** (operator) — Phase 2, **paid** kit  
@@ -53,7 +53,7 @@ Do **not** wait for 0c/0d PASS to start UI.
 | Slice | Deliverable | Exit |
 |-------|-------------|------|
 | **U0** | Product lock in this doc + roadmap pointer; Design Bot wireframes for screens 1–5 | Founder ACK (this ask) |
-| **U1** | Spike: Gridsync fork/wrap boots against existing friendnet; one Magic Folder syncs | Dogfood on nimo |
+| **U1** | Spike: Gridsync fork/wrap boots against existing friendnet; one Magic Folder syncs | Dogfood on lab-client |
 | **U2** | Credit panel wired to lab issuer/faucet (no mainnet XMR required) | Balance visible after faucet |
 | **U3** | Linux installer (AppImage and/or .deb) that installs Sync without a shell tutorial | Fresh VM / second user install PASS |
 | **U4** | Recovery key export + first-run threat copy | Non-expert walkthrough PASS |

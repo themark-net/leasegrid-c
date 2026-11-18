@@ -43,7 +43,7 @@ U0 Design scopes **what we will not ship / not pretend** in the buyer Sync MVP. 
 | Implement product / Gridsync code in U0 Design | Design DoD only; code starts at U1 |
 | Git commit from Design executor | Parent/PM owns commit if any |
 | Contact Mark from this executor | Mark-needed items stay on parent / PM list |
-| MachineId / nimo writes from box-only executor | Stage on box; parent CopyFromBox + INSTALL |
+| MachineId / lab-client writes from box-only executor | Stage on box; parent CopyFromBox + INSTALL |
 | Expanding U1 handoff into U2–U5 full build | Handoff is **U1 spike only** |
 
 ---

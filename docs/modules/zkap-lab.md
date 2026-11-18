@@ -12,12 +12,12 @@ Lab ZKAP issuer (ristretto faucet, no Monero) and a storage lease gate. Storage 
 
 ### How to run
 
-See [`deploy/zkap-lab/README.md`](../../deploy/zkap-lab/README.md). Short path on nimo:
+See [`deploy/zkap-lab/README.md`](../../deploy/zkap-lab/README.md). Short path on lab-client:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e .
-LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
+LEASEGRID_ISSUER_KEY=~/leasegrid-lab-private/issuer.signing.key
 .venv/bin/leasegrid-zkap keygen --key-file "$LEASEGRID_ISSUER_KEY"
 .venv/bin/leasegrid-zkap check-0b
 ```
@@ -30,7 +30,7 @@ LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 | `GATE 0b: FAIL 0b.2` | Plugin not wrapping Tahoe, or unpaid still allowed | Confirm `plugins = leasegrid-zkap-v0` and restart `tahoe run` |
 | `MAC_K(R) invalid` | Wallet from a different issuer key | Remint after copying the same signing key |
 | `replay of t against a different R` | Expected on a second SI | Spend a new token |
-| VMs cannot `pip install` | No PyPI DNS | Copy wheels from nimo (`scripts/vendor-wheels.sh`) |
+| VMs cannot `pip install` | No PyPI DNS | Copy wheels from lab-client (`scripts/vendor-wheels.sh`) |
 
 ## Configuration / variables
 
@@ -38,7 +38,7 @@ LEASEGRID_ISSUER_KEY=~/DEVELOP/leasegrid-lab-private/issuer.signing.key
 |------|-------|---------|
 | `LEASEGRID_ISSUER_KEY` | env | Path to ristretto signing key (off git) |
 | `issuer-signing-key-file` | `tahoe.cfg` `[storageserver.plugins.leasegrid-zkap-v0]` | Same key on storage |
-| `spend-listen` | tahoe.cfg plugin section | HTTP bind for `/v0/spend` (e.g. `10.42.0.40:8701`) |
+| `spend-listen` | tahoe.cfg plugin section | HTTP bind for `/v0/spend` (e.g. `<storage-a-ip>:8701`) |
 | `spent-set-path` | tahoe.cfg plugin section | JSON spent-set on the node |
 | `nodeid` | tahoe.cfg or `my_nodeid` | Bound into `R` |
 | denomination | `constants.py` | 1 token = 1 GiB-share × 30 days on one node |

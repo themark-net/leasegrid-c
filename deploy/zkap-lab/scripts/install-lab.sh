@@ -7,7 +7,7 @@ usage() {
 usage: install-lab.sh [--venv DIR] [--wheels DIR] [--copy-dropin]
 
 Installs this repo editable into the Tahoe virtualenv and python-challenge-bypass-ristretto.
-VMs without PyPI DNS: pass --wheels ~/DEVELOP/leasegrid-lab-private/wheels
+VMs without PyPI DNS: pass --wheels ~/leasegrid-lab-private/wheels
 --copy-dropin copies twisted/plugins/leasegrid_zkap_dropin.py into the venv.
 EOF
 }

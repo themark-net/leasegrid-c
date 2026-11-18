@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch Leasegrid Sync on nimo against the existing lab friendnet (~/.tahoe).
+# Launch Leasegrid Sync on lab-client against the existing lab friendnet (~/.tahoe).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

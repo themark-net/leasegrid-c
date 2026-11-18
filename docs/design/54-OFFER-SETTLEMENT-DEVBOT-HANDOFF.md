@@ -3,7 +3,7 @@
 **Status:** Design DoD 2026-09-24 PT (~2:20am PT) — ready for PM RELEASE implement  
 **Cite:** [#28](https://github.com/themark-net/leasegrid-c/issues/28) · tip ≥ **`83b3e66`** (`83b3e66d4afdc7499619a43af82b78c54b6dd939`) · #27 @ `639163a` · #34 @ `442b76e` · #38 @ `83b3e66`  
 **Design refs:** [50](50-OFFER-SETTLEMENT-JOURNEY.md) · [51](51-OFFER-SETTLEMENT-IA.md) · [52](52-OFFER-SETTLEMENT-WIREFRAMES.md) · [53](53-OFFER-SETTLEMENT-NON-GOALS.md) · pointer `docs/09-ui-track-OFFER-SETTLEMENT-POINTER.md`  
-**Lane:** DevBot **Build-first on nimo** (Cursor only if Build blocked).  
+**Lane:** DevBot **Build-first on the build host** (Cursor only if Build blocked).  
 **Do not:** implement in the Design pass; contact Mark; ship WUI; promote Credit tab; invent new payment rails; rewrite `10`–`49` bodies.
 
 **Supersedes:** #27 pack `43` footnote (“#28 log-only”) — full Design is this pack.
@@ -48,11 +48,11 @@ Stack remains Gridsync-class PyQt Sync — **no** Electron, **no** Tahoe WUI.
 3. Chip → More → Credit deep-link  
 4. Optional Host settlement strip on Credit (rail-backed only)  
 5. Regression: #34 Top up; #38 Credit-under-More; #27 Servers; Offer pie disk-local  
-6. Dogfood on nimo AppImage / lab friendnet (stagenet)
+6. Dogfood on lab-client AppImage / lab friendnet (stagenet)
 
 ---
 
-## Dogfood steps (nimo)
+## Dogfood steps (lab-client)
 
 | # | Step | PASS |
 |---|------|------|
@@ -109,4 +109,4 @@ Stack remains Gridsync-class PyQt Sync — **no** Electron, **no** Tahoe WUI.
 
 ## One-liner
 
-> Implement #28 on tip ≥ `83b3e66`: Offer shows disk Used vs Hosted-for-others; link to Credit/ZKAP settlement visibility under More; honest empty/missing/FAIL; no new rails; Build-first on nimo.
+> Implement #28 on tip ≥ `83b3e66`: Offer shows disk Used vs Hosted-for-others; link to Credit/ZKAP settlement visibility under More; honest empty/missing/FAIL; no new rails; Build-first on the build host.

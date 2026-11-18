@@ -9,11 +9,11 @@
 
 | Non-goal | Why |
 |----------|-----|
-| Implementing Sync product code in this Design pass | Design only → PM RELEASES DevBot Build-first on nimo |
+| Implementing Sync product code in this Design pass | Design only → PM RELEASES DevBot Build-first on the build host |
 | Contacting Mark / Mark ops / SendToUser drip | FOUNDER RULE — bots coordinate |
 | [#28](https://github.com/themark-net/leasegrid-c/issues/28) Offer usage → payment | Explicitly out of #38 |
 | [#33](https://github.com/themark-net/leasegrid-c/issues/33) introducer marketplace vision | Far-future; blocked conceptually |
-| [#26](https://github.com/themark-net/leasegrid-c/issues/26) Android EXTRA_RECOVERY / [#30](https://github.com/themark-net/leasegrid-c/issues/30) plant↔maximum residuals | Explicitly out |
+| [#26](https://github.com/themark-net/leasegrid-c/issues/26) Android EXTRA_RECOVERY / [#30](https://github.com/themark-net/leasegrid-c/issues/30) two-host lab residuals | Explicitly out |
 | New payment rails / mainnet XMR | #34 XMR top-up stands; no redesign |
 | Elevating Credit to primary tab | #34 lock: Credit secondary under More |
 | Marketing brand system / full rebrand | Visual cleanup + flow only; Marketing silent |
@@ -21,7 +21,7 @@
 | Tahoe WUI / WebView-as-product | Hard reject |
 | Android Slice B as this slice | Desktop Sync primary |
 | Fake forever-remove Disconnect | #27 honesty stands |
-| Merging docs PR from executor | Prefer land on nimo; optional docs-only PR later — no merge |
+| Merging docs PR from executor | Prefer landing on the build host; optional docs-only PR later - no merge |
 | Waiting on Mark for invite widget details | Hard locks already set — do not re-ask |
 
 ---

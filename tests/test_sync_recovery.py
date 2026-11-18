@@ -35,7 +35,7 @@ def _bundle() -> RecoveryBundle:
     return RecoveryBundle(
         introducer_furl=FURL,
         shares=(2, 3, 3),
-        nickname="nimo",
+        nickname="laptop",
         issuer_url="http://127.0.0.1:8700",
         folders=[FolderRecord("Photos", COLLECTIVE, UPLOAD, "/home/x/Photos", 5, 5, "x")],
         wallet={"issuer-pubkey-id": "ab", "tokens": [{"t": "1", "W": "2"}]},
@@ -264,7 +264,7 @@ def test_read_tahoe_facts(tmp_path: Path):
     nodedir = tmp_path / "tahoe"
     (nodedir / "private").mkdir(parents=True)
     (nodedir / "tahoe.cfg").write_text(
-        "[node]\nnickname = nimo\n[client]\nshares.needed = 2\nshares.happy = 3\n"
+        "[node]\nnickname = laptop\n[client]\nshares.needed = 2\nshares.happy = 3\n"
         "shares.total = 3\n",
         encoding="utf-8",
     )
@@ -411,7 +411,7 @@ def test_export_records_last_export(tmp_path: Path, mf_config: Path):
     nodedir = tmp_path / "tahoe"
     (nodedir / "private").mkdir()
     (nodedir / "tahoe.cfg").write_text(
-        "[node]\nnickname = nimo\n[client]\nshares.needed = 2\nshares.happy = 3\n"
+        "[node]\nnickname = laptop\n[client]\nshares.needed = 2\nshares.happy = 3\n"
         "shares.total = 3\n",
         encoding="utf-8",
     )
@@ -422,14 +422,14 @@ def test_export_records_last_export(tmp_path: Path, mf_config: Path):
     mf = MagicFolderCtl(config_dir=mf_config, nodedir=nodedir, mf_bin="/bin/true")
     ctl = RecoveryCtl(home, tahoe, mf, CreditCtl(home=home, issuer_url="http://127.0.0.1:1"))
     assert ctl.last_export() is None
-    out = tmp_path / "keys" / "nimo.leasegrid-recovery"
+    out = tmp_path / "keys" / "laptop.leasegrid-recovery"
     bundle = ctl.export(out, "pw")
     assert bundle.introducer_furl == FURL
     assert out.is_file()
     if os.name != "nt":  # NTFS has no POSIX mode bits
         assert (out.stat().st_mode & 0o777) == 0o600
     assert ctl.last_export()["path"] == str(out)
-    assert decode_recovery_file(out.read_bytes(), "pw").nickname == "nimo"
+    assert decode_recovery_file(out.read_bytes(), "pw").nickname == "laptop"
 
 
 def test_export_refuses_an_oversized_key_before_writing(tmp_path: Path, mf_config: Path, monkeypatch):
@@ -441,7 +441,7 @@ def test_export_refuses_an_oversized_key_before_writing(tmp_path: Path, mf_confi
     nodedir = tmp_path / "tahoe"
     (nodedir / "private").mkdir()
     (nodedir / "tahoe.cfg").write_text(
-        "[node]\nnickname = nimo\n[client]\nshares.needed = 2\nshares.happy = 3\n"
+        "[node]\nnickname = laptop\n[client]\nshares.needed = 2\nshares.happy = 3\n"
         "shares.total = 3\n",
         encoding="utf-8",
     )
@@ -456,7 +456,7 @@ def test_export_refuses_an_oversized_key_before_writing(tmp_path: Path, mf_confi
         "encode_recovery_file",
         lambda _bundle, _passphrase: b"x" * (recovery_mod.MAX_RECOVERY_BYTES + 1),
     )
-    out = tmp_path / "keys" / "nimo.leasegrid-recovery"
+    out = tmp_path / "keys" / "laptop.leasegrid-recovery"
     out.parent.mkdir()
     out.write_bytes(b"keep-me")
     with pytest.raises(SyncError) as exc:

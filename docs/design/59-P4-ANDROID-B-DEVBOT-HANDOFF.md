@@ -68,7 +68,7 @@ Tests: prefer E2E/integration/operate-or-FAIL (Trophy). No tautological or imple
 | New folder / new grid on the phone | Desktop adds folders |
 | Whole-tree mirror, camera-roll upload | Not this pack |
 | Payment, Offer hosted strip, Credit changes | No new rails |
-| Recovery-path residual, plant↔maximum Magic Folder, introducer vision | Not this surface |
+| Recovery-path residual, two-host lab Magic Folder, introducer vision | Not this surface |
 | Rewriting `35`–`39` | Forbidden |
 | iOS, Play Store | Out |
 | Tahoe WUI / Electron-on-Android | Rejected |

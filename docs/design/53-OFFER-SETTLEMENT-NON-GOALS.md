@@ -9,7 +9,7 @@
 
 | Non-goal | Why |
 |----------|-----|
-| Implementing Sync product code in this Design pass | Design only → PM RELEASES DevBot Build-first on nimo |
+| Implementing Sync product code in this Design pass | Design only → PM RELEASES DevBot Build-first on the build host |
 | Contacting Mark / Mark drip / SendToUser | FOUNDER RULE — bots coordinate |
 | **New payment rails** beyond tying Offer Used → settlement visibility on existing Credit/ZKAP path | CEO RELEASE constraint |
 | Mainnet XMR / mainnet wallet UX | Stagenet only; mainnet refused (#34 lock) |
@@ -21,12 +21,12 @@
 | Merging disk Used into Offer-consumed | Must stay distinct |
 | [#33](https://github.com/themark-net/leasegrid-c/issues/33) introducer marketplace | Parked / out |
 | [#26](https://github.com/themark-net/leasegrid-c/issues/26) Android EXTRA_RECOVERY | Parked / out |
-| [#30](https://github.com/themark-net/leasegrid-c/issues/30) plant↔maximum MF HTTP 500 | Out |
+| [#30](https://github.com/themark-net/leasegrid-c/issues/30) two-host lab MF HTTP 500 | Out |
 | Android Slice B / write Offer settlement UI | Desktop Sync primary; P4-B parked |
 | Marketing rebrand / silent Marketing push | Marketing silent |
 | Rewriting U0–U4 / P1 / P4 / #27 / #38 artifact bodies (`10`–`49`) | Cite + supersede #27 pack `43` footnote only |
 | Tahoe WUI / WebView-as-product | Hard reject |
-| Merging docs PR from executor as required | Nimo land is enough; GitHub PR optional |
+| Merging docs PR from executor as required | Landing on the build host is enough; GitHub PR optional |
 | Waiting on Mark for widget copy | Design decides; operator copy only |
 
 ---

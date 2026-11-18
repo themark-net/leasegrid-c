@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Download wheels on a host that can reach PyPI (nimo) for offline VM install.
+# Download wheels on a host that can reach PyPI (lab-client) for offline VM install.
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
 usage: vendor-wheels.sh [DEST]
 
-DEST defaults to ~/DEVELOP/leasegrid-lab-private/wheels
+DEST defaults to ~/leasegrid-lab-private/wheels
 EOF
 }
 
@@ -15,7 +15,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-DEST="${1:-$HOME/DEVELOP/leasegrid-lab-private/wheels}"
+DEST="${1:-${LEASEGRID_LAB_DIR:-$HOME/leasegrid-lab-private}/wheels}"
 mkdir -p "$DEST"
 python3 -m pip download -d "$DEST" \
   python-challenge-bypass-ristretto==2022.6.30 \

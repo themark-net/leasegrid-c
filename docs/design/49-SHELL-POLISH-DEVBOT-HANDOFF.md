@@ -3,7 +3,7 @@
 **Status:** Design DoD 2026-09-23 PT (~11:26pm PT) — ready for PM RELEASE implement  
 **Cite:** [#38](https://github.com/themark-net/leasegrid-c/issues/38) · [#32](https://github.com/themark-net/leasegrid-c/issues/32) · tip ≥ **`f46ab7c`** (`f46ab7ca423b72d7e5422ac46ccb2143ae881cfb`) · #27 @ `639163a` · #34 @ `442b76e`  
 **Design refs:** [45](45-SHELL-POLISH-JOURNEY.md) · [46](46-SHELL-POLISH-IA.md) · [47](47-SHELL-POLISH-WIREFRAMES.md) · [48](48-SHELL-POLISH-NON-GOALS.md) · pointer `docs/09-ui-track-SHELL-POLISH-POINTER.md`  
-**Lane:** DevBot **Build-first on nimo** (Cursor only if Build blocked).  
+**Lane:** DevBot **Build-first on the build host** (Cursor only if Build blocked).  
 **Do not:** implement in the Design pass; contact Mark; ship WUI; promote Credit tab; dump raw FURL as primary invite; rewrite `10`–`44` bodies.
 
 ---
@@ -46,11 +46,11 @@ Stack remains Gridsync-class PyQt Sync — **no** Electron rewrite, **no** Tahoe
 4. Chrome hierarchy / spacing / primary CTA weight on Folders + Servers  
 5. Confirm Credit remains under More; unpaid cue only  
 6. Regression: #27 roster / both Add paths / honest Disconnect; #34 top-up  
-7. Dogfood on nimo AppImage / lab friendnet  
+7. Dogfood on lab-client AppImage / lab friendnet  
 
 ---
 
-## Dogfood steps (nimo)
+## Dogfood steps (lab-client)
 
 | # | Step | PASS |
 |---|------|------|
@@ -108,4 +108,4 @@ Stack remains Gridsync-class PyQt Sync — **no** Electron rewrite, **no** Tahoe
 
 ## One-liner
 
-> Implement #38 on tip ≥ `f46ab7c`: shell polish on Join→Servers→Offer/store→Credit; #32 invite = short code + QR + Copy (no raw FURL primary); preserve #27 Servers + #34 Credit-under-More; Build-first on nimo.
+> Implement #38 on tip ≥ `f46ab7c`: shell polish on Join→Servers→Offer/store→Credit; #32 invite = short code + QR + Copy (no raw FURL primary); preserve #27 Servers + #34 Credit-under-More; Build-first on the build host.

@@ -2451,7 +2451,7 @@ def test_export_to_an_unwritable_path_keeps_the_bytes_and_retries(ui: MainWindow
     nodedir = ui.tahoe.nodedir
     (nodedir / "private").mkdir()
     (nodedir / "tahoe.cfg").write_text(
-        "[node]\nnickname = nimo\n[client]\nshares.needed = 2\nshares.happy = 3\n"
+        "[node]\nnickname = laptop\n[client]\nshares.needed = 2\nshares.happy = 3\n"
         "shares.total = 3\n",
         encoding="utf-8",
     )
@@ -2499,7 +2499,7 @@ def test_export_to_an_unwritable_path_keeps_the_bytes_and_retries(ui: MainWindow
     dlg.path_edit.setText(str(good))
     dlg.on_write()
     assert dlg.written == good
-    assert decode_recovery_file(good.read_bytes(), "pw").nickname == "nimo"
+    assert decode_recovery_file(good.read_bytes(), "pw").nickname == "laptop"
     assert blocker.read_bytes() == b"stay"
     if frozen.is_file():
         assert frozen.read_bytes() == b"keep-me"

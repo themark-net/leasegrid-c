@@ -106,7 +106,7 @@ The chip at the top right does not print the word Connected:
 
 [#30](https://github.com/themark-net/leasegrid-c/issues/30) is open. It does not mean the AppImage failed to start.
 
-A new folder needs enough hosts connected to store it (the grid's `shares.happy`). On an AppImage built for glibc 2.35 or newer, unpaid Join between the hosts plant and maximum reached Connected while the storage count settled from 3 to 0, and **Add folder** then returned Magic Folder HTTP 500. The same class of error later cleared when both homes were on plant. It did not clear on maximum.
+A new folder needs enough hosts connected to store it (the grid's `shares.happy`). On an AppImage built for glibc 2.35 or newer, unpaid Join between the two lab hosts reached Connected while the storage count settled from 3 to 0, and **Add folder** then returned Magic Folder HTTP 500. The same class of error later cleared when both homes were on one of the hosts. It did not clear on the other.
 
 On this build, **Add folder** checks the hosts first:
 

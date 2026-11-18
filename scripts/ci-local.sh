@@ -66,7 +66,7 @@ if "$PYTHON" -m pip install -q -e ".[sync]"; then
 else
   echo "==> sync extra skipped (PyQt5 wheels missing; UI tests will skip)"
 fi
-# Tahoe 1.20 + Magic Folder + pins; on nimo's 3.14 tahoe-venv this may not resolve.
+# Tahoe 1.20 + Magic Folder + pins; on lab-client's 3.14 tahoe-venv this may not resolve.
 if "$PYTHON" -m pip install -q -e ".[tahoe]"; then
   echo "==> tahoe extra installed"
 else

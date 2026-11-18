@@ -10,7 +10,7 @@ Gate 0b needs a ristretto / ZKAPAuthorizer-compatible issuer, a storage lease ga
 
 PrivateStorageio ZKAPAuthorizer on PyPI (`zero-knowledge-access-pass-authorizer` 2022.8.21) requires `tahoe-lafs (>=1.17.1,<1.18.1)`. The friendnet runs **Tahoe-LAFS 1.20.0**. Silently installing that plugin would either fail or pin an incompatible Tahoe.
 
-Tahoe 1.20 storage plugins (`IFoolscapStoragePlugin`) wrap Foolscap only. The live client on nimo has `tub.port = disabled` and talks **GBS HTTP**. HTTP allocate has no ZKAP header.
+Tahoe 1.20 storage plugins (`IFoolscapStoragePlugin`) wrap Foolscap only. The live client on lab-client has `tub.port = disabled` and talks **GBS HTTP**. HTTP allocate has no ZKAP header.
 
 ## Decision
 
@@ -30,7 +30,7 @@ Rejected alternatives:
 
 1. **Install PyPI ZKAPAuthorizer on 1.20.** Version pin is explicit. Forcing it would be a lie in the lab log.
 2. **Downgrade the friendnet to Tahoe 1.17.** Gate 0a already PASSed on 1.20.0; do not unwind that.
-3. **New Foolscap-only plugin and `force_foolscap` on nimo.** Would work, but the live client is HTTP-only. Wrapping the anonymous `StorageServer` singleton gates the protocol the grid actually uses.
+3. **New Foolscap-only plugin and `force_foolscap` on lab-client.** Would work, but the live client is HTTP-only. Wrapping the anonymous `StorageServer` singleton gates the protocol the grid actually uses.
 4. **HMAC stand-in instead of ristretto.** Fails 0b.1 (“ristretto / ZKAPAuthorizer-compatible”). The 2022.6.30 manylinux wheel imports on CPython 3.12 and 3.14.
 
 ## Consequences

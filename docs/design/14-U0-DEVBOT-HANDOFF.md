@@ -12,7 +12,7 @@
 | Slice | Deliverable | Exit |
 |-------|-------------|------|
 | **U0** | Product lock + Design Bot wireframes screens 1–5 | Founder ACK — **this package** |
-| **U1** | Spike: Gridsync fork/wrap boots against existing friendnet; **one Magic Folder syncs** | Dogfood on nimo |
+| **U1** | Spike: Gridsync fork/wrap boots against existing friendnet; **one Magic Folder syncs** | Dogfood on lab-client |
 | **U2** | Credit panel ↔ lab issuer/faucet | Balance visible after faucet |
 | **U3** | Linux installer (AppImage and/or .deb) | Fresh VM / second user install PASS |
 | **U4** | Recovery key export + first-run threat copy | Non-expert walkthrough PASS |
@@ -26,13 +26,13 @@
 
 ### Must prove
 
-1. **Boot:** Gridsync fork **or** tight wrap launches as a native desktop window on Linux (lab/nimo).  
+1. **Boot:** Gridsync fork **or** tight wrap launches as a native desktop window on Linux (lab client).  
 2. **Join:** App connects to an **existing friendnet** (invite or pre-seeded grid config — lab-acceptable).  
 3. **One Magic Folder syncs:** Create or join **one** Magic Folder; local file change appears on a second participant **or** round-trips on the same grid with observable sync status.  
 4. **No WUI product path:** Spike does not open Tahoe WUI as the buyer UI; no “use the web UI” primary CTA.  
 5. **Tray or window persist:** Process can run as a desktop sync client (window and/or tray) — not a one-shot CLI demo only.  
 6. **Operate-or-FAIL (minimal):** Join / add-folder failures show an in-window error (even crude) rather than silent no-op.  
-7. **Dogfood note:** Short note on nimo: how to launch, which friendnet, which folder path — for PM/founder.
+7. **Dogfood note:** Short note on lab-client: how to launch, which friendnet, which folder path - for PM/founder.
 
 ### Explicitly waits for U2–U5 (do not block U1)
 
@@ -67,7 +67,7 @@ If Gridsync is **unforkable** for later ZKAP credit: still finish U1 sync proof 
 2. Connect to friendnet (invite or config drop)  
 3. Add one Magic Folder; verify sync  
 4. Minimal FAIL dialogs on join/add  
-5. Dogfood README for nimo  
+5. Dogfood README for lab-client  
 
 ---
 

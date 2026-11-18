@@ -56,7 +56,7 @@ Steps 4–5 may be sequenced, but **both** are #27 DoD — do not close issue wi
 
 ---
 
-## Dogfood steps (nimo / multi-client lab)
+## Dogfood steps (lab-client / multi-client lab)
 
 || # | Step | PASS |
 ||---|------|------|

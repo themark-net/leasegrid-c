@@ -126,7 +126,7 @@ Nudge must not block Add folder / Offer. Dismissible; may return later.
 
 ```
 │  Recovery key written to                                    │
-│  /home/you/backups/leasegrid-nimo.leasegrid-recovery        │
+│  /home/you/backups/leasegrid-laptop.leasegrid-recovery        │
 │  Move it somewhere safe and offline.                        │
 │  [ Done ]                                                   │
 ```

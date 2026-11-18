@@ -8,7 +8,7 @@ EOF
 }
 
 LISTEN="127.0.0.1:8700"
-KEY="${LEASEGRID_ISSUER_KEY:-$HOME/DEVELOP/leasegrid-lab-private/issuer.signing.key}"
+KEY="${LEASEGRID_ISSUER_KEY:-${LEASEGRID_LAB_DIR:-$HOME/leasegrid-lab-private}/issuer.signing.key}"
 VENV=""
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -36,7 +36,7 @@ These stay out even if they look adjacent. Do not fold them into the Android wri
 | Out | What it is |
 |-----|------------|
 | Relative recovery-file path residual | Not write sync |
-| Plant ↔ maximum Magic Folder failure | Not this phone surface |
+| two-host lab Magic Folder failure | Not this phone surface |
 | Introducer vision | Not this phone surface |
 | Offer hosted strip | Already shipped on desktop. Do not redo it here. |
 

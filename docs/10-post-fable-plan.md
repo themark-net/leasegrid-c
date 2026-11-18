@@ -5,7 +5,7 @@
 **Code now:** [PR #7 draft](https://github.com/themark-net/leasegrid-c/pull/7) `cursor/runnable-local-client-server-056d` @ `049fa0b` (Cursor `bc-9d0fb5d5…`). U1/U2 on main; #7 = runnable + packaging stack.  
 **Founder signal:** installers exist; **dogfood still crashes / not working**.
 
-Bots coordinate. Heavy fix → **Cursor on PR #7** (Fable continuity) or Grok Build on nimo. No Mark drip.
+Bots coordinate. Heavy fix → **Cursor on PR #7** (Fable continuity) or Grok Build on the build host. No Mark drip.
 
 **Doc tip:** `f06ef01` · https://github.com/themark-net/leasegrid-c/blob/main/docs/10-post-fable-plan.md
 
@@ -35,7 +35,7 @@ Non-goals P0: CrashPlan polish, payment lecture, live 0c/0d, mainnet XMR, Tahoe 
 |-------|------|
 | [#11](https://github.com/themark-net/leasegrid-c/issues/11) | Files-first shell: folder list primary; Offer = local disk pie (used/free/offered, % of this disk); single CTA join → folders → offer viz; payment lecture hidden until `LEASEGRID_GATED` |
 
-P0 is green @ `c308b958`. Design PASS: nimo `docs/design/` README + 25–29 (`29-P1-DEVBOT-HANDOFF.md`); plan tip `f06ef01`. AppImage stays [#12](https://github.com/themark-net/leasegrid-c/issues/12).
+P0 is green @ `c308b958`. Design PASS: `docs/design/` README + 25-29 (`29-P1-DEVBOT-HANDOFF.md`); plan tip `f06ef01`. AppImage stays [#12](https://github.com/themark-net/leasegrid-c/issues/12).
 
 ---
 

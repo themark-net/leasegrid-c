@@ -9,7 +9,7 @@ set -euo pipefail
 
 NODEID=""
 URL=""
-EJECT_SET="${LEASEGRID_EJECT_SET:-$HOME/DEVELOP/leasegrid-lab-private/ejected.json}"
+EJECT_SET="${LEASEGRID_EJECT_SET:-${LEASEGRID_LAB_DIR:-$HOME/leasegrid-lab-private}/ejected.json}"
 TAHOE_DIR=""
 CAP=""
 BEFORE="0"

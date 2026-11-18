@@ -4,7 +4,7 @@
 **Owner:** Design Bot (executor staged on box)  
 **Date:** 2026-09-24 PT  
 **Product lock:** CEO/PM RELEASE Offer Used → payment/settlement Design · issue [#28](https://github.com/themark-net/leasegrid-c/issues/28) · tip ≥ **`83b3e66`** (`83b3e66d4afdc7499619a43af82b78c54b6dd939`) · #27 SHIPPED @ `639163a` · #34 SHIPPED @ `442b76e` · #38 SHIPPED @ `83b3e66` · CrashPlan folders-first + Offer pie stand · Servers primary / Credit under More · Marketing silent · no new payment rails  
-**Install target (nimo):** `~/DEVELOP/leasegrid-c/docs/design/` (+ pointer beside `docs/09-ui-track.md`)  
+**Install target:** `docs/design/` in this repo (+ pointer beside `docs/09-ui-track.md`)  
 **Brand (provisional):** **Leasegrid Sync** — CrashPlan is a UX metaphor, not a product rename.
 
 ---
@@ -39,7 +39,7 @@
 | [51-OFFER-SETTLEMENT-IA.md](51-OFFER-SETTLEMENT-IA.md) | Offer surface + chip; Credit under More; no Credit tab promotion |
 | [52-OFFER-SETTLEMENT-WIREFRAMES.md](52-OFFER-SETTLEMENT-WIREFRAMES.md) | ASCII: pie + Hosted strip + Credit host strip; empty/missing/FAIL |
 | [53-OFFER-SETTLEMENT-NON-GOALS.md](53-OFFER-SETTLEMENT-NON-GOALS.md) | No new rails; no mainnet; #33/#26/#30 out; Marketing silent |
-| [54-OFFER-SETTLEMENT-DEVBOT-HANDOFF.md](54-OFFER-SETTLEMENT-DEVBOT-HANDOFF.md) | Implement DoD; dogfood; tip ≥ `83b3e66`; Build-first nimo |
+| [54-OFFER-SETTLEMENT-DEVBOT-HANDOFF.md](54-OFFER-SETTLEMENT-DEVBOT-HANDOFF.md) | Implement DoD; dogfood; tip ≥ `83b3e66`; Build-first on the build host |
 | [09-ui-track-OFFER-SETTLEMENT-POINTER.md](09-ui-track-OFFER-SETTLEMENT-POINTER.md) | Pointer beside `09-ui-track.md` |
 
 ---
@@ -71,7 +71,7 @@
 | Rails | Tie to existing Credit/ZKAP settlement visibility only — **no new rails** |
 | Honesty | Empty / missing / FAIL — never fabricate balances |
 | Out | #33 / #26 / #30; Mark ops; mainnet; Marketing |
-| Lane | Design PASS → PM RELEASES DevBot Build-first on nimo |
+| Lane | Design PASS → PM RELEASES DevBot Build-first on the build host |
 
 ---
 
@@ -81,12 +81,12 @@
 - [x] IA: Offer strip + Credit under More; no tab promotion  
 - [x] Wireframes: pie + Hosted + earnings/lease status; no fake green  
 - [x] Non-goals: no new rails; #33/#26/#30; Marketing silent  
-- [x] DevBot handoff: DoD checklist; tip ≥ `83b3e66`; Build-first nimo  
+- [x] DevBot handoff: DoD checklist; tip ≥ `83b3e66`; Build-first on the build host  
 - [x] No contradictions with #27/#34/#38  
 - [x] Prior `10`–`49` preserved (not rewritten); `43` footnote superseded  
 - [x] Package staged under `/workspace/leasegrid-offer-settlement-out/`
 
-**#28 Design exit:** Artifacts under `docs/design/` + DevBot handoff → PM RELEASES DevBot Build-first on nimo.
+**#28 Design exit:** Artifacts under `docs/design/` + DevBot handoff → PM RELEASES DevBot Build-first on the build host.
 
 ---
 

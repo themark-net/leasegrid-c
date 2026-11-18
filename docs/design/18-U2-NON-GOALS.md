@@ -54,7 +54,7 @@ U2 Design scopes **what we will not ship / not pretend** while wiring Credit →
 | Implement Credit / faucet code in Design DoD | Design only; code = DevBot via `19` |
 | Git commit from Design executor | Parent/PM owns commit if any |
 | Contact Mark from this executor | Mark-needed stays on parent / PM list |
-| MachineId / nimo writes from box-only executor | Stage on box; parent CopyFromBox + INSTALL |
+| MachineId / lab-client writes from box-only executor | Stage on box; parent CopyFromBox + INSTALL |
 | Expanding U2 handoff into U3–U5 full build | Handoff is **U2 Credit/faucet only** |
 | Regressing U1 Folders / tray / join / no-WUI | Preserve U1 |
 

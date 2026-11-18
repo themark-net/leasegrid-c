@@ -37,7 +37,7 @@
 9. **Opaque ZKAP reject:** No convert/import path for foreign opaque wallets in Credit UI (copy reject OK).  
 10. **No mainnet XMR:** No live XMR pay fields; “XMR later” label only.  
 11. **Tests:** Automated and/or dogfood evidence — see checklist below.  
-12. **Dogfood note:** Short nimo steps: how to open Credit, hit faucet, see balance — for PM/founder.
+12. **Dogfood note:** Short lab-client steps: how to open Credit, hit faucet, see balance - for PM/founder.
 
 ### Explicitly waits for U3–U5 (do not block U2)
 
@@ -103,7 +103,7 @@ If lab issuer API shape is thin: implement the thinnest redeem+balance read that
 - [ ] No WUI CTA from Credit; no live XMR fields  
 - [ ] No opaque ZKAP convert  
 - [ ] Tests (unit/UI and/or scripted dogfood evidence)  
-- [ ] Dogfood steps written for nimo  
+- [ ] Dogfood steps written for lab-client  
 - [ ] Explicit list of what was deferred to U3–U5  
 
 **U2 FAIL examples:** Credit only mentioned in Settings stub; faucet button no-ops; balance never updates after “success”; opens WUI; requires mainnet XMR; claims 1:1 upload=credit; regresses Magic Folder sync; silent issuer errors.
@@ -115,7 +115,7 @@ If lab issuer API shape is thin: implement the thinnest redeem+balance read that
 | Mark-needed | Org-can-do now |
 |-------------|----------------|
 | Brand name confirm | Provisional Leasegrid Sync |
-| Friendnet / faucet lab access if not already on nimo | Wire to existing lab issuer stub from U1 dogfood |
+| Friendnet / faucet lab access if not already on lab-client | Wire to existing lab issuer stub from U1 dogfood |
 | Recovery-key accept ceremony | U4 |
 | 0c XMR rails | U5 |
 

@@ -193,7 +193,7 @@ Next: use More → Credit; Retry.
 ## Out of journey (see non-goals)
 
 - New payment rails / mainnet wallet / Mark ops  
-- #33 introducer marketplace · #26 Android EXTRA_RECOVERY · #30 plant↔maximum MF HTTP 500  
+- #33 introducer marketplace · #26 Android EXTRA_RECOVERY · #30 two-host lab MF HTTP 500  
 - Phase 2 Leasegrid Node payout dashboard as product in this slice  
 - Rewriting #34 Top-up journey  
 

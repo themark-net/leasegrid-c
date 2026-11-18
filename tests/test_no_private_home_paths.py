@@ -35,7 +35,7 @@ def test_matcher_flags_a_real_account_and_skips_placeholders() -> None:
     real = "/" + "home" + "/" + "alice"
     assert private_home_paths(f"see {real}/x.txt") == [real]
     assert private_home_paths("`" + "/" + "Users" + "/bob/x`") == ["/" + "Users" + "/bob"]
-    assert private_home_paths("~/DEVELOP/leasegrid-c and $HOME/tahoe-venv") == []
+    assert private_home_paths("~/src/leasegrid-c and $HOME/tahoe-venv") == []
     assert private_home_paths('"/home/x/Photos" C:/Users/u /home/runner/work') == []
     assert private_home_paths('"$T/home/credit.json" /read-only/home/storage lg-exit/home/tahoe') == []
 

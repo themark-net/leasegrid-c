@@ -54,8 +54,8 @@ def test_unreachable_storage_furl_fails(tmp_path: Path):
             timeout=0.4,
         )
     text = exc.value.banner().lower()
-    assert "could not add this storage server" in text
-    assert "unreachable" in text
+    assert "couldn't reach the storage server." in text
+    assert "then click retry." in text
     assert "forever" not in text
     assert not (home / "servers.json").exists()
 

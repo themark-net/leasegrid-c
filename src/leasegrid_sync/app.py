@@ -122,6 +122,10 @@ def _style_primary(btn) -> None:
 
 UI_LOG_NAME = "sync-ui.log"
 UNEXPECTED_NEXT = "Retry. If it repeats, send logs/%s to your friendnet operator." % UI_LOG_NAME
+#: Button labels that turn into Retry after a network error and back again.
+ADD_SERVER_LABEL = "Add server"
+JOIN_LABEL = "Join friendnet"
+EXISTING_LABEL = "Use existing Tahoe node"
 ALREADY_RUNNING = "Leasegrid Sync is already running. Use the open window."
 INVITE_CLOSE_QUESTION = "An invite is still open. Quit and cancel it?"
 INVITE_KEEP_OPEN = "Keep open"
@@ -2182,7 +2186,7 @@ class AddStorageServerDialog:
         cancel.setObjectName("addStorageCancel")
         cancel.setAutoDefault(False)
         cancel.clicked.connect(self.dlg.reject)
-        self.add_btn = QtWidgets.QPushButton("Add server")
+        self.add_btn = QtWidgets.QPushButton(ADD_SERVER_LABEL)
         self.add_btn.setObjectName("addServerButton")
         self.add_btn.setAutoDefault(False)
         self.add_btn.clicked.connect(self.on_add)
@@ -2190,6 +2194,8 @@ class AddStorageServerDialog:
         brow.addStretch(1)
         brow.addWidget(self.add_btn)
         v.addLayout(brow)
+        # Design (#90 slice F): editing the link puts the Add label back.
+        self.furl_edit.textEdited.connect(lambda _text: self.add_btn.setText(ADD_SERVER_LABEL))
         self.invite_panel.advanced.toggled.connect(lambda _checked: fit_share_card(self.dlg))
         fit_share_card(self.dlg)
 
@@ -2210,16 +2216,21 @@ class AddStorageServerDialog:
             )
             self.window.tahoe.reload_static_servers()
         except SyncError as exc:
+            # Design (#90 slice F): Retry only after a network or unreachable
+            # error; a bad or cut-off link keeps the Add label.
+            if exc.retryable:
+                self.window._log_exception("add-storage", exc)
             self.error.setText(exc.banner())
-            self.add_btn.setText("Retry")
+            self.add_btn.setText("Retry" if exc.retryable else ADD_SERVER_LABEL)
             self.add_btn.setEnabled(True)
             return
         except Exception as exc:
             self.window._log_exception("add-storage", exc)
             self.error.setText(unexpected_error(exc, "could not add this storage server.").banner())
-            self.add_btn.setText("Retry")
+            self.add_btn.setText(ADD_SERVER_LABEL)
             self.add_btn.setEnabled(True)
             return
+        self.add_btn.setText(ADD_SERVER_LABEL)
         self.dlg.accept()
 
 
@@ -2421,12 +2432,13 @@ class MainWindow:
         self.invite_edit.setPlaceholderText("7-word-word or join link")
         self.invite_edit.setObjectName("inviteEdit")
         self.invite_edit.returnPressed.connect(self.on_join_invite)
+        self.invite_edit.textEdited.connect(lambda _text: self._join_labels(None))
         v.addWidget(self.invite_edit)
         self.offer_storage_cb = QtWidgets.QCheckBox("Offer disk on this device")
         self.offer_storage_cb.setObjectName("offerStorage")
         self.offer_storage_cb.setChecked(True)
         v.addWidget(self.offer_storage_cb)
-        self.join_btn = QtWidgets.QPushButton("Join friendnet")
+        self.join_btn = QtWidgets.QPushButton(JOIN_LABEL)
         self.join_btn.setObjectName("joinButton")
         self.join_btn.setAutoDefault(True)
         self.join_btn.setDefault(True)
@@ -2434,7 +2446,7 @@ class MainWindow:
         _style_primary(self.join_btn)
         self.join_btn.clicked.connect(self.on_join_invite)
         v.addWidget(self.join_btn)
-        self.existing_btn = QtWidgets.QPushButton("Use existing Tahoe node")
+        self.existing_btn = QtWidgets.QPushButton(EXISTING_LABEL)
         self.existing_btn.setObjectName("existingButton")
         self.existing_btn.setFlat(True)
         self.existing_btn.setAutoDefault(False)
@@ -3866,6 +3878,18 @@ class MainWindow:
         self.join_progress.setText(text)
         self.QtWidgets.QApplication.processEvents()
 
+    def _join_labels(self, retry_btn) -> None:
+        """Design (#90 slice F): only the button that hit a network error says Retry."""
+        self.join_btn.setText("Retry" if retry_btn is self.join_btn else JOIN_LABEL)
+        self.existing_btn.setText("Retry" if retry_btn is self.existing_btn else EXISTING_LABEL)
+
+    def _join_failed(self, exc: SyncError, clicked) -> None:
+        if exc.retryable:
+            # The real error (redacted) goes to the log; the window shows the pair.
+            self._log_exception("join", exc)
+        self._join_labels(clicked if exc.retryable else None)
+        self.show_join_error(exc)
+
     def on_join_invite(self) -> None:
         self.clear_errors()
         if self._join_refused_without_ack():
@@ -3893,11 +3917,12 @@ class MainWindow:
             try:
                 status = self.tahoe.join_invite(invite, offer_storage=offer)
             except SyncError as exc:
-                self.show_join_error(exc)
+                self._join_failed(exc, self.join_btn)
                 return
             except OSError as exc:
-                self.show_join_error(join_filesystem_failure(exc))
+                self._join_failed(join_filesystem_failure(exc), None)
                 return
+            self._join_labels(None)
             self._enter_main(status.state, status.detail)
         finally:
             # Join stays clickable even when join_invite raises outside SyncError.
@@ -3912,11 +3937,12 @@ class MainWindow:
             try:
                 status = self.tahoe.join_existing()
             except SyncError as exc:
-                self.show_join_error(exc)
+                self._join_failed(exc, self.existing_btn)
                 return
             except (OSError, UnicodeDecodeError) as exc:
-                self.show_join_error(join_filesystem_failure(exc))
+                self._join_failed(join_filesystem_failure(exc), None)
                 return
+            self._join_labels(None)
             self._enter_main(status.state, status.detail)
         finally:
             # Join stays clickable even when join_existing raises outside SyncError.

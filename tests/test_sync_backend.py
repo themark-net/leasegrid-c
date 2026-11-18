@@ -509,7 +509,7 @@ def test_join_errors_distinguish_expired_rejected_and_network(tmp_path: Path, mo
     for code, needle in (
         ("0-stale-quiet", "expire"),
         ("3-bad-code", "not accepted"),
-        ("1-net-down", "mailbox"),
+        ("1-net-down", "couldn't join the shared folder"),
     ):
         with pytest.raises(SyncError) as exc:
             client.join_invite(code)
@@ -581,16 +581,16 @@ def test_join_timeout_is_friendly(tmp_path: Path, monkeypatch):
     with pytest.raises(SyncError) as exc:
         client.join_invite(GOOD_FURL)
     blob = exc.value.banner()
-    assert "did not finish" in blob
-    assert "network path" in blob
+    # Design (#90 slice F): a join that cannot reach the grid is one pair.
+    assert "Couldn't join the shared folder." in blob
+    assert "then click Retry." in blob
     _assert_no_spawn_leak(blob, raw_token, GOOD_FURL, str(home))
 
     code = "7-guitarist-revenge"
     with pytest.raises(SyncError) as exc:
         client.join_invite(code)
     blob = exc.value.banner()
-    assert "Nobody answered" in blob
-    assert code in blob
+    assert "Couldn't join the shared folder." in blob
     _assert_no_spawn_leak(blob, raw_token, str(home))
 
 
@@ -868,7 +868,7 @@ def test_dead_furl_then_a_good_one_joins(tmp_path: Path):
             with pytest.raises(SyncError) as exc:
                 client.join_invite(DEAD_FURL)
         blob = exc.value.banner()
-        assert "Introducer is unreachable" in blob
+        assert "Couldn't join the shared folder." in blob
         assert "\nNext:" in blob
         assert "LEASEGRID_TAHOE_NODEDIR" not in blob
         assert DEAD_FURL not in blob

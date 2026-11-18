@@ -74,6 +74,8 @@ class SyncError(Exception):
     """Buyer-visible failure. ``next_hint`` is the in-window Next line.
 
     ``http_status`` is set only for a Magic Folder HTTP response.
+    ``retryable`` marks a network or unreachable failure: the control that
+    started the action turns into Retry and reruns it (Design, #90 slice F).
     """
 
     def __init__(
@@ -81,11 +83,13 @@ class SyncError(Exception):
         message: str,
         next_hint: str = "",
         http_status: Optional[int] = None,
+        retryable: bool = False,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.next_hint = next_hint
         self.http_status = http_status
+        self.retryable = retryable
 
     def banner(self) -> str:
         text = self.message if self.message.startswith("FAIL") else "FAIL — " + self.message
@@ -143,6 +147,23 @@ REFRESH_FAIL_NEXT = "Wait a minute, then quit and reopen Leasegrid Sync."
 MF_ADD_TIMEOUT = 120.0
 #: How long Sync waits for `magic-folder leave` when it removes a failed add.
 MF_LEAVE_TIMEOUT = 60.0
+
+
+#: Design (#90 slice F): a desktop join that cannot reach the network or grid.
+#: The Join button turns into Retry and reruns the join.
+JOIN_UNREACHABLE_MSG = "Couldn't join the shared folder."
+JOIN_UNREACHABLE_NEXT = (
+    "Check that this computer is online and that the person who invited you has Leasegrid Sync "
+    "open, then click Retry. If it still fails, ask them for a new join link."
+)
+
+
+def join_unreachable() -> "SyncError":
+    return SyncError(JOIN_UNREACHABLE_MSG, JOIN_UNREACHABLE_NEXT, retryable=True)
+
+
+class JoinToolOutput(Exception):
+    """The raw `tahoe create-node` output, chained for the log only (redacted there)."""
 
 
 def is_issue_30_status(status: Optional[int]) -> bool:
@@ -1336,11 +1357,7 @@ def join_process_failure(invite: str, raw: str, *, code: bool) -> SyncError:
                 "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
             )
         if _stderr_mentions(raw, _NETWORK_MARKERS):
-            return SyncError(
-                "could not join this friendnet. Invite code %s could not reach the invite mailbox."
-                % invite,
-                "check the network path, then Retry.",
-            )
+            return join_unreachable()
         if _stderr_mentions(raw, _REJECTED_MARKERS):
             return SyncError(
                 "could not join this friendnet. Invite code %s was not accepted." % invite,
@@ -1351,10 +1368,7 @@ def join_process_failure(invite: str, raw: str, *, code: bool) -> SyncError:
             "codes are single-use and expire; ask your inviter for a fresh one; Retry.",
         )
     if _stderr_mentions(raw, _NETWORK_MARKERS):
-        return SyncError(
-            "could not join this friendnet. Tahoe could not reach the friendnet.",
-            "check the network path to the introducer; Retry.",
-        )
+        return join_unreachable()
     return SyncError(
         "could not join this friendnet. Tahoe could not create a node.",
         "check the invite with your inviter; Retry.",
@@ -1381,17 +1395,8 @@ def join_spawn_failure(
     rule: the strerror is not copied into the window.
     """
     if isinstance(exc, subprocess.TimeoutExpired):
-        if code:
-            return SyncError(
-                "could not join this friendnet. Nobody answered invite code %s in %ds."
-                % (invite, int(timeout)),
-                "your inviter must keep `tahoe invite` running until you join; "
-                "get a fresh code; Retry.",
-            )
-        return SyncError(
-            "could not join this friendnet. Tahoe did not finish creating a node in time.",
-            "check the network path to the introducer; Retry.",
-        )
+        # Nobody answered the code, or the introducer was never reached.
+        return join_unreachable()
     if isinstance(exc, FileNotFoundError):
         return join_tahoe_missing()
     # Any other spawn failure, including OSError. Do not append str(exc).
@@ -1600,7 +1605,7 @@ class TahoeClient:
         if proc.returncode != 0:
             shutil.rmtree(self.nodedir, ignore_errors=True)
             raw = (proc.stderr or proc.stdout or "").strip()
-            raise join_process_failure(invite, raw, code=bool(code))
+            raise join_process_failure(invite, raw, code=bool(code)) from JoinToolOutput(raw)
         if code:
             fix_joined_shares(self.nodedir / "tahoe.cfg")
         self.ensure_credit_plugin()
@@ -1910,10 +1915,8 @@ class TahoeClient:
                 "start the Tahoe client; check network; Retry.",
             )
         if status.state == "Offline":
-            raise SyncError(
-                "could not join this friendnet. Introducer is unreachable.",
-                "check the network path to the introducer (and that it is running); Retry.",
-            )
+            # The introducer is unreachable.
+            raise join_unreachable()
         return status
 
     def join_existing(self) -> ConnectionStatus:
@@ -1950,7 +1953,7 @@ class TahoeClient:
             try:
                 return self._bring_up()
             except SyncError as exc:
-                if "Introducer is unreachable" not in exc.message:
+                if not exc.retryable:
                     raise
                 raise SyncError(
                     "could not join this friendnet. A Tahoe node already exists at %s "
@@ -1958,6 +1961,7 @@ class TahoeClient:
                     % self.nodedir,
                     "if that folder belongs to another grid, move it aside and paste a "
                     "join link or short code; otherwise check the network, then Retry.",
+                    retryable=True,
                 ) from exc
         # A node this attempt creates must not block a corrected invite.
         # A node that was already on disk is the branch above and stays.

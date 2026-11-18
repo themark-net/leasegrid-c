@@ -303,7 +303,7 @@ def test_truncated_invite_code_then_a_full_one_joins(tmp_path: Path):
         ):
             joiner.on_join_invite()
         cut = joiner.join_error.text()
-        assert "Introducer is unreachable" in cut
+        assert "Couldn't join the shared folder." in cut
         assert "\nNext:" in cut
         assert "LEASEGRID_TAHOE_NODEDIR" not in cut
         assert "7-cut-code" not in cut
@@ -475,7 +475,7 @@ def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
         ):
             dlg.on_import()
         bad_text = dlg.status.text()
-        assert "Introducer is unreachable" in bad_text
+        assert "Couldn't join the shared folder." in bad_text
         assert "\nNext:" in bad_text
         assert "LEASEGRID_TAHOE_NODEDIR" not in bad_text
         assert DEAD_FURL not in bad_text
@@ -1744,7 +1744,7 @@ def test_joined_home_keeps_servers_and_both_add_paths(ui: MainWindow):
             assert "FAIL" in dlg.error.text()
             assert "That isn't a full storage server link." in dlg.error.text()
             assert "Retry" not in dlg.error.text()  # Design #90 slice E: no Retry in the link pair
-            assert dlg.add_btn.text() == "Retry"
+            assert dlg.add_btn.text() == "Add server"  # slice F: no Retry after a bad link
             assert "forever" not in dlg.error.text().lower()
             assert "web UI" not in dlg.error.text()
             assert not (ui.home / "servers.json").exists()

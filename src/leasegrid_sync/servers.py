@@ -19,8 +19,9 @@ from .backend import SyncError
 # Design (#90 slice E): a wrong scheme or a cut-off link. No pb:// in the words.
 ADD_FAIL = "That isn't a full storage server link."
 ADD_FAIL_NEXT = "Ask whoever runs the server to send the whole link again, then paste all of it here."
-UNREACHABLE = "could not add this storage server. The server is unreachable."
-UNREACHABLE_NEXT = "Retry / check the host."
+# Design (#90 slice F): network or unreachable. The Add button turns into Retry.
+UNREACHABLE = "Couldn't reach the storage server."
+UNREACHABLE_NEXT = "Check that the server is running and this computer is online, then click Retry."
 SEEN_AGAIN_NOTE = (
     "You disconnected this server earlier. Not used until you Add."
 )
@@ -150,13 +151,16 @@ def parse_storage_furl(raw: str) -> tuple[str, list[tuple[str, int]], str]:
 def probe_storage_furl(raw: str, timeout: float = 2.0) -> None:
     """TCP-check the furl. Malformed links fail before any connect."""
     _tubid, hints, _swiss = parse_storage_furl(raw)
+    last: Optional[OSError] = None
     for host, port in hints:
         try:
             with socket.create_connection((host, port), timeout=timeout):
                 return
-        except OSError:
+        except OSError as exc:
+            last = exc
             continue
-    raise SyncError(UNREACHABLE, UNREACHABLE_NEXT)
+    # The OSError is chained for the log; the window shows only the pair.
+    raise SyncError(UNREACHABLE, UNREACHABLE_NEXT, retryable=True) from last
 
 
 def _pin_key(furl: str) -> str:

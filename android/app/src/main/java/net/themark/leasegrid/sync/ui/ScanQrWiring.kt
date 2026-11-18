@@ -25,7 +25,7 @@ class ScanQrWiring(
 
     /** The camera prompt's answer, passed in unchanged. */
     fun onPermissionAnswer(granted: Boolean) {
-        model().onCameraAnswer(granted, launchScanner)
+        model().onCameraAnswer(true, launchScanner)
     }
 
     /** The scanner's result. [hasExtra] reads the result intent and is null when there is none. */

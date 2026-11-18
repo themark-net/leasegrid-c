@@ -18,8 +18,8 @@ class ScanQrWiring(
     fun onScanTapped() {
         model().onScanTapped(
             cameraGranted = CameraGate.isGranted(checkPermission(CameraGate.PERMISSION)),
-            launchScanner = launchScanner,
-            askCamera = { requestPermission(CameraGate.PERMISSION) },
+            launchScanner = { requestPermission(CameraGate.PERMISSION) },
+            askCamera = launchScanner,
         )
     }
 

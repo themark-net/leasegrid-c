@@ -68,11 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--join",
-        metavar="INVITE",
+        metavar="LINK",
         default=None,
-        help="Headless: join from a link (http://….i2p/join#… or leasegrid:join#…), a short "
-        "`tahoe invite` code (7-word-word), or a pb:// introducer address. Creates and starts "
-        "a Tahoe node (client+storage) if needed; pass --client-only to skip offering disk.",
+        # Design's words (#90). The flag still takes a short code or a pb://
+        # furl, but the help names only the join link.
+        help="Join a shared folder with the full join link (in the app, Share invite, "
+        "then tick Show full join link (advanced)).",
     )
     p.add_argument(
         "--client-only",

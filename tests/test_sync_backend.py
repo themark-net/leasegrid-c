@@ -38,7 +38,7 @@ def test_validate_empty_invite_fails():
     with pytest.raises(SyncError) as exc:
         validate_introducer_furl("  ")
     assert "FAIL" in exc.value.banner()
-    assert "pb://" in exc.value.banner()
+    assert "join link" in exc.value.banner()  # Design (#90 slice D): no pb:// in hints
     assert "web UI" not in exc.value.banner().lower() or "does not use the Tahoe web UI" in exc.value.banner()
 
 

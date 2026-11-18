@@ -132,7 +132,7 @@ ADD_FOLDER_FAIL_MSG = "Couldn't add the folder."
 ADD_FOLDER_FAIL_NEXT = "Wait a minute, then click Add folder again."
 #: The same 500 while only listing folders. Listing never adds a folder.
 REFRESH_FAIL_MSG = "Couldn't refresh folders."
-REFRESH_FAIL_NEXT = "Wait a minute, then Restart Sync."
+REFRESH_FAIL_NEXT = "Wait a minute, then quit and reopen Leasegrid Sync."
 
 
 def is_issue_30_status(status: Optional[int]) -> bool:
@@ -1431,18 +1431,18 @@ def validate_introducer_furl(raw: str) -> str:
     if not text:
         raise SyncError(
             "could not join this friendnet. Invite is empty.",
-            "paste the invite from your inviter (a short code like 7-word-word, or a pb:// address).",
+            "paste the invite from your inviter (a short code like 7-word-word, or the full join link).",
         )
     low = text.lower()
     if low.startswith("http://") or low.startswith("https://"):
         raise SyncError(
             "could not join this friendnet. That looks like a web URL.",
-            "Leasegrid Sync does not use the Tahoe web UI. Paste the invite code or pb:// address.",
+            "Leasegrid Sync does not use the Tahoe web UI. Paste the invite code or the full join link.",
         )
     if not text.startswith("pb://"):
         raise SyncError(
             "could not join this friendnet. Invite code invalid.",
-            "ask your inviter for a fresh invite (short code like 7-word-word, or pb://…); Retry.",
+            "ask your inviter for a fresh invite (short code like 7-word-word, or the full join link); Retry.",
         )
     rest = text[5:]
     # pb://TUBID@LOCATION/SWISS, the same rule as Android Invite.validateFurl.

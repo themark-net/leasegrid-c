@@ -1450,7 +1450,7 @@ def test_magic_folder_add_stderr_is_not_shown(tmp_path: Path):
             with pytest.raises(SyncError) as exc:
                 ctl.add_folder(str(folder))
         blob = exc.value.banner()
-        assert "could not add this folder" in blob
+        assert "Couldn't add the folder." in blob
         assert_no_raw_user_text(blob)
 
 

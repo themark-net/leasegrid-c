@@ -138,6 +138,13 @@ REFRESH_FAIL_MSG = "Couldn't refresh folders."
 REFRESH_FAIL_NEXT = "Wait a minute, then quit and reopen Leasegrid Sync."
 
 
+#: `magic-folder add` makes Tahoe directories. A storage host that drops mid-add
+#: can stall it; past this many seconds the add is reported as failed (#30).
+MF_ADD_TIMEOUT = 120.0
+#: How long Sync waits for `magic-folder leave` when it removes a failed add.
+MF_LEAVE_TIMEOUT = 60.0
+
+
 def is_issue_30_status(status: Optional[int]) -> bool:
     """True only for HTTP 500 (#30). ``None`` (no HTTP response) is never #30."""
     return status is not None and status == ISSUE_30_HTTP_STATUS
@@ -2490,28 +2497,57 @@ class MagicFolderCtl:
                 % folder_name,
                 "use the folder already listed, or pick a directory with a different name; Retry.",
             )
-        proc = self._run_cli(
-            [
-                "add",
-                "--author",
-                author,
-                "--name",
-                folder_name,
-                "--poll-interval",
-                "5",
-                "--scan-interval",
-                "5",
-                str(path),
-            ],
-            timeout=120,
-        )
+        try:
+            proc = self._run_cli(
+                [
+                    "add",
+                    "--author",
+                    author,
+                    "--name",
+                    folder_name,
+                    "--poll-interval",
+                    "5",
+                    "--scan-interval",
+                    "5",
+                    str(path),
+                ],
+                timeout=MF_ADD_TIMEOUT,
+            )
+        except SyncError as exc:
+            # #30: a timed-out add (a storage host dropped mid-add) gets the
+            # generic pair; the log path and Retry stay out of the window.
+            self._forget_failed_add(folder_name)
+            raise SyncError(ADD_FOLDER_FAIL_MSG, ADD_FOLDER_FAIL_NEXT) from exc
         if proc.returncode != 0:
             # The first stderr line can be a traceback or a furl. Do not paste it.
-            raise SyncError(
-                "folder not added. Magic Folder could not add this folder.",
-                "fix the path, quit and reopen Leasegrid Sync, then click Add folder again.",
-            )
+            # #30: a host that drops mid-add makes the daemon answer 500 and the
+            # command exit non-zero. The path was checked above, so this is the
+            # generic add pair, not "fix the path".
+            self._forget_failed_add(folder_name)
+            raise SyncError(ADD_FOLDER_FAIL_MSG, ADD_FOLDER_FAIL_NEXT)
         return folder_name
+
+    def _forget_failed_add(self, folder_name: str) -> None:
+        """Leave no half-added folder behind a failed add (#30).
+
+        The daemon can finish the add after the command failed or timed out
+        (the answer was lost). The folder did not exist before this add, so
+        remove it again; the local directory is not touched. Best effort: a
+        daemon that cannot be asked has nothing new to remove.
+        """
+        try:
+            existing = self._http_get("/v1/magic-folder")
+        except SyncError:
+            return
+        if not isinstance(existing, dict) or folder_name not in existing:
+            return
+        try:
+            self._run_cli(
+                ["leave", "--name", folder_name, "--really-delete-write-capability"],
+                timeout=MF_LEAVE_TIMEOUT,
+            )
+        except SyncError:
+            return
 
     def scan_local(self, name: str) -> None:
         """Ask the daemon to scan now. Magic Folder accepts this only as PUT."""

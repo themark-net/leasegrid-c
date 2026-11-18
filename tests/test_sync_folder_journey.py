@@ -486,7 +486,7 @@ def test_folder_journey_add_share_conflict_remove_restart_offline(tmp_path: Path
         restarted.refresh()
         stalled = restarted.folder_error.text()
         assert "could not refresh folders" in stalled
-        assert "Restart Sync" in stalled
+        assert "Quit and reopen Leasegrid Sync" in stalled
         assert restarted.table.item(0, 0).text() == "Docs"
         assert restarted.table.item(0, 1).text() == "Up to date"
         assert_no_raw_user_text(stalled)

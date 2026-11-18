@@ -131,6 +131,9 @@ CUT_LINK_NEXT = "Ask the person who invited you to send the whole link again, th
 ADD_FOLDER_FAIL_MSG = "Couldn't add the folder."
 ADD_FOLDER_FAIL_NEXT = "Wait a minute, then click Add folder again."
 #: The same 500 while only listing folders. Listing never adds a folder.
+# Design (#90 slice E): a code that did not parse. Retrying the same code cannot work.
+INVALID_CODE_MSG = "That code didn't work."
+INVALID_CODE_NEXT = "Ask the person who invited you to send the full join link, then paste all of it here."
 REFRESH_FAIL_MSG = "Couldn't refresh folders."
 REFRESH_FAIL_NEXT = "Wait a minute, then quit and reopen Leasegrid Sync."
 
@@ -1441,8 +1444,8 @@ def validate_introducer_furl(raw: str) -> str:
         )
     if not text.startswith("pb://"):
         raise SyncError(
-            "could not join this friendnet. Invite code invalid.",
-            "ask your inviter for a fresh invite (short code like 7-word-word, or the full join link); Retry.",
+            INVALID_CODE_MSG,
+            INVALID_CODE_NEXT,
         )
     rest = text[5:]
     # pb://TUBID@LOCATION/SWISS, the same rule as Android Invite.validateFurl.
@@ -1469,13 +1472,13 @@ def endpoint_to_url(endpoint: str) -> str:
     if text in ("", "not running"):
         raise SyncError(
             "Magic Folder daemon is not running.",
-            "Restart Sync. If this persists, check that magic-folder is on PATH.",
+            "Quit and reopen Leasegrid Sync. If this persists, check that magic-folder is on PATH.",
         )
     parts = text.split(":")
     if parts[0] != "tcp" or len(parts) < 3:
         raise SyncError(
             "Magic Folder endpoint is unreadable.",
-            "Restart Sync. Delete the daemon config only if you know it is stale.",
+            "Quit and reopen Leasegrid Sync. Delete the daemon config only if you know it is stale.",
         )
     host = parts[1] or "127.0.0.1"
     port = parts[2]
@@ -2143,7 +2146,7 @@ class MagicFolderCtl:
             # stderr can be a traceback or a furl. Do not paste the first line.
             raise SyncError(
                 "folder not added. Could not initialize Magic Folder.",
-                "fix the Magic Folder config path; Restart Sync.",
+                "fix the Magic Folder config path, then quit and reopen Leasegrid Sync.",
             )
 
     def is_running(self) -> bool:
@@ -2174,7 +2177,7 @@ class MagicFolderCtl:
             raise SyncError(
                 "folder not added. Port %d is busy and Magic Folder is not answering."
                 % self.listen_port,
-                "stop the other process or set LEASEGRID_MF_PORT; Restart Sync.",
+                "stop the other process or set LEASEGRID_MF_PORT, then quit and reopen Leasegrid Sync.",
             )
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2183,7 +2186,7 @@ class MagicFolderCtl:
         except OSError as exc:
             raise SyncError(
                 "folder not added. This computer would not let Leasegrid Sync save its files.",
-                "check that %s is writable, then Restart Sync." % self.log_path.parent,
+                "check that %s is writable, then quit and reopen Leasegrid Sync." % self.log_path.parent,
             ) from exc
         try:
             self._proc = popen_hidden(
@@ -2195,7 +2198,7 @@ class MagicFolderCtl:
             log_f.close()
             raise SyncError(
                 "folder not added. Could not start Magic Folder.",
-                "install magic-folder; Restart Sync.",
+                "install magic-folder, then quit and reopen Leasegrid Sync.",
             ) from exc
         deadline = time.time() + 20
         while time.time() < deadline:
@@ -2215,14 +2218,14 @@ class MagicFolderCtl:
                 raise SyncError(
                     "folder not added. Magic Folder stopped while starting; see %s."
                     % self.log_path,
-                    "Restart Sync.",
+                    "Quit and reopen Leasegrid Sync.",
                 )
             if self.is_running():
                 return
             time.sleep(0.2)
         raise SyncError(
             "folder not added. Magic Folder daemon did not become ready.",
-            "see %s; Restart Sync." % self.log_path,
+            "see %s, then quit and reopen Leasegrid Sync." % self.log_path,
         )
 
     def stop(self, terminate_timeout: Optional[float] = None) -> None:
@@ -2242,7 +2245,7 @@ class MagicFolderCtl:
         if not token_path.is_file():
             raise SyncError(
                 "Magic Folder API token is missing.",
-                "Restart Sync so the daemon can rewrite its config.",
+                "Quit and reopen Leasegrid Sync so the daemon can rewrite its config.",
             )
         token = token_path.read_bytes().decode("ascii", "replace").strip()
         return {"Authorization": "Bearer %s" % token}
@@ -2252,7 +2255,7 @@ class MagicFolderCtl:
         if not ep.is_file():
             raise SyncError(
                 "Magic Folder daemon is not running.",
-                "Restart Sync.",
+                "Quit and reopen Leasegrid Sync.",
             )
         return endpoint_to_url(_read_text(ep))
 
@@ -2267,7 +2270,7 @@ class MagicFolderCtl:
         except urllib.error.URLError as exc:
             raise SyncError(
                 "Magic Folder daemon is not reachable.",
-                "Restart Sync.",
+                "Quit and reopen Leasegrid Sync.",
             ) from exc
         if not body:
             return {}
@@ -2276,7 +2279,7 @@ class MagicFolderCtl:
         except json.JSONDecodeError as exc:
             raise SyncError(
                 "Magic Folder returned unreadable JSON.",
-                "see %s; Restart Sync." % self.log_path,
+                "see %s, then quit and reopen Leasegrid Sync." % self.log_path,
             ) from exc
 
     def _http_failure(self, exc: urllib.error.HTTPError) -> SyncError:
@@ -2294,7 +2297,7 @@ class MagicFolderCtl:
             return SyncError(ADD_FOLDER_FAIL_MSG, ADD_FOLDER_FAIL_NEXT, http_status=exc.code)
         return SyncError(
             "Magic Folder API error (%s)." % exc.code,
-            "Restart Sync. If it keeps failing, file a bug per docs/TESTERS.md.",
+            "Quit and reopen Leasegrid Sync. If it keeps failing, file a bug per docs/TESTERS.md.",
             http_status=exc.code,
         )
 
@@ -2320,7 +2323,7 @@ class MagicFolderCtl:
         except urllib.error.URLError as exc:
             raise SyncError(
                 "Magic Folder daemon is not reachable.",
-                "Restart Sync.",
+                "Quit and reopen Leasegrid Sync.",
             ) from exc
         if not body:
             return {}
@@ -2506,7 +2509,7 @@ class MagicFolderCtl:
             # The first stderr line can be a traceback or a furl. Do not paste it.
             raise SyncError(
                 "folder not added. Magic Folder could not add this folder.",
-                "fix the path; Restart Sync; Retry Add folder.",
+                "fix the path, quit and reopen Leasegrid Sync, then click Add folder again.",
             )
         return folder_name
 

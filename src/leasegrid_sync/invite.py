@@ -19,7 +19,15 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
-from .backend import CUT_LINK_MSG, CUT_LINK_NEXT, SyncError, is_wormhole_code, validate_introducer_furl
+from .backend import (
+    CUT_LINK_MSG,
+    CUT_LINK_NEXT,
+    INVALID_CODE_MSG,
+    INVALID_CODE_NEXT,
+    SyncError,
+    is_wormhole_code,
+    validate_introducer_furl,
+)
 from .pgp_words import WORMHOLE_WORDS
 
 # Tahoe 1.20 prints this once the inviter is parked on the relay.
@@ -33,10 +41,7 @@ NATIVE_SCHEME = "leasegrid:join"
 # U+202E is not in this set: it can hide a different host, so the paste is refused.
 _PASTE_MARKS = frozenset("\u00ad\u200b\u200c\u200d\u2060\ufeff")
 _SEGMENT_LETTERS = re.compile(r"^([a-z]+)(\d*)$")
-_INVALID_CODE = (
-    "could not join this friendnet. Invite code invalid.",
-    "ask your inviter for a fresh short code like 7-word-word, or a join link; Retry.",
-)
+_INVALID_CODE = (INVALID_CODE_MSG, INVALID_CODE_NEXT)
 
 
 def normalize_invite_paste(raw: str) -> str:

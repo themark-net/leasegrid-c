@@ -223,7 +223,7 @@ def test_garbled_invite_does_not_ask_for_a_raw_furl():
     banner = exc.value.banner()
     assert "FAIL" in banner
     assert "pb://" not in banner
-    assert "7-word-word" in banner
+    assert "full join link" in banner  # Design #90 slice E
     with pytest.raises(SyncError) as exc:
         parse_invite("http://127.0.0.1:3456/")
     assert "pb://" not in exc.value.banner()
@@ -317,7 +317,7 @@ def test_generated_code_round_trips_after_bad_garbled_and_expired(tmp_path: Path
         with pytest.raises(SyncError) as exc:
             joiner.join_invite("%%%not-a-code%%%")
         assert "pb://" not in exc.value.banner()
-        assert "short code" in exc.value.banner()
+        assert "full join link" in exc.value.banner()
         assert not joiner.has_nodedir()
 
         with pytest.raises(SyncError) as exc:

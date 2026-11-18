@@ -35,7 +35,7 @@ def test_bad_storage_furl_fails_without_writing_a_pin(tmp_path: Path):
     with pytest.raises(SyncError) as exc:
         add_storage_server(home, nodedir, "http://127.0.0.1:3456/")
     assert ADD_FAIL in exc.value.message
-    assert "Retry" in exc.value.next_hint
+    assert "whole link again" in exc.value.next_hint
     banner = exc.value.banner().lower()
     assert "fail" in banner
     assert "forever" not in banner

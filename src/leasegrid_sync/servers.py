@@ -16,10 +16,9 @@ from typing import Optional
 
 from .backend import SyncError
 
-ADD_FAIL = (
-    "could not add this storage server. Link looks wrong or the server is unreachable."
-)
-ADD_FAIL_NEXT = "Check the link and Retry."
+# Design (#90 slice E): a wrong scheme or a cut-off link. No pb:// in the words.
+ADD_FAIL = "That isn't a full storage server link."
+ADD_FAIL_NEXT = "Ask whoever runs the server to send the whole link again, then paste all of it here."
 UNREACHABLE = "could not add this storage server. The server is unreachable."
 UNREACHABLE_NEXT = "Retry / check the host."
 SEEN_AGAIN_NOTE = (

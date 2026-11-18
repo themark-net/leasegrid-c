@@ -134,7 +134,7 @@ def test_join_invite_garbage(tmp_path: Path):
     client = TahoeClient(nodedir=tmp_path / "none")
     with pytest.raises(SyncError) as exc:
         client.join_invite("not-a-code")
-    assert "invalid" in exc.value.message.lower()
+    assert "didn't work" in exc.value.message.lower()
 
 
 FAKE_TAHOE = """#!/usr/bin/env python3
@@ -338,7 +338,7 @@ def test_validate_invite_accepts_code_or_furl():
     assert validate_invite(GOOD_FURL) == GOOD_FURL
     with pytest.raises(SyncError) as exc:
         validate_invite("7-guitarist")
-    assert "short code like 7-word-word" in exc.value.next_hint
+    assert "full join link" in exc.value.next_hint
 
 
 def test_fix_joined_shares_rewrites_tahoe_120_bytes_repr(tmp_path: Path):
@@ -417,7 +417,7 @@ def test_pgp_word_prefix_is_refused_and_a_full_word_still_joins(tmp_path: Path, 
     with pytest.raises(SyncError) as exc:
         client.join_invite("0-dead-code")
     blob = exc.value.banner()
-    assert "invalid" in blob.lower()
+    assert "didn't work" in blob.lower()
     assert "expire" not in blob.lower()
     assert "0-dead-code" not in blob
     assert "deadbolt" not in blob.lower()
@@ -425,7 +425,7 @@ def test_pgp_word_prefix_is_refused_and_a_full_word_still_joins(tmp_path: Path, 
     assert not nodedir.exists()
     with pytest.raises(SyncError) as exc:
         client.join_invite("7-deadbol-revenge")
-    assert "invalid" in exc.value.banner().lower()
+    assert "didn't work" in exc.value.banner().lower()
     assert "7-deadbol-revenge" not in exc.value.banner()
     assert not nodedir.exists()
     try:
@@ -458,7 +458,7 @@ def test_rtl_override_in_a_paste_does_not_create_a_node(tmp_path: Path):
     with pytest.raises(SyncError) as exc:
         client.join_invite(hidden)
     blob = exc.value.banner()
-    assert "invalid" in blob.lower()
+    assert "didn't work" in blob.lower()
     assert "\u202e" not in blob
     assert "pb://" not in blob
     assert "swissnum" not in blob
@@ -1762,7 +1762,7 @@ def test_refresh_daemon_exit_does_not_say_folder_not_added(tmp_path: Path, monke
     assert "could not refresh folders" in blob
     assert "folder not added" not in blob.lower()
     assert "Magic Folder stopped while starting" in blob
-    assert "Restart Sync." in blob
+    assert "Quit and reopen Leasegrid Sync." in blob
     assert "#30" not in blob
     _assert_log_not_pasted(blob, log, seeded)
 
@@ -1789,7 +1789,7 @@ def test_add_folder_daemon_exit_still_says_folder_not_added(tmp_path: Path, monk
     assert "folder not added" in blob
     assert "could not refresh folders" not in blob
     assert "Magic Folder stopped while starting" in blob
-    assert "Restart Sync." in blob
+    assert "Quit and reopen Leasegrid Sync." in blob
     _assert_log_not_pasted(blob, log, seeded)
 
     bare = MagicFolderCtl(config_dir=tmp_path / "mf-add", nodedir=tmp_path / "tahoe", mf_bin=None)

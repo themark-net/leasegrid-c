@@ -290,7 +290,7 @@ def test_truncated_invite_code_then_a_full_one_joins(tmp_path: Path):
         joiner.invite_edit.setText("7-guitarist")
         joiner.on_join_invite()
         short = joiner.join_error.text()
-        assert "invalid" in short.lower()
+        assert "didn't work" in short.lower()
         assert "\nNext:" in short
         assert "7-guitarist" not in short
         assert joiner.join_btn.isEnabled()
@@ -363,7 +363,7 @@ def test_join_offline_recover_after_a_bad_paste(tmp_path: Path):
         joiner.invite_edit.setText("0-dead-code")
         joiner.on_join_invite()
         refused = joiner.join_error.text()
-        assert "invalid" in refused.lower()
+        assert "didn't work" in refused.lower()
         assert "expire" not in refused.lower()
         assert "0-dead-code" not in refused
         assert "deadbolt" not in refused.lower()
@@ -1445,7 +1445,7 @@ def test_add_dialog_invite_card_copies_code_and_keeps_paste_furl(ui: MainWindow,
     assert dlg.copy_invite_btn.text() == "Copy code"
     dlg.on_copy_invite()
     assert ui.QtWidgets.QApplication.clipboard().text() == "7-orange-tunnel"
-    assert "pb://" in dlg.paste_hint.text()
+    assert "storage server link" in dlg.paste_hint.text()
     assert dlg.furl_edit.isVisible()
     dlg.dlg.close()
 
@@ -1738,12 +1738,12 @@ def test_joined_home_keeps_servers_and_both_add_paths(ui: MainWindow):
             assert dlg.paste_radio.isVisible()
             assert dlg.furl_edit.isVisible()
             assert dlg.copy_invite_btn.isVisible()
-            assert "pb://" in dlg.paste_hint.text()
+            assert "storage server link" in dlg.paste_hint.text()
             dlg.furl_edit.setText("not-a-furl")
             dlg.on_add()
             assert "FAIL" in dlg.error.text()
-            assert "could not add this storage server" in dlg.error.text()
-            assert "Retry" in dlg.error.text()
+            assert "That isn't a full storage server link." in dlg.error.text()
+            assert "Retry" not in dlg.error.text()  # Design #90 slice E: no Retry in the link pair
             assert dlg.add_btn.text() == "Retry"
             assert "forever" not in dlg.error.text().lower()
             assert "web UI" not in dlg.error.text()
@@ -2541,7 +2541,7 @@ def test_offline_grid_recovers_when_the_friendnet_returns(
     assert "FAIL" not in ui.folder_error.text()
 
     def down():
-        raise SyncError("Magic Folder daemon is not reachable.", "Restart Sync.")
+        raise SyncError("Magic Folder daemon is not reachable.", "Quit and reopen Leasegrid Sync.")
 
     with patch.object(ui.tahoe, "connection_status", return_value=offline), patch.object(
         ui.mf, "list_folders", side_effect=down

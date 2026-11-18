@@ -521,7 +521,7 @@ def _see_stopped_magic_folder(window, name: str, shots) -> None:
     down = "not running" in detail or "not reachable" in detail
     if status != "FAIL" or not down:
         raise AssertionError("stopped magic-folder said %s" % _safe("%s %s" % (status, detail)))
-    window.show_folder_error(SyncError(detail, "Restart Sync."))
+    window.show_folder_error(SyncError(detail, "Quit and reopen Leasegrid Sync."))
     window.app.processEvents()
     _shot(window.win, shots / "folder-service-down.png")
     try:

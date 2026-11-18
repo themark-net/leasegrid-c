@@ -2157,15 +2157,15 @@ class AddStorageServerDialog:
         self.paste_radio.setObjectName("addPathPaste")
         v.addWidget(self.paste_radio)
         self.paste_hint = QtWidgets.QLabel(
-            "Paste a storage server link (pb://…) from a host you trust."
+            "Paste a storage server link from a host you trust."
         )
         self.paste_hint.setWordWrap(True)
         self.paste_hint.setObjectName("addPasteHint")
         v.addWidget(self.paste_hint)
-        v.addWidget(QtWidgets.QLabel("Server link"))
+        v.addWidget(QtWidgets.QLabel("Storage server link"))
         self.furl_edit = QtWidgets.QLineEdit()
         self.furl_edit.setObjectName("storageFurlEdit")
-        self.furl_edit.setPlaceholderText("pb://…")
+        self.furl_edit.setPlaceholderText("Paste the link you were given for this storage server")
         v.addWidget(self.furl_edit)
         v.addWidget(QtWidgets.QLabel("Nickname (optional)"))
         self.nick_edit = QtWidgets.QLineEdit()

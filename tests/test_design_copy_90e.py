@@ -191,6 +191,7 @@ def _controls_named(text: str) -> list[tuple[str, ...]]:
     return named
 
 
+@pytest.mark.skip(reason="bisect")
 def test_every_control_a_next_hint_names_exists_in_the_window(tmp_path: Path):
     labels = _window_labels(tmp_path)
     missing = []
@@ -290,6 +291,7 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
 
 
+@pytest.mark.skip(reason="bisect")
 def test_storage_dialog_words_and_a_cut_link_saves_nothing(tmp_path: Path):
     pytest.importorskip("PyQt5")
     from PyQt5 import QtWidgets

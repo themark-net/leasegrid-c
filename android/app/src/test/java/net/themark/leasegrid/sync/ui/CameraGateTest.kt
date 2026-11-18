@@ -1,5 +1,6 @@
 package net.themark.leasegrid.sync.ui
 
+import android.content.pm.PackageManager
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,9 +16,9 @@ class CameraGateTest {
 
     @Test
     fun onlyPermissionGrantedIsAYes() {
-        assertTrue(CameraGate.isGranted(0))
-        assertFalse(CameraGate.isGranted(-1))
-        assertFalse(CameraGate.isGranted(1))
+        assertTrue(CameraGate.isGranted(PackageManager.PERMISSION_GRANTED))
+        assertFalse(CameraGate.isGranted(PackageManager.PERMISSION_DENIED))
+        assertFalse(CameraGate.isGranted(PackageManager.PERMISSION_GRANTED + 1))
     }
 
     @Test

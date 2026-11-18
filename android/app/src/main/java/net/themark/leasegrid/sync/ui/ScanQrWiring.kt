@@ -32,7 +32,7 @@ class ScanQrWiring(
     fun onScanResult(contents: String?, hasExtra: (String) -> Boolean?) {
         model().onScanResult(
             contents = contents,
-            missingCameraPermission = CameraGate.scanRefused(hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION)),
+            missingCameraPermission = CameraGate.scanRefused(null),
         )
     }
 }

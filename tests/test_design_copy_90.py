@@ -156,10 +156,20 @@ def test_banned_words_never_reach_these_messages():
         backend_mod.REFRESH_FAIL_NEXT,
         app_mod.ADD_FOLDER_HOSTS_MSG,
         app_mod.ADD_FOLDER_HOSTS_NEXT,
+        app_mod.ADD_FOLDER_PARTIAL_MSG,
+        app_mod.ADD_FOLDER_OK_MSG,
     ]
     for text in strings:
         assert_clean(text)
     assert_clean(SyncError(backend_mod.CUT_LINK_MSG, backend_mod.CUT_LINK_NEXT).banner())
+    # Design's post-add success line: live counts only, no host names, no issue numbers.
+    partial = app_mod.ADD_FOLDER_PARTIAL_MSG % (2, 3)
+    assert partial == (
+        "Added. 2 of 3 hosts have a copy now. The others get theirs when they reconnect."
+    )
+    assert_clean(partial)
+    assert_clean(app_mod.ADD_FOLDER_OK_MSG % "photos")
+    assert "#" not in partial
     # The guard itself catches each banned word.
     for bad in ("Invite furl is malformed.", "This is known issue #12.", "see #30", "then Retry."):
         with pytest.raises(AssertionError):

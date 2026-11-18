@@ -272,14 +272,17 @@ def test_an_add_that_completes_at_needed_below_happy_succeeds_with_no_error_pair
     """PM 3:37am (option A): one of three hosts drops mid-add and the add still completes.
 
     Magic Folder's mutable directories need shares.needed (2) hosts, so the
-    folder is real and readable. Sync reports it as added, with no hosts pair
-    and no generic pair, and keeps it (no leave).
+    folder is real and readable. Sync keeps it (no leave) and shows Design's
+    partial-copy line with the live 2 of 3 counts, not an error pair.
     """
     window, d, spool = drop_rig("partial")
     text, _ = _click_add(window, tmp_path / "docs")
-    assert text == "Added folder docs"
+    assert text == (
+        "Added. 2 of 3 hosts have a copy now. The others get theirs when they reconnect."
+    )
     for bad in (HOSTS_MSG, "hosts are connected", GENERIC_MSG, "FAIL", "Next:", "Retry"):
         assert bad not in text, (bad, text)
+    assert "#8b1a1a" not in window.folder_error.styleSheet()
     status = window.tahoe.connection_status()
     assert status.servers_connected == 2, "the grid did not drop a host during the add"
     assert list(d.folders()) == ["docs"]

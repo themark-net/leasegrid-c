@@ -1215,6 +1215,13 @@ def _storage_count(status: ConnectionStatus) -> int:
 #: Design's copy (#90): live counts, no issue number, no Retry.
 ADD_FOLDER_HOSTS_MSG = "Can't add a folder yet. Only %d of %d hosts are connected."
 ADD_FOLDER_HOSTS_NEXT = "Wait until Hosts shows %d connected, then click Add folder again."
+#: After a successful add when connected hosts are still short of shares.happy.
+#: Design's copy: live counts, muted secondary, no warning color, no icon, no button.
+ADD_FOLDER_OK_MSG = "Added folder %s"
+ADD_FOLDER_PARTIAL_MSG = (
+    "Added. %d of %d hosts have a copy now. The others get theirs when they reconnect."
+)
+ADD_FOLDER_PARTIAL_STYLE = "color: #6b7280;"
 #: --dogfood-folder runs right after a join, when a healthy grid can still be
 #: settling (wait_connected stops at one host). It waits this long for
 #: shares.happy hosts. The window does not wait: a person can Retry.
@@ -1233,6 +1240,21 @@ def hosts_short_for_add(status: ConnectionStatus, happy: int) -> Optional[SyncEr
     if n >= happy:
         return None
     return SyncError(ADD_FOLDER_HOSTS_MSG % (n, happy), ADD_FOLDER_HOSTS_NEXT % happy)
+
+
+def add_folder_success_message(
+    name: str, connected: Optional[int], happy: Optional[int]
+) -> str:
+    """Plain success, or Design's partial-copy line when connected < happy.
+
+    Unreadable counts (None or invalid) never guess X or N. Only a trusted
+    connected count below happy shows the live-count line.
+    """
+    if connected is None or happy is None or connected < 0 or happy <= 0:
+        return ADD_FOLDER_OK_MSG % name
+    if connected >= happy:
+        return ADD_FOLDER_OK_MSG % name
+    return ADD_FOLDER_PARTIAL_MSG % (connected, happy)
 
 
 def _storage_known_down(status: ConnectionStatus) -> bool:
@@ -2348,6 +2370,7 @@ class MainWindow:
         self._conflict_banner = ""
         self._grid_note = False
         self._grid_banner = ""
+        self._add_partial_banner = ""
         self._credit_loaded = False
         self._invite_session = None
 
@@ -3832,6 +3855,7 @@ class MainWindow:
         self.join_error.setText("")
         self.join_progress.setText("")
         self.folder_error.setText("")
+        self._add_partial_banner = ""
         self.open_credit_btn.hide()
         self.credit_error.setText("")
         self.credit_error.hide()
@@ -4166,6 +4190,7 @@ class MainWindow:
         self._note_missing_folders(rows)
         if not self._missing_folder_note:
             self._note_conflicts(rows)
+        self._clear_add_partial_if_caught_up(status)
 
     def _note_grid(self, status: ConnectionStatus) -> bool:
         """Name a friendnet or storage drop, and clear that line when it returns.
@@ -4333,7 +4358,7 @@ class MainWindow:
             self.show_folder_error(unexpected_error(exc, "folder not added."))
             return
         self.refresh()
-        self.folder_error.setText("Added folder %s" % name)
+        self._show_add_folder_success(name)
 
     def _hosts_short_for_add(self, wait: float = 0.0) -> Optional[SyncError]:
         deadline = time.monotonic() + wait
@@ -4348,6 +4373,62 @@ class MainWindow:
             if short is None or time.monotonic() >= deadline or quit_requested():
                 return short
             time.sleep(0.5)
+
+    def _add_folder_copy_counts(
+        self, status: Optional[ConnectionStatus] = None
+    ) -> Optional[tuple[int, int]]:
+        """Return (connected, happy) when both can be trusted, else None.
+
+        Only a Connected introducer gives a count to trust. Failures and any
+        other state are unreadable: never invent X or N.
+        """
+        try:
+            if status is None:
+                status = self.tahoe.connection_status()
+            happy = read_shares(self.tahoe.nodedir)[1]
+        except Exception as exc:
+            self._log_exception("add_folder_copy_counts", exc)
+            return None
+        if status.state != "Connected" or not status.introducer_ok or happy <= 0:
+            return None
+        return _storage_count(status), happy
+
+    def _show_add_folder_success(self, name: str) -> None:
+        """Set the post-add line: partial live-count copy, or plain success."""
+        counts = self._add_folder_copy_counts()
+        connected, happy = counts if counts is not None else (None, None)
+        text = add_folder_success_message(name, connected, happy)
+        if counts is not None and connected < happy:
+            self.folder_error.setStyleSheet(ADD_FOLDER_PARTIAL_STYLE)
+            self.folder_error.setText(text)
+            self._add_partial_banner = text
+        else:
+            self.folder_error.setStyleSheet("")
+            self.folder_error.setText(text)
+            self._add_partial_banner = ""
+        self.open_credit_btn.hide()
+
+    def _clear_add_partial_if_caught_up(self, status: ConnectionStatus) -> None:
+        """Drop the partial-copy line once a later refresh sees all N hosts.
+
+        Unreadable counts do not clear it: that would guess that everyone is
+        back. A later different note stays on screen.
+        """
+        banner = self._add_partial_banner
+        if not banner:
+            return
+        if self.folder_error.text() != banner:
+            self._add_partial_banner = ""
+            return
+        counts = self._add_folder_copy_counts(status)
+        if counts is None:
+            return
+        connected, happy = counts
+        if connected >= happy:
+            self.folder_error.setText("")
+            self.folder_error.setStyleSheet("")
+            self.open_credit_btn.hide()
+            self._add_partial_banner = ""
 
     def _review_expansion(self, need: int, remaining: int) -> bool:
         QtWidgets = self.QtWidgets

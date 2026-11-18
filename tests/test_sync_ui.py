@@ -2841,6 +2841,127 @@ def test_add_folder_with_fewer_hosts_than_happy_stops_and_enough_hosts_proceeds(
     assert ui.folder_error.text() == "Added folder photos"
 
 
+def test_add_folder_success_at_two_of_three_shows_partial_copy_line(ui: MainWindow, tmp_path: Path):
+    """A successful add with 2 of 3 hosts connected shows Design's live-count line."""
+    _enter(ui)
+    _happy(ui, 3)
+    counts = {"n": 3}
+
+    def status():
+        return _hosts(counts["n"])
+
+    def add_folder(path):
+        counts["n"] = 2
+        return "photos"
+
+    with patch.object(ui.tahoe, "connection_status", side_effect=status), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", side_effect=add_folder) as add, \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert add.called
+    text = ui.folder_error.text()
+    assert text == "Added. 2 of 3 hosts have a copy now. The others get theirs when they reconnect."
+    assert "Added folder" not in text
+    style = ui.folder_error.styleSheet()
+    assert "#8b1a1a" not in style
+    assert "#6b7280" in style
+    assert ui.open_credit_btn.isHidden()
+    assert ui.folder_error.pixmap() is None or ui.folder_error.pixmap().isNull()
+
+
+def test_add_folder_success_at_three_of_three_shows_plain_success_with_no_count_line(
+    ui: MainWindow, tmp_path: Path
+):
+    """When every host has a copy, only the plain success shows."""
+    _enter(ui)
+    _happy(ui, 3)
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(3)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", return_value="photos") as add, \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert add.called
+    text = ui.folder_error.text()
+    assert text == "Added folder photos"
+    assert "have a copy now" not in text
+    assert "of 3" not in text
+    assert "#8b1a1a" not in ui.folder_error.styleSheet()
+
+
+def test_add_folder_success_with_unreadable_counts_shows_plain_success(ui: MainWindow, tmp_path: Path):
+    """If connected or happy cannot be read after a successful add, never guess a count."""
+    from leasegrid_sync import app as app_mod
+
+    _enter(ui)
+    _happy(ui, 3)
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(2)), \
+         patch.object(app_mod, "read_shares", side_effect=RuntimeError("shares unreadable")), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", return_value="photos") as add, \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert add.called
+    text = ui.folder_error.text()
+    assert text == "Added folder photos"
+    assert "of 3" not in text
+    assert "of 2" not in text
+    assert "have a copy now" not in text
+
+
+def test_add_folder_partial_line_clears_when_refresh_sees_all_hosts(ui: MainWindow, tmp_path: Path):
+    """The partial-copy line stays until a later refresh can read all N hosts connected."""
+    _enter(ui)
+    _happy(ui, 3)
+    counts = {"n": 3}
+
+    def status():
+        return _hosts(counts["n"])
+
+    def add_folder(path):
+        counts["n"] = 2
+        return "photos"
+
+    with patch.object(ui.tahoe, "connection_status", side_effect=status), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", side_effect=add_folder), \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert "2 of 3" in ui.folder_error.text()
+    with patch.object(ui.tahoe, "connection_status", side_effect=status), \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.refresh()
+    assert "2 of 3" in ui.folder_error.text()
+    counts["n"] = 3
+    with patch.object(ui.tahoe, "connection_status", side_effect=status), \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.refresh()
+    assert ui.folder_error.text() == ""
+    counts["n"] = 2
+    # Unreadable counts on a later refresh must not guess that everyone is back.
+    _enter(ui)
+    _happy(ui, 3)
+    counts["n"] = 3
+
+    def add_again(path):
+        counts["n"] = 2
+        return "notes"
+
+    with patch.object(ui.tahoe, "connection_status", side_effect=status), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", side_effect=add_again), \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    line = "Added. 2 of 3 hosts have a copy now. The others get theirs when they reconnect."
+    assert ui.folder_error.text() == line
+    from leasegrid_sync import app as app_mod
+    with patch.object(ui.tahoe, "connection_status", side_effect=status), \
+         patch.object(app_mod, "read_shares", side_effect=RuntimeError("shares unreadable")), \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.refresh()
+    assert ui.folder_error.text() == line
+
+
 def test_add_folder_reads_happy_from_this_nodes_config(ui: MainWindow, tmp_path: Path):
     """A grid with shares.happy = 2 adds with 2 hosts. The default 3 is not assumed."""
     _enter(ui)

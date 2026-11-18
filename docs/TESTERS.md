@@ -36,7 +36,7 @@ Then: open **Join a friendnet**, paste the short code your friend copied with **
 
 ## Known issues
 
-- **Add folder and hosts** ([#30](https://github.com/themark-net/leasegrid-c/issues/30), fixed after v0.1.13): a host that drops while a folder is being added does not always stop the add. With at least `shares.needed` hosts (2 of 3 on a 2/3/3 grid) the folder is added with no error, and the other host catches up when it reconnects. See the [guide](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md#add-folder-and-hosts-30-fixed).
+- **Add folder and hosts** ([#30](https://github.com/themark-net/leasegrid-c/issues/30), fixed after v0.1.13): a host that drops while a folder is being added does not always stop the add. With at least `shares.needed` hosts (2 of 3 on a 2/3/3 grid) the folder is added, and the window shows **Added. X of N hosts have a copy now. The others get theirs when they reconnect.** when connected hosts are still short of N. When every host has a copy, or the counts cannot be read, it shows **Added folder NAME** with no count. The other host catches up when it reconnects. See the [guide](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md#add-folder-and-hosts-30-fixed).
 - **Unsigned installers:** Gatekeeper and SmartScreen warn. On Windows 11, Smart App Control can block the app with no **Run anyway**.
 - **Old v0.1.0 install?** It shows **Copy link** instead of **Copy code**. The [full guide](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md#join-with-an-invite) covers both screens.
 

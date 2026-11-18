@@ -38,7 +38,7 @@ You stop only on one of these. Before you stop for any reason, do **Finish** (§
 
 ## 2. Hard rules
 
-- Work only inside the worktree (and `/tmp`). **Never touch `/home/mark/DEVELOP/leasegrid-c` itself** (Mark's checkout) or other worktrees (`tmp/v017-*` included). Only this `.venv`. No sudo, no system packages, no services, no sign-ins, no spending money, no posting. Don't kill processes you didn't start.
+- Work only inside the worktree (and `/tmp`). **Never touch `~/DEVELOP/leasegrid-c` itself** (Mark's checkout) or other worktrees (`tmp/v017-*` included). Only this `.venv`. No sudo, no system packages, no services, no sign-ins, no spending money, no posting. Don't kill processes you didn't start.
 - Never print or commit secrets; fakes only.
 - No PR creation or edits, no merge to main, no tag, **no force-push, no rebase**. Push only `build/dev-safety-rails`, normally: `git push origin HEAD:refs/heads/build/dev-safety-rails`. Stage explicit paths only.
 - This run adds gates and docs. **Don't change app behavior** (sole exception: the bug fixes named in item 4). If a new rule flags v0.1.7 code, either suppress it on that line with a reason (`# nosemgrep: <rule-id> -- <why it is safe>`, or `# noqa: S<nnn> <why>`) or, if it is a real bug, log it under "Found by the new gate" in the handoff and **don't fix it here**.

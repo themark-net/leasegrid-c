@@ -1,6 +1,6 @@
 # Run log — v0.1.6 fix round 3 (Tester FAIL @ 8a70dd3, B5)
 
-Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v016-fix3`
+Worktree: `~/DEVELOP/leasegrid-c/tmp/v016-fix3`
 Branch: `build/v0.1.6-batch` (PR #73). Start HEAD `29e9dee` (drop-in on Tester head `8a70dd3`).
 Base: `86a28c8` (v0.1.5). Interpreter: this tree's `.venv`.
 Started: 2026-10-17. Wall clock cap: about 2.5 hours.

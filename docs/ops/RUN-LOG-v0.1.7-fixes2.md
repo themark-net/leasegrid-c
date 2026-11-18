@@ -1,6 +1,6 @@
 # Run log — v0.1.7 fix round 2
 
-Slug: v0.1.7-fixes2. Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v017-fixes`. Branch: `build/v0.1.7-batch`. Started at `9c099d5` (drop-in on `c595ea5`). Tester FAIL on PR #74 at `fbeb6f1`.
+Slug: v0.1.7-fixes2. Worktree: `~/DEVELOP/leasegrid-c/tmp/v017-fixes`. Branch: `build/v0.1.7-batch`. Started at `9c099d5` (drop-in on `c595ea5`). Tester FAIL on PR #74 at `fbeb6f1`.
 
 Overview: Fix Tester blockers T2–T5 and the listed follow-ups. Each item is fix, tests, mutation, ci-local, one commit, then a fast-forward push. The lead does the items in order in this worktree.
 

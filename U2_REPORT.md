@@ -32,7 +32,7 @@ Native **Leasegrid Sync** Credit place (PyQt wrap, same window as U1 Folders). L
 
 ```
 leasegrid-sync --status
-Connected    introducer up · 3 storage    /home/mark/.tahoe
+Connected    introducer up · 3 storage    ~/.tahoe
 
 curl -sS http://127.0.0.1:8700/health
 {"ok": true, "issuer-pubkey-id": "09e9633f194ba8bf2df91e69c0e497619a24ebd6a4fa7814406c836796995ab5"}

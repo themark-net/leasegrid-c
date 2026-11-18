@@ -1,6 +1,6 @@
 # Run log — dev safety rails fix2
 
-Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/pr75-fix2`
+Worktree: `~/DEVELOP/leasegrid-c/tmp/pr75-fix2`
 Branch: `bot/pr75-fix2` (do not push)
 Head at start: `5d2101f` (matches `origin/build/dev-safety-rails` and `origin/main` is `78a691a`)
 Started: 2026-10-18T07:52:52Z

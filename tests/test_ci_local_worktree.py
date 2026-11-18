@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "ci-local.sh"
-SHARED_PYTHON = "/home/mark/tahoe-venv/bin/python"
+SHARED_PYTHON = os.path.expanduser("~/tahoe-venv/bin/python")
 
 # ci-local.sh is a POSIX dev script. On Windows, bash on PATH may be WSL.
 pytestmark = pytest.mark.skipif(

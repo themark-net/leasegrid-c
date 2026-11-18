@@ -26,8 +26,8 @@ Native **Leasegrid Sync** (PyQt wrap, Gridsync folder-list mental model + Magic 
 
 ```
 leasegrid-sync --dogfood-folder ~/Leasegrid/u1-dogfood --screenshot ~/Leasegrid/u1-sync.png
-U1 dogfood folder=/home/mark/Leasegrid/u1-dogfood
-probe=/home/mark/Leasegrid/u1-dogfood/u1-hello.txt
+U1 dogfood folder=~/Leasegrid/u1-dogfood
+probe=~/Leasegrid/u1-dogfood/u1-hello.txt
 status={'relpath': 'u1-hello.txt', 'mtime': 1789831840, 'last-updated': 1789831900,
         'last-upload-duration': None, 'size': 34}
 ```

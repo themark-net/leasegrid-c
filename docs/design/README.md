@@ -6,7 +6,7 @@
 **Owner:** Design Bot (executor staged on box)  
 **Date:** 2026-09-24 PT  
 **Product lock:** CEO/PM RELEASE Offer Used → payment/settlement Design · issue [#28](https://github.com/themark-net/leasegrid-c/issues/28) · tip ≥ **`83b3e66`** (`83b3e66d4afdc7499619a43af82b78c54b6dd939`) · #27 SHIPPED @ `639163a` · #34 SHIPPED @ `442b76e` · #38 SHIPPED @ `83b3e66` · CrashPlan folders-first + Offer pie stand · Servers primary / Credit under More · Marketing silent · no new payment rails  
-**Install target (nimo):** `/home/mark/DEVELOP/leasegrid-c/docs/design/` (+ pointer beside `docs/09-ui-track.md`)  
+**Install target (nimo):** `~/DEVELOP/leasegrid-c/docs/design/` (+ pointer beside `docs/09-ui-track.md`)  
 **Brand (provisional):** **Leasegrid Sync** — CrashPlan is a UX metaphor, not a product rename.
 
 ---

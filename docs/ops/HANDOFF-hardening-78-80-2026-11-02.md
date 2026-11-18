@@ -41,7 +41,7 @@ Product changes from `bot/lg-78-invite-1031` (`97ee7e6`, `be0a398`, `a9b1b38`) a
 
 ## Red-first evidence
 
-Python, against `git show 7ce07856:tests/test_android_invite_copy.py` loaded from `/tmp/lg-red-78-80/`. `/usr/bin/python3` has no pytest. The red run used `/home/mark/tahoe-venv/bin/pytest /tmp/lg-red-78-80/test_red_expectations.py` (that venv was not modified). 2 failed:
+Python, against `git show 7ce07856:tests/test_android_invite_copy.py` loaded from `/tmp/lg-red-78-80/`. `/usr/bin/python3` has no pytest. The red run used `~/tahoe-venv/bin/pytest /tmp/lg-red-78-80/test_red_expectations.py` (that venv was not modified). 2 failed:
 
 - `test_em_dash_and_en_dash_are_banned`: `AssertionError: assert [] == ['trust U+2014 unpaid']`
 - `test_split_introducer_is_caught_by_the_new_scan`: `AssertionError: "Intro" + "ducer"` then `assert []` from `old._banned(['Intro', 'ducer'])`

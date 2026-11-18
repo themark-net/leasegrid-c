@@ -1,6 +1,6 @@
 # Run log — Leasegrid Sync v0.1.7 fix round 1
 
-Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v017-fixes`
+Worktree: `~/DEVELOP/leasegrid-c/tmp/v017-fixes`
 Branch: `build/v0.1.7-batch` (no upstream)
 Base: `fbeb6f1` (`v0.1.7: handoff`). Head at start: `3d64b06` (the drop-in; same commit on `origin/build/v0.1.7-batch`).
 Started: 2026-10-17

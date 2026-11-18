@@ -1,6 +1,6 @@
 # Run log — v0.1.6 fix round (Tester FAIL @ bd7b09e)
 
-Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v016-fixes`
+Worktree: `~/DEVELOP/leasegrid-c/tmp/v016-fixes`
 Branch: `build/v0.1.6-batch` (PR #73). Start HEAD `3caa6bf` (drop-in on `bd7b09e`).
 Base: `86a28c8` (v0.1.5). Interpreter: this tree's `.venv` (Python 3.14; PyQt5 abi3 wheel installs).
 

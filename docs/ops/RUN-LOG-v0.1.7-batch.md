@@ -1,6 +1,6 @@
 # Run log — Leasegrid Sync v0.1.7 batch
 
-Worktree: `/home/mark/DEVELOP/leasegrid-c/tmp/v017-batch`
+Worktree: `~/DEVELOP/leasegrid-c/tmp/v017-batch`
 Branch: `build/v0.1.7-batch` (no upstream)
 Base: `b4e9b70485ff20bdd9089e558cb0ff71702d280b` (`origin/main`, tag v0.1.6)
 Drop-in: `f96dcd51c534222a40938ace45ac232ec2faac4b`

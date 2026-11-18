@@ -68,10 +68,10 @@ Wrapping a live storage node makes **anonymous allocate fail** (that is 0b.2). `
 3. On a storage host, install into that host's `~/tahoe-venv` and enable the plugin. Example leasegrid-2:
 
    ```bash
-   deploy/zkap-lab/scripts/install-lab.sh --venv /home/mark/tahoe-venv --copy-dropin
+   deploy/zkap-lab/scripts/install-lab.sh --venv ~/tahoe-venv --copy-dropin
    deploy/zkap-lab/scripts/enable-storage-plugin.sh \
-     --node-dir /home/mark/.tahoe-storage \
-     --key-file /home/mark/leasegrid-lab-private/issuer.signing.key \
+     --node-dir ~/.tahoe-storage \
+     --key-file ~/leasegrid-lab-private/issuer.signing.key \
      --spend-listen 10.42.0.40:8701
    ```
 

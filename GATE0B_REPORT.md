@@ -20,13 +20,13 @@ Denomination: **1 token = 1 GiB-share × 30 days on one node**. Domain: `leasegr
 
 ```bash
 # local (needs Tahoe 1.20 on PYTHONPATH / tahoe-venv)
-/home/mark/tahoe-venv/bin/leasegrid-zkap check-0b
+~/tahoe-venv/bin/leasegrid-zkap check-0b
 
 # live (issuer on nimo, plugin already on leasegrid-2)
-/home/mark/tahoe-venv/bin/leasegrid-zkap issuer \
+~/tahoe-venv/bin/leasegrid-zkap issuer \
   --key-file ~/DEVELOP/leasegrid-lab-private/issuer.signing.key \
   --listen 127.0.0.1:8700
-/home/mark/tahoe-venv/bin/leasegrid-zkap check-0b --live \
+~/tahoe-venv/bin/leasegrid-zkap check-0b --live \
   --issuer http://127.0.0.1:8700 \
   --storage http://10.42.0.40:8701 \
   --nodeid h4xivcmxr3n3nfdc3bxmdhqe77mokfay

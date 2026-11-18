@@ -41,8 +41,8 @@ elif _linked_worktree; then
   fi
   PYTHON="$ROOT/.venv/bin/python"
   PYTHON_REASON="linked worktree; using this tree's .venv"
-elif [[ -x /home/mark/tahoe-venv/bin/python ]]; then
-  PYTHON=/home/mark/tahoe-venv/bin/python
+elif [[ -x "$HOME/tahoe-venv/bin/python" ]]; then
+  PYTHON="$HOME/tahoe-venv/bin/python"
   PYTHON_REASON="main checkout"
 elif [[ -x "$ROOT/.venv/bin/python" ]]; then
   PYTHON="$ROOT/.venv/bin/python"

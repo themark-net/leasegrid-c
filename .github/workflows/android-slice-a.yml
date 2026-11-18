@@ -40,6 +40,32 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Unit test report
+        if: always()
+        working-directory: android
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          parts = []
+          for path in sorted(glob.glob("app/build/test-results/testDebugUnitTest/TEST-*.xml")):
+              root = ET.parse(path).getroot()
+              name = root.get("name", "?").rsplit(".", 1)[-1]
+              parts.append(f"{name}={root.get('tests')}t/{root.get('failures')}f/{root.get('errors')}e/{root.get('skipped')}s")
+          if not parts:
+              print("::error title=Android unit tests::no JUnit XML under app/build/test-results/testDebugUnitTest")
+              sys.exit(1)
+          print("::notice title=Android unit tests::" + " ".join(parts))
+          PY
+      - name: Upload unit test XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unit-test-results
+          path: android/app/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: warn
       - name: Upload Slice A debug APK
         uses: actions/upload-artifact@v4
         with:

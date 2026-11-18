@@ -2047,7 +2047,7 @@ class MagicFolderCtl:
         if not self.mf_bin:
             raise SyncError(
                 "folder not added. The Magic Folder daemon is not installed.",
-                "install magic-folder on PATH (see docs/ops/u1-dogfood.md) and Retry.",
+                "install magic-folder on PATH (see docs/guides/dev-grid.md) and Retry.",
             )
         return self.mf_bin
 

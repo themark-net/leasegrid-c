@@ -51,7 +51,7 @@ LEASEGRID_ISSUER_URL=http://127.0.0.1:8700 .venv/bin/leasegrid-sync   # shell 2:
 scripts/dev-grid.sh --invite             # optional shell 3: a short one-time code (7-word-word) instead of the furl
 ```
 
-Details: [`docs/ops/dev-grid.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/dev-grid.md) · [`docs/OVERVIEW.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/OVERVIEW.md#run-it-locally-client--server-one-machine).
+Details: [`docs/guides/dev-grid.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/guides/dev-grid.md) · [`docs/OVERVIEW.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/OVERVIEW.md#run-it-locally-client--server-one-machine).
 
 ## License
 

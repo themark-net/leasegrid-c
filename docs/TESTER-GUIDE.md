@@ -4,7 +4,7 @@ The long version of the [tester page](https://github.com/themark-net/leasegrid-c
 
 The published build is [Leasegrid Sync v0.1.12 (friends & family)](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.12). More → Settings shows `Leasegrid Sync (buyer) · version 0.1.12` on that build. What changed: [`docs/release-notes/v0.1.12.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.12.md) (and [v0.1.11](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.11.md) before it).
 
-The installers are unsigned. Details and the CI runners that produce them are in [`docs/ops/installers.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/installers.md).
+The installers are unsigned. Details and the CI runners that produce them are in [`docs/guides/installers.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/guides/installers.md).
 
 ## Downloads
 

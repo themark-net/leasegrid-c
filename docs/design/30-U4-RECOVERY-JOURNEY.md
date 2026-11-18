@@ -104,7 +104,7 @@ Four points (buyer voice; align with shipped `THREAT_COPY` / U0 §1a):
 | Landing | Restored folders under restore root (default `~/Leasegrid/<name>`; override env OK) |
 | Wallet | Bearer copy — honest caveat; spent-set stops double spend |
 
-Ops detail may live in `docs/ops/u4-recovery.md`; Design owns buyer journey + HITL + FAIL copy.
+Ops detail may live in `docs/guides/u4-recovery.md`; Design owns buyer journey + HITL + FAIL copy.
 
 ---
 

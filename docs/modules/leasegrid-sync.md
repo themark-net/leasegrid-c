@@ -2,7 +2,7 @@
 
 **Architecture layer:** Buyer surface (native desktop; not Tahoe layer 0)  
 **Code:** `src/leasegrid_sync/`  
-**Related:** `docs/09-ui-track.md` U1–U2 · design 10–14 (U0/U1) · design 15–19 (U2) · `docs/ops/u1-dogfood.md` · `docs/ops/u2-dogfood.md` · `docs/ops/u1-gridsync-blocker.md`
+**Related:** `docs/09-ui-track.md` U1-U2 · design 10-14 (U0/U1) · design 15-19 (U2) · `docs/guides/u1-gridsync-blocker.md`
 
 ## Operator
 
@@ -12,7 +12,7 @@ Native **Leasegrid Sync** window: join an existing friendnet (same unpaid invite
 
 ### How to run
 
-See [`docs/ops/u1-dogfood.md`](../ops/u1-dogfood.md) (Folders) and [`docs/ops/u2-dogfood.md`](../ops/u2-dogfood.md) (Credit). Short path:
+Short path:
 
 ```bash
 pip install -e ".[sync]"
@@ -101,5 +101,5 @@ Headless: `leasegrid-sync --status` · `leasegrid-sync --credit-status`. CI: `QT
 - Embed or link Tahoe WUI as buyer UI
 - Silently no-op join/add/load/redeem
 - Fake a successful balance without a real redeem path
-- Vendor GPL Gridsync into this Apache tree without a separate package decision (`docs/ops/u1-gridsync-blocker.md`)
+- Vendor GPL Gridsync into this Apache tree without a separate package decision (`docs/guides/u1-gridsync-blocker.md`)
 - Ship AppImage, recovery HITL, or mainnet XMR as if they were U2

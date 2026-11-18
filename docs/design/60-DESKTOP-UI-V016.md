@@ -1,7 +1,7 @@
 # Desktop UI additions (v0.1.6, join hand-off in v0.1.7)
 
 **Status:** shipped. Settings, invite close, folder open, and window geometry in v0.1.6. The second-launch invite hand-off in v0.1.7.
-**Cite:** `docs/TESTER-GUIDE.md` · `docs/HANDOFF-v0.1.6.md`
+**Cite:** `docs/TESTER-GUIDE.md`
 
 A path a person sees or copies uses the home-relative form (`~/…`, or `~\…` on Windows). Files on disk keep the real path.
 

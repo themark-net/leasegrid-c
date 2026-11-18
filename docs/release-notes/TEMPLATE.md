@@ -6,7 +6,7 @@ X.Y.Z and every <placeholder>, and delete this comment. Keep the shape:
 2-3 line summary, install table, What's new (5 bullets max), Known issues,
 links out to the full guide. Every link absolute. Long detail belongs in
 docs/TESTER-GUIDE.md or the previous release notes, not here.
-See https://github.com/themark-net/leasegrid-c/blob/main/docs/ops/friends-and-family-releases.md
+See https://github.com/themark-net/leasegrid-c/blob/main/docs/guides/friends-and-family-releases.md
 -->
 # Leasegrid Sync vX.Y.Z
 

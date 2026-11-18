@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Docs: the installer, dev grid, paid path, AppImage, recovery and Android dogfood guides moved from `docs/ops/` to `docs/guides/`. Internal handoff and run notes are no longer kept in this repo ([#87](https://github.com/themark-net/leasegrid-c/issues/87)).
 - Add folder checks the hosts first. With fewer hosts connected than the grid's `shares.happy`, it says how many are connected and how many are needed, and does not open the folder picker. Hosts that drop while a folder is being added get the same line instead of the Magic Folder HTTP 500 text ([#30](https://github.com/themark-net/leasegrid-c/issues/30)).
 - Docs and scripts no longer name a real home directory. They use `~/` or `$HOME`, and a test fails if a tracked file adds a `/home/<user>` or `/Users/<user>` path ([#89](https://github.com/themark-net/leasegrid-c/issues/89)).
 - Android Scan QR: the camera-permission check, the permission name and the scanner's refusal flag are decided in `CameraGate`, covered by a JVM test. MainActivity only passes the Android values in ([#89](https://github.com/themark-net/leasegrid-c/issues/89)).

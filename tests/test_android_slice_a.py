@@ -13,7 +13,7 @@ DESIGN = [
     "docs/design/38-P4-ANDROID-A-NON-GOALS.md",
     "docs/design/39-P4-ANDROID-A-DEVBOT-HANDOFF.md",
     "docs/09-ui-track-P4-ANDROID-POINTER.md",
-    "docs/ops/p4-android-dogfood.md",
+    "docs/guides/p4-android-dogfood.md",
 ]
 
 SOURCE_SUFFIXES = {".kt", ".kts", ".xml", ".py", ".md"}
@@ -74,7 +74,7 @@ def test_dogfood_hooks_are_named():
     manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
     assert "leasegrid-recovery" in manifest
     assert 'android:scheme="leasegrid"' in manifest
-    note = (ROOT / "docs/ops/p4-android-dogfood.md").read_text(encoding="utf-8")
+    note = (ROOT / "docs/guides/p4-android-dogfood.md").read_text(encoding="utf-8")
     assert "EXTRA_INVITE" in note
     assert "invite_field" in note
     assert "EXTRA_RECOVERY_FILE" in note

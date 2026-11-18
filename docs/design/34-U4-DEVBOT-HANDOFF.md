@@ -61,7 +61,7 @@
 | Cite #15 + tip `4e1e6bd` in dogfood | Invent Phase letters |
 | Align copy with `recovery.py` constants where shipped | Invent a second threat model |
 
-**Note:** Tip already has substantial recovery + threat strings (`docs/ops/u4-recovery.md`, `recovery.py`). U4 implement is **walkthrough PASS + CrashPlan-shell fit** (More → Recovery, nudge, gates, FAIL copy) — not a greenfield crypto redesign unless gaps fail the DoD.
+**Note:** Tip already has substantial recovery + threat strings (`docs/guides/u4-recovery.md`, `recovery.py`). U4 implement is **walkthrough PASS + CrashPlan-shell fit** (More → Recovery, nudge, gates, FAIL copy), not a greenfield crypto redesign unless gaps fail the DoD.
 
 ---
 
@@ -87,7 +87,7 @@
 | [33-U4-NON-GOALS.md](33-U4-NON-GOALS.md) | Hard rejects |
 | U0 `12` §1a / §4 | Baseline threat + Recovery frames |
 | P1 `25`–`29` | Folders-first chrome locks |
-| `docs/ops/u4-recovery.md` | Ops/format detail (if present on tip) |
+| `docs/guides/u4-recovery.md` | Ops/format detail (if present on tip) |
 | Issue [#15](https://github.com/themark-net/leasegrid-c/issues/15) | Binding Design DoD |
 | Tip `4e1e6bd` | CrashPlan shell base |
 

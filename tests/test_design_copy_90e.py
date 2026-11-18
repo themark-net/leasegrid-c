@@ -155,25 +155,47 @@ def test_restart_hints_say_quit_and_reopen_and_keep_the_step_before_it():
     assert "Quit and reopen Leasegrid Sync. If this persists, check that magic-folder is on PATH." in texts
 
 
-def _window_labels(tmp_path: Path) -> set[str]:
+def _dispose(window) -> None:
+    """Hide and delete the window now, at a safe point, so it cannot linger into later tests."""
+    from PyQt5 import QtCore, QtWidgets
+
+    window.poll.stop()
+    if window.tray is not None:
+        window.tray.hide()
+    window.win.hide()
+    window.win.deleteLater()
+    QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+
+
+@pytest.fixture(scope="module")
+def shared_window(tmp_path_factory):
+    """One joined-looking window for the window tests in this module (fewer live windows in the run)."""
     pytest.importorskip("PyQt5")
-    from PyQt5 import QtWidgets
+    from leasegrid_sync.app import MainWindow
 
-    from leasegrid_sync.app import AddStorageServerDialog, MainWindow
+    root = tmp_path_factory.mktemp("design90e")
+    nodedir = root / "tahoe"
+    nodedir.mkdir()
+    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
+    window = MainWindow(nodedir=nodedir, home=root / "home", autoload=False)
+    window.poll.stop()
+    yield window
+    _dispose(window)
 
-    window = MainWindow(home=tmp_path / "home", autoload=False)
-    try:
-        window.poll.stop()
-        dlg = AddStorageServerDialog(window.win, window, window.QtWidgets)
-        labels: set[str] = set()
-        for root in (window.win, dlg.dlg):
-            labels |= {b.text() for b in root.findChildren(QtWidgets.QAbstractButton)}
-            labels |= {a.text() for a in root.findChildren(QtWidgets.QAction)}
-        dlg.dlg.reject()
-    finally:
-        window.win.hide()
-        if window.tray is not None:
-            window.tray.hide()
+
+def _window_labels(window) -> set[str]:
+    from PyQt5 import QtCore, QtWidgets
+
+    from leasegrid_sync.app import AddStorageServerDialog
+
+    dlg = AddStorageServerDialog(window.win, window, window.QtWidgets)
+    labels: set[str] = set()
+    for root in (window.win, dlg.dlg):
+        labels |= {b.text() for b in root.findChildren(QtWidgets.QAbstractButton)}
+        labels |= {a.text() for a in root.findChildren(QtWidgets.QAction)}
+    dlg.dlg.reject()
+    dlg.dlg.deleteLater()
+    QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
     return {label.replace("&", "").rstrip("…").strip() for label in labels if label}
 
 
@@ -191,8 +213,8 @@ def _controls_named(text: str) -> list[tuple[str, ...]]:
     return named
 
 
-def test_every_control_a_next_hint_names_exists_in_the_window(tmp_path: Path):
-    labels = _window_labels(tmp_path)
+def test_every_control_a_next_hint_names_exists_in_the_window(shared_window):
+    labels = _window_labels(shared_window)
     missing = []
     for fname, line, func, text in next_hints():
         for candidates in _controls_named(text):
@@ -256,9 +278,7 @@ def test_invalid_code_in_the_window_keeps_the_field_and_does_not_join(tmp_path: 
         assert "Retry" not in page_buttons
         assert window.join_btn.isEnabled()
     finally:
-        window.win.hide()
-        if window.tray is not None:
-            window.tray.hide()
+        _dispose(window)
 
 
 # Storage server dialog
@@ -290,27 +310,22 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
 
 
-def test_storage_dialog_words_and_a_cut_link_saves_nothing(tmp_path: Path):
-    pytest.importorskip("PyQt5")
-    from PyQt5 import QtWidgets
+def test_storage_dialog_words_and_a_cut_link_saves_nothing(shared_window):
+    from PyQt5 import QtCore, QtWidgets
 
-    from leasegrid_sync.app import AddStorageServerDialog, MainWindow
+    from leasegrid_sync.app import AddStorageServerDialog
 
-    nodedir = tmp_path / "tahoe"
-    nodedir.mkdir()
-    (nodedir / "tahoe.cfg").write_text("[node]\n", encoding="utf-8")
-    home = tmp_path / "home"
-    window = MainWindow(nodedir=nodedir, home=home, autoload=False)
+    window = shared_window
+    home, nodedir = window.home, window.tahoe.nodedir
+    dlg = AddStorageServerDialog(window.win, window, window.QtWidgets)
     try:
-        window.poll.stop()
-        dlg = AddStorageServerDialog(window.win, window, window.QtWidgets)
         labels = [w.text() for w in dlg.dlg.findChildren(QtWidgets.QLabel)]
         assert STORAGE_LABEL in labels
         assert dlg.furl_edit.placeholderText() == STORAGE_PLACEHOLDER
         for text in labels + [dlg.furl_edit.placeholderText()]:
             assert "pb://" not in text, text
             assert "furl" not in text.lower(), text
-        before = (_snapshot(home), _snapshot(nodedir))
+        before = (_snapshot(Path(home)), _snapshot(Path(nodedir)))
         cut = "pb://abcd@127.0.0.1:1/"
         dlg.furl_edit.setText(cut)
         with patch("socket.create_connection") as connect:
@@ -320,13 +335,12 @@ def test_storage_dialog_words_and_a_cut_link_saves_nothing(tmp_path: Path):
         assert "Next: " + STORAGE_NEXT in shown
         assert cut not in shown and "pb://" not in shown
         assert not connect.called
-        assert (_snapshot(home), _snapshot(nodedir)) == before
+        assert (_snapshot(Path(home)), _snapshot(Path(nodedir))) == before
         assert dlg.furl_edit.text() == cut
-        dlg.dlg.reject()
     finally:
-        window.win.hide()
-        if window.tray is not None:
-            window.tray.hide()
+        dlg.dlg.reject()
+        dlg.dlg.deleteLater()
+        QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
 
 
 # Recover: a daemon start that keeps failing
@@ -354,31 +368,23 @@ def test_daemon_start_that_keeps_failing_shows_the_same_pair_and_keeps_the_log(t
     assert "daemon failed" in kept
 
 
-def test_daemon_start_failure_in_the_window_has_no_raw_error(tmp_path: Path, monkeypatch):
-    pytest.importorskip("PyQt5")
+def test_daemon_start_failure_in_the_window_has_no_raw_error(tmp_path: Path, monkeypatch, shared_window):
     from tests.test_sync_backend import _exiting_magic_folder
 
-    from leasegrid_sync.app import MainWindow
-
     ctl, log, seeded = _exiting_magic_folder(tmp_path, monkeypatch)
-    window = MainWindow(home=tmp_path / "win-home", autoload=False)
-    try:
-        window.poll.stop()
-        window._joined = True
-        window.mf = ctl
-        monkeypatch.setattr(window.tahoe, "connection_status", lambda: backend_mod.ConnectionStatus(
-            state="Connected", detail="introducer up · 3 storage", introducer_ok=True, servers_connected=3))
-        monkeypatch.setattr(window, "_refresh_servers", lambda status: None)
-        monkeypatch.setattr(window, "_refresh_offer_viz", lambda: None)
-        shown = []
-        for _ in range(2):
-            window.refresh()
-            shown.append(window.folder_error.text())
-        assert shown[0] == shown[1]
-        assert "Next: " + QUIT_REOPEN in shown[0]
-        for bad in ("Traceback", "daemon failed", seeded, "pb://"):
-            assert bad not in shown[0]
-    finally:
-        window.win.hide()
-        if window.tray is not None:
-            window.tray.hide()
+    window = shared_window
+    monkeypatch.setattr(window, "_joined", True)
+    monkeypatch.setattr(window, "mf", ctl)
+    monkeypatch.setattr(window.tahoe, "connection_status", lambda: backend_mod.ConnectionStatus(
+        state="Connected", detail="introducer up · 3 storage", introducer_ok=True, servers_connected=3))
+    monkeypatch.setattr(window, "_refresh_servers", lambda status: None)
+    monkeypatch.setattr(window, "_refresh_offer_viz", lambda: None)
+    shown = []
+    for _ in range(2):
+        window.refresh()
+        shown.append(window.folder_error.text())
+    window.clear_errors()
+    assert shown[0] == shown[1]
+    assert "Next: " + QUIT_REOPEN in shown[0]
+    for bad in ("Traceback", "daemon failed", seeded, "pb://"):
+        assert bad not in shown[0]

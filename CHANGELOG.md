@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `--dogfood-folder` gets the same hosts check as Add folder: it waits a short time for enough hosts after joining, then exits 1 with "folder not added. Hosts connected: N of M needed." instead of the Magic Folder HTTP 500 text. Hosts that drop during the add get the same line ([#30](https://github.com/themark-net/leasegrid-c/issues/30)).
 - Docs: the installer, dev grid, paid path, AppImage, recovery and Android dogfood guides moved from `docs/ops/` to `docs/guides/`. Internal handoff and run notes are no longer kept in this repo ([#87](https://github.com/themark-net/leasegrid-c/issues/87)).
 - Add folder checks the hosts first. With fewer hosts connected than the grid's `shares.happy`, it says how many are connected and how many are needed, and does not open the folder picker. Hosts that drop while a folder is being added get the same line instead of the Magic Folder HTTP 500 text ([#30](https://github.com/themark-net/leasegrid-c/issues/30)).
 - Docs and scripts no longer name a real home directory. They use `~/` or `$HOME`, and a test fails if a tracked file adds a `/home/<user>` or `/Users/<user>` path ([#89](https://github.com/themark-net/leasegrid-c/issues/89)).

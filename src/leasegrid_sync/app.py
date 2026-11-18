@@ -1154,6 +1154,10 @@ def _storage_count(status: ConnectionStatus) -> int:
 #: #30: a new folder makes Tahoe directories, which need shares.happy hosts.
 ADD_FOLDER_HOSTS_MSG = "folder not added. Hosts connected: %d of %d needed."
 ADD_FOLDER_HOSTS_NEXT = "wait until Hosts shows %d connected, then Retry Add folder."
+#: --dogfood-folder runs right after a join, when a healthy grid can still be
+#: settling (wait_connected stops at one host). It waits this long for
+#: shares.happy hosts. The window does not wait: a person can Retry.
+ADD_FOLDER_HOSTS_WAIT = 20.0
 
 
 def hosts_short_for_add(status: ConnectionStatus, happy: int) -> Optional[SyncError]:
@@ -4248,14 +4252,19 @@ class MainWindow:
         self.refresh()
         self.folder_error.setText("Added folder %s" % name)
 
-    def _hosts_short_for_add(self) -> Optional[SyncError]:
-        try:
-            status = self.tahoe.connection_status()
-            happy = read_shares(self.tahoe.nodedir)[1]
-        except Exception as exc:
-            self._log_exception("hosts_short_for_add", exc)
-            return None
-        return hosts_short_for_add(status, happy)
+    def _hosts_short_for_add(self, wait: float = 0.0) -> Optional[SyncError]:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                status = self.tahoe.connection_status()
+                happy = read_shares(self.tahoe.nodedir)[1]
+            except Exception as exc:
+                self._log_exception("hosts_short_for_add", exc)
+                return None
+            short = hosts_short_for_add(status, happy)
+            if short is None or time.monotonic() >= deadline or quit_requested():
+                return short
+            time.sleep(0.5)
 
     def _review_expansion(self, need: int, remaining: int) -> bool:
         QtWidgets = self.QtWidgets
@@ -4412,7 +4421,17 @@ class MainWindow:
         status = self.tahoe.join_existing()
         self._enter_main(status.state, status.detail)
         folder.mkdir(parents=True, exist_ok=True)
-        name = self.mf.add_folder(str(folder), name="u1-dogfood")
+        # #30: too few hosts makes Magic Folder answer 500. Say so and exit 1.
+        short = self._hosts_short_for_add(wait=ADD_FOLDER_HOSTS_WAIT)
+        if short is not None:
+            raise short
+        try:
+            name = self.mf.add_folder(str(folder), name="u1-dogfood")
+        except SyncError as exc:
+            dropped = self._hosts_short_for_add()
+            if dropped is not None:
+                raise dropped from exc
+            raise
         probe = write_probe_file(folder)
         self.mf.scan_local(name)
         seen = wait_for_file_status(self.mf, name, probe.name)

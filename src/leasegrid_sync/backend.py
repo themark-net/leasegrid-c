@@ -36,6 +36,8 @@ STORAGE_SETTLE_SECONDS = 6.0
 # code join normally completes in seconds; this bounds a dead code / relay.
 WORMHOLE_JOIN_TIMEOUT = 120.0
 TAHOE_CONNECT_TIMEOUT = 30.0
+# Foolscap swissnums are 32 characters. Shorter means the link was cut (Android: MIN_SWISSNUM).
+FURL_MIN_SWISSNUM = 8
 # stop() waits this long for SIGTERM, then SIGKILL, then waits again.
 TAHOE_STOP_WAIT = 10.0
 MF_STOP_WAIT = 5.0
@@ -1430,7 +1432,21 @@ def validate_introducer_furl(raw: str) -> str:
             "ask your inviter for a fresh invite (short code like 7-word-word, or pb://…); Retry.",
         )
     rest = text[5:]
-    if "/" not in rest or len(rest) < 12:
+    # pb://TUBID@LOCATION/SWISS, the same rule as Android Invite.validateFurl.
+    # A link cut in chat or mail fails here, before a node is made and the
+    # connect timeout blames the network.
+    authority, slash, after = rest.rpartition("/")
+    tub, at, location = authority.partition("@")
+    swiss = after.partition("#")[0]
+    if (
+        not slash
+        or len(rest) < 12
+        or not at
+        or not tub
+        or not location
+        or "@" in location
+        or len(swiss) < FURL_MIN_SWISSNUM
+    ):
         raise SyncError(
             "could not join this friendnet. Invite furl is malformed.",
             "get a fresh code from your inviter; check network; Retry.",

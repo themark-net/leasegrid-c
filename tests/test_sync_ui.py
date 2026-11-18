@@ -425,7 +425,7 @@ def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
     """A cut-off key file, then a key whose invite never connects, then a good key."""
     from leasegrid_sync.app import ImportRecoveryDialog
     from leasegrid_sync.recovery import IMPORT_FAIL_MSG, RecoveryBundle, encode_recovery_file
-    from tests.test_sync_backend import GOOD_FURL, TRUNCATED_FURL, _fake_tahoe
+    from tests.test_sync_backend import GOOD_FURL, DEAD_FURL, _fake_tahoe
 
     home = tmp_path / "import-home"
     joiner = MainWindow(
@@ -465,7 +465,7 @@ def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
         bad_key = tmp_path / "bad.leasegrid-recovery"
         bad_key.write_bytes(
             encode_recovery_file(
-                RecoveryBundle(introducer_furl=TRUNCATED_FURL, shares=(1, 2, 2)), "pw"
+                RecoveryBundle(introducer_furl=DEAD_FURL, shares=(1, 2, 2)), "pw"
             )
         )
         dlg.path_edit.setText(str(bad_key))
@@ -477,7 +477,7 @@ def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
         assert "Introducer is unreachable" in bad_text
         assert "\nNext:" in bad_text
         assert "LEASEGRID_TAHOE_NODEDIR" not in bad_text
-        assert TRUNCATED_FURL not in bad_text
+        assert DEAD_FURL not in bad_text
         assert "pb://" not in bad_text
         assert dlg.import_btn.text() == "Retry import"
         assert dlg.import_btn.isEnabled()
@@ -499,7 +499,7 @@ def test_truncated_recovery_key_then_a_good_one_imports(tmp_path: Path):
         assert dlg.result is not None
         cfg = (joiner.tahoe.nodedir / "tahoe.cfg").read_text(encoding="utf-8")
         assert GOOD_FURL in cfg
-        assert TRUNCATED_FURL not in cfg
+        assert DEAD_FURL not in cfg
         assert "--shares-needed=1" in cfg
         assert "--shares-happy=2" in cfg
         assert "--shares-total=2" in cfg

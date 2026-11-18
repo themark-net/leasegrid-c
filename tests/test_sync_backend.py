@@ -191,8 +191,8 @@ elif args[0] == "run":
 """
 
 GOOD_FURL = "pb://hashhashhash@127.0.0.1:45001/swissnumswiss"
-# Long enough for validate_introducer_furl, short of a real swissnum. Fake.
-TRUNCATED_FURL = "pb://hashhashhash@127.0.0.1:45001/cut"
+# Well formed, but no introducer answers it. Fake. A cut link fails earlier (test_sync_cut_join_link).
+DEAD_FURL = "pb://hashhashhash@127.0.0.1:45001/deadswiss"
 
 
 def _fake_tahoe(tmp_path: Path) -> str:
@@ -849,9 +849,9 @@ def test_join_furl_failure_hides_the_tahoe_traceback(tmp_path: Path):
     assert not nodedir.exists()
 
 
-def test_truncated_furl_then_a_good_one_joins(tmp_path: Path):
+def test_dead_furl_then_a_good_one_joins(tmp_path: Path):
     """A furl that creates a node but never connects must not block the next one."""
-    assert validate_introducer_furl(TRUNCATED_FURL) == TRUNCATED_FURL
+    assert validate_introducer_furl(DEAD_FURL) == DEAD_FURL
     nodedir = tmp_path / "home" / "tahoe"
     client = TahoeClient(nodedir=nodedir, tahoe_bin=_fake_tahoe(tmp_path), home=tmp_path / "home")
     offline = ConnectionStatus(state="Offline", detail="introducer down")
@@ -866,12 +866,12 @@ def test_truncated_furl_then_a_good_one_joins(tmp_path: Path):
             client, "wait_connected", return_value=offline
         ):
             with pytest.raises(SyncError) as exc:
-                client.join_invite(TRUNCATED_FURL)
+                client.join_invite(DEAD_FURL)
         blob = exc.value.banner()
         assert "Introducer is unreachable" in blob
         assert "\nNext:" in blob
         assert "LEASEGRID_TAHOE_NODEDIR" not in blob
-        assert TRUNCATED_FURL not in blob
+        assert DEAD_FURL not in blob
         assert "pb://" not in blob
         _assert_no_raw_failure(blob)
         assert not nodedir.exists()
@@ -883,7 +883,7 @@ def test_truncated_furl_then_a_good_one_joins(tmp_path: Path):
         assert status.state == "Connected"
         cfg = (nodedir / "tahoe.cfg").read_text(encoding="utf-8")
         assert GOOD_FURL in cfg
-        assert TRUNCATED_FURL not in cfg
+        assert DEAD_FURL not in cfg
     finally:
         client.stop()
 

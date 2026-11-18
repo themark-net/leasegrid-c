@@ -595,9 +595,8 @@ def test_scan_qr_copy_wiring_and_optional_camera():
     assert ".setPrompt(Invite.SCAN_PROMPT)" in activity
     assert ".setBeepEnabled(false)" in activity
     assert ".setOrientationLocked(false)" in activity
-    assert "model.onScanResult(" in activity
-    assert "contents = result.contents," in activity
-    assert "Intents.Scan.MISSING_CAMERA_PERMISSION" in activity
+    # The result goes to ScanQrWiring unchanged; ScanQrWiringTest covers what it does.
+    assert "qr.onScanResult(result.contents) { key -> result.originalIntent?.hasExtra(key) }" in activity
     model = APP_MODEL.read_text(encoding="utf-8")
     assert "fun onScanned(text: String?)" in model
     assert "fun onScanDenied()" in model
@@ -700,13 +699,11 @@ def test_scan_asks_for_the_camera_first_and_the_fail_card_hides_retry_without_an
     """#88: a refused camera never reaches the scanner, and Retry shows only when something can rerun."""
     activity = MAIN_ACTIVITY.read_text(encoding="utf-8")
     opener = _block(activity, "private fun openQrScanner()", "\n    private fun ")
-    assert "model.onScanTapped(" in opener
-    assert "CameraGate.PERMISSION" in opener
+    assert "qr.onScanTapped()" in opener
     gate = (APP_MODEL.parent / "CameraGate.kt").read_text(encoding="utf-8")
     assert "const val PERMISSION: String = Manifest.permission.CAMERA" in gate
     assert "scanQr.launch(" not in opener
-    assert "registerForActivityResult(ActivityResultContracts.RequestPermission())" in activity
-    assert "model.onCameraAnswer(granted, ::launchQrScanner)" in activity
+    assert "registerForActivityResult(ActivityResultContracts.RequestPermission(), qr::onPermissionAnswer)" in activity
     assert activity.count("scanQr.launch(") == 1
     ui = (INVITE.parents[1] / "ui" / "SyncApp.kt").read_text(encoding="utf-8")
     card = _block(ui, "private fun FailCard(", "\n}\n")

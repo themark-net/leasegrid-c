@@ -73,17 +73,14 @@ class SyncAppWiringTest {
         assertTrue(activity.contains(".setPrompt(Invite.SCAN_PROMPT)"))
         assertTrue(activity.contains(".setBeepEnabled(false)"))
         assertTrue(activity.contains(".setOrientationLocked(false)"))
-        assertTrue(activity.contains("model.onScanResult("))
-        assertTrue(activity.contains("contents = result.contents,"))
-        assertTrue(activity.contains("Intents.Scan.MISSING_CAMERA_PERMISSION"))
+        // The Activity forwards raw values to ScanQrWiring; ScanQrWiringTest covers the behavior.
+        assertTrue(activity.contains("qr.onScanResult(result.contents) { key -> result.originalIntent?.hasExtra(key) }"))
         // #88 a: ask for the camera before the scanner opens.
         val opener = activity.substring(activity.indexOf("private fun openQrScanner()"))
             .substringBefore("\n    private fun ")
-        assertTrue(opener, opener.contains("model.onScanTapped("))
-        assertTrue(opener, opener.contains("CameraGate.PERMISSION"))
+        assertTrue(opener, opener.contains("qr.onScanTapped()"))
         assertFalse("the scanner launches only from launchQrScanner", opener.contains("scanQr.launch("))
-        assertTrue(activity.contains("registerForActivityResult(ActivityResultContracts.RequestPermission())"))
-        assertTrue(activity.contains("model.onCameraAnswer(granted, ::launchQrScanner)"))
+        assertTrue(activity.contains("registerForActivityResult(ActivityResultContracts.RequestPermission(), qr::onPermissionAnswer)"))
         assertEquals(1, activity.lines().count { it.contains("scanQr.launch(") })
         assertTrue(
             readRelative("src/main/AndroidManifest.xml", "app/src/main/AndroidManifest.xml")

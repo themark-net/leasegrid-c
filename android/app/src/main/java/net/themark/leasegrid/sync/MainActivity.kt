@@ -10,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
-import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import net.themark.leasegrid.sync.invite.Invite
@@ -18,7 +17,7 @@ import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_MSG
 import net.themark.leasegrid.sync.recovery.IMPORT_FAIL_NEXT
 import net.themark.leasegrid.sync.recovery.MAX_RECOVERY_BYTES
 import net.themark.leasegrid.sync.ui.AppModel
-import net.themark.leasegrid.sync.ui.CameraGate
+import net.themark.leasegrid.sync.ui.ScanQrWiring
 import net.themark.leasegrid.sync.ui.SyncApp
 import net.themark.leasegrid.sync.ui.TooLarge
 import net.themark.leasegrid.sync.ui.WriteCopy
@@ -49,27 +48,25 @@ class MainActivity : ComponentActivity() {
         readAddedFile(folder, uri)
     }
 
+    private val qr = ScanQrWiring(
+        model = { model },
+        checkPermission = { name -> ContextCompat.checkSelfPermission(this, name) },
+        requestPermission = { name -> askCamera.launch(name) },
+        launchScanner = ::launchQrScanner,
+    )
+
     private val scanQr = registerForActivityResult(ScanContract()) { result ->
-        model.onScanResult(
-            contents = result.contents,
-            missingCameraPermission = CameraGate.scanRefused(result.originalIntent?.hasExtra(Intents.Scan.MISSING_CAMERA_PERMISSION)),
-        )
+        qr.onScanResult(result.contents) { key -> result.originalIntent?.hasExtra(key) }
     }
 
     private fun openRecoveryPicker() {
         pickRecovery.launch(arrayOf("*/*"))
     }
 
-    private val askCamera = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        model.onCameraAnswer(granted, ::launchQrScanner)
-    }
+    private val askCamera = registerForActivityResult(ActivityResultContracts.RequestPermission(), qr::onPermissionAnswer)
 
     private fun openQrScanner() {
-        model.onScanTapped(
-            cameraGranted = CameraGate.isGranted(ContextCompat.checkSelfPermission(this, CameraGate.PERMISSION)),
-            launchScanner = ::launchQrScanner,
-            askCamera = { askCamera.launch(CameraGate.PERMISSION) },
-        )
+        qr.onScanTapped()
     }
 
     private fun launchQrScanner() {

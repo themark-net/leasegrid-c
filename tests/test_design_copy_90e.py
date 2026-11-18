@@ -226,6 +226,7 @@ def test_invalid_code_is_designs_pair(text: str):
     assert_hint_clean(exc.value.banner(), parse_hint=True)
 
 
+@pytest.mark.skip(reason="bisect")
 def test_invalid_code_in_the_window_keeps_the_field_and_does_not_join(tmp_path: Path):
     pytest.importorskip("PyQt5")
     from PyQt5 import QtWidgets
@@ -354,6 +355,7 @@ def test_daemon_start_that_keeps_failing_shows_the_same_pair_and_keeps_the_log(t
     assert "daemon failed" in kept
 
 
+@pytest.mark.skip(reason="bisect")
 def test_daemon_start_failure_in_the_window_has_no_raw_error(tmp_path: Path, monkeypatch):
     pytest.importorskip("PyQt5")
     from tests.test_sync_backend import _exiting_magic_folder

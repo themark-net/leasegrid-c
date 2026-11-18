@@ -1,18 +1,18 @@
 # Leasegrid Sync — friends and family
 
 Leasegrid Sync is the desktop window. One friend invites you; you join, add a folder, and put a file in it. You do not need Python.
-Current build: [v0.1.12](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.12). Newest build: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.12`. The installers are unsigned.
+Current build: [v0.1.13](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.13). Newest build: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest). **More → Settings** shows `Leasegrid Sync (buyer) · version 0.1.13`. The installers are unsigned.
 
 ## Install
 
 | OS | Download | One-liner |
 |----|----------|-----------|
-| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.12-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
-| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.12-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
-| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.12-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
-| Windows x64, no setup | [`Leasegrid_Sync-0.1.12-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.12/Leasegrid_Sync-0.1.12-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
+| Linux x86_64 (glibc 2.35+: Ubuntu 22.04+, Debian 12+, Fedora 36+) | [`Leasegrid_Sync-0.1.13-x86_64.AppImage`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.13/Leasegrid_Sync-0.1.13-x86_64.AppImage) | `chmod +x` it and run it. Needs FUSE (`libfuse2`); no FUSE: add `--appimage-extract-and-run`. |
+| macOS (Intel; Apple Silicon through Rosetta 2) | [`Leasegrid_Sync-0.1.13-macos-x86_64.dmg`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.13/Leasegrid_Sync-0.1.13-macos-x86_64.dmg) | Drag to Applications, then **Open Anyway** (steps below). |
+| Windows 10/11 x64 | [`Leasegrid_Sync-0.1.13-win64-setup.exe`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.13/Leasegrid_Sync-0.1.13-win64-setup.exe) | On SmartScreen: **More info → Run anyway**. |
+| Windows x64, no setup | [`Leasegrid_Sync-0.1.13-win64.zip`](https://github.com/themark-net/leasegrid-c/releases/download/v0.1.13/Leasegrid_Sync-0.1.13-win64.zip) | Unzip and start `leasegrid-sync.exe`. `leasegrid-sync-cli.exe` is the console program, not the window. |
 
-**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.12) before you run it.
+**Checksums:** compare your download with the matching `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` or `SHA256SUMS-win64` asset on [the release](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.13) before you run it.
 
 <details>
 <summary>macOS: “unidentified developer” — Open Anyway steps</summary>
@@ -26,16 +26,17 @@ On macOS 14 and earlier, Control-click the app → **Open** → **Open** instead
 
 Then: open **Join a friendnet**, paste the short code your friend copied with **Copy code**, tick **I understand the four points above.**, click **Join friendnet**, and **Add folder** on **Folders**.
 
-## What's new in v0.1.12
+## What's new in v0.1.13
 
-- On Windows, starting Sync while an old lock file is still being cleaned up no longer stops with "could not read its lock file" (#87).
-- Android, in source only (no APK in this release): **Invite** has **Scan QR** for the desktop share card or invite page. Join still waits for the tap. **Scan QR** asks for the camera first, and refusing it says to paste the join link or type the short code. A fail card with nothing to retry shows only **Dismiss** (#77, #88).
+- **Add folder** checks the hosts first. With fewer hosts connected than the grid needs, it says *folder not added. Hosts connected: N of M needed.* and does not open the folder picker. Hosts that drop during the add get the same line instead of the HTTP 500 text (#30).
+- **Join** refuses a join link that was cut short right away with *Invite furl is malformed.* instead of waiting about 30 seconds and blaming the network (#80).
+- No Android APK in this release; Android changes are in the source only.
 - From v0.1.5, correction: the v0.1.4 notes made the #30 change sound user-visible. It was not: v0.1.3 already showed the #30 hint only for HTTP 500. Other HTTP errors say *Magic Folder API error (NNN)*, and no answer at all says *Magic Folder daemon is not reachable.*
-- Details: [v0.1.12 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.12.md) (and [v0.1.11](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.11.md) before it).
+- Details: [v0.1.13 release notes](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.13.md) (and [v0.1.12](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.12.md) before it).
 
 ## Known issues
 
-- **Add folder HTTP 500** ([#30](https://github.com/themark-net/leasegrid-c/issues/30), open, parked): the row never says **Up to date**. Say so in your bug report and mention #30.
+- **Add folder HTTP 500** ([#30](https://github.com/themark-net/leasegrid-c/issues/30), open): with too few hosts, Add folder now says *Hosts connected: N of M needed.* instead. If you still get the #30 message with enough hosts, the row never says **Up to date**. Say so in your bug report, with the **Hosts** line, and mention #30.
 - **Unsigned installers:** Gatekeeper and SmartScreen warn. On Windows 11, Smart App Control can block the app with no **Run anyway**.
 - **Old v0.1.0 install?** It shows **Copy link** instead of **Copy code**. The [full guide](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTER-GUIDE.md#join-with-an-invite) covers both screens.
 

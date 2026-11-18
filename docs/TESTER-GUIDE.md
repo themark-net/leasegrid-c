@@ -2,7 +2,7 @@
 
 The long version of the [tester page](https://github.com/themark-net/leasegrid-c/blob/main/docs/TESTERS.md): install on each OS, join with an invite, add a folder, read the status chip, and report a bug. You do not need Python. One friend invites you. You join, add a folder, and put a file in it.
 
-The published build is [Leasegrid Sync v0.1.12 (friends & family)](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.12). More → Settings shows `Leasegrid Sync (buyer) · version 0.1.12` on that build. What changed: [`docs/release-notes/v0.1.12.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.12.md) (and [v0.1.11](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.11.md) before it).
+The published build is [Leasegrid Sync v0.1.13 (friends & family)](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.13). More → Settings shows `Leasegrid Sync (buyer) · version 0.1.13` on that build. What changed: [`docs/release-notes/v0.1.13.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.13.md) (and [v0.1.12](https://github.com/themark-net/leasegrid-c/blob/main/docs/release-notes/v0.1.12.md) before it).
 
 The installers are unsigned. Details and the CI runners that produce them are in [`docs/guides/installers.md`](https://github.com/themark-net/leasegrid-c/blob/main/docs/guides/installers.md).
 
@@ -10,9 +10,9 @@ The installers are unsigned. Details and the CI runners that produce them are in
 
 | Your computer | Download | Runs on |
 |---------------|----------|---------|
-| Linux x86_64 | `Leasegrid_Sync-0.1.12-x86_64.AppImage` | glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). No `.deb`. |
-| Mac | `Leasegrid_Sync-0.1.12-macos-x86_64.dmg` | Intel Macs. Apple Silicon only through Rosetta 2. |
-| Windows 10/11 x64 | `Leasegrid_Sync-0.1.12-win64-setup.exe` | Same bits are in `Leasegrid_Sync-0.1.12-win64.zip` if you would rather not run the setup. |
+| Linux x86_64 | `Leasegrid_Sync-0.1.13-x86_64.AppImage` | glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). No `.deb`. |
+| Mac | `Leasegrid_Sync-0.1.13-macos-x86_64.dmg` | Intel Macs. Apple Silicon only through Rosetta 2. |
+| Windows 10/11 x64 | `Leasegrid_Sync-0.1.13-win64-setup.exe` | Same bits are in `Leasegrid_Sync-0.1.13-win64.zip` if you would rather not run the setup. |
 
 ## Checksums
 
@@ -21,21 +21,21 @@ Each release attaches `SHA256SUMS-linux-x86_64`, `SHA256SUMS-macos-x86_64` and `
 ## Linux
 
 ```bash
-chmod +x Leasegrid_Sync-0.1.12-x86_64.AppImage
-./Leasegrid_Sync-0.1.12-x86_64.AppImage
+chmod +x Leasegrid_Sync-0.1.13-x86_64.AppImage
+./Leasegrid_Sync-0.1.13-x86_64.AppImage
 ```
 
 The AppImage needs FUSE. On Ubuntu that package is `libfuse2`. With no FUSE, the documented fallback is:
 
 ```bash
-./Leasegrid_Sync-0.1.12-x86_64.AppImage --appimage-extract-and-run
+./Leasegrid_Sync-0.1.13-x86_64.AppImage --appimage-extract-and-run
 ```
 
 ## Mac (Gatekeeper)
 
 The disk image is ad-hoc signed only. It is not notarized. Gatekeeper reports an unidentified developer.
 
-1. Open `Leasegrid_Sync-0.1.12-macos-x86_64.dmg`.
+1. Open `Leasegrid_Sync-0.1.13-macos-x86_64.dmg`.
 2. Drag **Leasegrid Sync** onto **Applications**.
 3. On macOS 15 and newer, try to open **Leasegrid Sync** first (double-click it in Applications). Gatekeeper blocks that launch. **Open Anyway** appears only after the block, in **System Settings → Privacy & Security**, and it stays there for about an hour. Click **Open Anyway**. macOS asks for the login password. Control-click → **Open** no longer bypasses Gatekeeper on macOS 15 or newer.
 4. On macOS 14 and earlier, Control-click **Leasegrid Sync** in Applications and choose **Open**, then **Open** again. If it is still blocked, use **System Settings → Privacy & Security → Open Anyway**.
@@ -54,11 +54,11 @@ The setup and the programs inside it are unsigned. SmartScreen warns that the pu
 
 A code-signing certificate would not skip this warning. Since 2024, signed files still show SmartScreen until they build reputation. On Windows 11, Smart App Control can block the app and not offer **Run anyway**.
 
-1. Start `Leasegrid_Sync-0.1.12-win64-setup.exe`.
+1. Start `Leasegrid_Sync-0.1.13-win64-setup.exe`.
 2. On **Windows protected your PC**, click **More info**, then **Run anyway**.
 3. Finish setup and start **Leasegrid Sync**. Launching the app can show the same dialog.
 
-Zip instead of setup: unzip `Leasegrid_Sync-0.1.12-win64.zip` and start `leasegrid-sync.exe`. The same SmartScreen dialog can appear on that launch. `leasegrid-sync-cli.exe` is the console program, not the window.
+Zip instead of setup: unzip `Leasegrid_Sync-0.1.13-win64.zip` and start `leasegrid-sync.exe`. The same SmartScreen dialog can appear on that launch. `leasegrid-sync-cli.exe` is the console program, not the window.
 
 ## Join with an invite
 
@@ -104,11 +104,17 @@ The chip at the top right does not print the word Connected:
 
 ## Known issue: Add folder HTTP 500 ([#30](https://github.com/themark-net/leasegrid-c/issues/30))
 
-[#30](https://github.com/themark-net/leasegrid-c/issues/30) is open and parked. It does not mean the AppImage failed to start.
+[#30](https://github.com/themark-net/leasegrid-c/issues/30) is open. It does not mean the AppImage failed to start.
 
-On an AppImage built for glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+), unpaid Join reached Connected (introducer up) between the hosts plant and maximum, and the storage count settled from 3 to 0. **Add folder** then returned Magic Folder HTTP 500 on five tries for `mvp-hello.txt`. The folder never reached **Up to date**, and file-status did not list the file. Cross-host sync was not shown on that run. The same class of Magic Folder / Tahoe mutable-create error later cleared when both homes were on plant. It did not clear on maximum. It is not a “glibc will not launch the AppImage” failure.
+A new folder needs enough hosts connected to store it (the grid's `shares.happy`). On an AppImage built for glibc 2.35 or newer, unpaid Join between the hosts plant and maximum reached Connected while the storage count settled from 3 to 0, and **Add folder** then returned Magic Folder HTTP 500. The same class of error later cleared when both homes were on plant. It did not clear on maximum.
 
-If you see HTTP 500 on Add folder, and the row never says **Up to date**, say that in the bug report and mention #30. A grid that charges for storage can also refuse an upload until **More → Credit** has a balance. That banner points at Credit. #30 was an unpaid join.
+On this build, **Add folder** checks the hosts first:
+
+- Too few hosts: it says **folder not added. Hosts connected: N of M needed.** with **Next: wait until Hosts shows M connected, then Retry Add folder.** The folder picker does not open. Wait for the **Hosts** line on **Folders** to reach M, then click **Add folder** again.
+- Hosts that drop while the folder is being added get the same line.
+- Enough hosts and still HTTP 500: it says **folder not added. This is known issue #30 (Magic Folder HTTP 500).** The row never says **Up to date**. Say that in the bug report, with the **Hosts** line, and mention #30.
+
+A grid that charges for storage can also refuse an upload until **More → Credit** has a balance. That banner points at Credit. #30 was an unpaid join.
 
 ## If something goes wrong
 
@@ -127,7 +133,7 @@ Open an issue: <https://github.com/themark-net/leasegrid-c/issues/new>
 Include:
 
 - Operating system (Windows 11, macOS and whether it is Apple Silicon, Ubuntu version, and so on).
-- The About line from **More → Settings** (`version 0.1.12` on this build).
+- The About line from **More → Settings** (`version 0.1.13` on this build).
 - **Open logs folder** (More → Settings) opens that logs folder.
 - **Copy bug-report details** (More → Settings) copies the About line, OS, chip, join state, folder Status, and the logs path.
 - The clicks, in order, and the exact FAIL line.

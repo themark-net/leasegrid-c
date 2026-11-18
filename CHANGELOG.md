@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.1.13 (2026-11-17)
+
+- No Android APK in this release. Android changes are in the source only.
 - Desktop Join refuses a join link or furl that was cut short (no tub id, no address, two `@`, or a code part under 8 characters) at once with "Invite furl is malformed.", the same rule the Android Invite screen uses. It used to create a node, wait about 30 seconds and then say the introducer was unreachable ([#80](https://github.com/themark-net/leasegrid-c/issues/80)).
 - `--dogfood-folder` gets the same hosts check as Add folder: it waits a short time for enough hosts after joining, then exits 1 with "folder not added. Hosts connected: N of M needed." instead of the Magic Folder HTTP 500 text. Hosts that drop during the add get the same line ([#30](https://github.com/themark-net/leasegrid-c/issues/30)).
 - Docs: the installer, dev grid, paid path, AppImage, recovery and Android dogfood guides moved from `docs/ops/` to `docs/guides/`. Internal handoff and run notes are no longer kept in this repo ([#87](https://github.com/themark-net/leasegrid-c/issues/87)).

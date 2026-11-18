@@ -79,22 +79,44 @@ class _Welcome(threading.Thread):
         super().__init__(daemon=True)
         self.online = {
             "introducers": {"statuses": ["Connected to tcp:127.0.0.1:1 via tcp"]},
+            # Three hosts: this grid's shares.happy is 3, and Add folder checks it (#30).
             "servers": [
                 {
                     "nickname": "storage-1",
-                    "nodeid": "abc",
+                    "nodeid": "abc1",
                     "connection_status": "connected",
-                }
+                },
+                {
+                    "nickname": "storage-2",
+                    "nodeid": "abc2",
+                    "connection_status": "connected",
+                },
+                {
+                    "nickname": "storage-3",
+                    "nodeid": "abc3",
+                    "connection_status": "connected",
+                },
             ],
         }
         self.offline = {
             "introducers": {"statuses": ["not connected"]},
+            # Three hosts: this grid's shares.happy is 3, and Add folder checks it (#30).
             "servers": [
                 {
                     "nickname": "storage-1",
-                    "nodeid": "abc",
+                    "nodeid": "abc1",
                     "connection_status": "",
-                }
+                },
+                {
+                    "nickname": "storage-2",
+                    "nodeid": "abc2",
+                    "connection_status": "",
+                },
+                {
+                    "nickname": "storage-3",
+                    "nodeid": "abc3",
+                    "connection_status": "",
+                },
             ],
         }
         self.body = self.online
@@ -488,7 +510,7 @@ def test_folder_journey_add_share_conflict_remove_restart_offline(tmp_path: Path
         welcome.body = welcome.online
         restarted.refresh()
         assert restarted.status_chip.text().startswith("Online")
-        assert "1 computer" in restarted.status_chip.text()
+        assert "3 computers" in restarted.status_chip.text()
         assert restarted.folder_error.text() == ""
         assert restarted.table.item(0, 0).text() == "Docs"
         assert restarted.table.item(0, 1).text() == "Up to date"

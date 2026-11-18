@@ -77,6 +77,7 @@ from .recovery import (
     SCARY_LOSS,
     RecoveryCtl,
     RestoreResult,
+    read_shares,
 )
 from .servers import (
     SERVERS_HONESTY,
@@ -1148,6 +1149,25 @@ def _storage_count(status: ConnectionStatus) -> int:
         match = re.search(r"(\d+)\s+storage", status.detail or "")
         n = int(match.group(1)) if match else 0
     return n
+
+
+#: #30: a new folder makes Tahoe directories, which need shares.happy hosts.
+ADD_FOLDER_HOSTS_MSG = "folder not added. Hosts connected: %d of %d needed."
+ADD_FOLDER_HOSTS_NEXT = "wait until Hosts shows %d connected, then Retry Add folder."
+
+
+def hosts_short_for_add(status: ConnectionStatus, happy: int) -> Optional[SyncError]:
+    """The Add folder error when fewer hosts are connected than shares.happy.
+
+    Only a Connected introducer gives a count to trust. Any other state is not
+    a shortage, so Add folder runs and reports its own error.
+    """
+    if status.state != "Connected" or not status.introducer_ok:
+        return None
+    n = _storage_count(status)
+    if n >= happy:
+        return None
+    return SyncError(ADD_FOLDER_HOSTS_MSG % (n, happy), ADD_FOLDER_HOSTS_NEXT % happy)
 
 
 def _storage_known_down(status: ConnectionStatus) -> bool:
@@ -4192,6 +4212,10 @@ class MainWindow:
         if credit_enforced() and credit_gate(remaining, 0) == "zero":
             self.show_folder_error(SyncError(ZERO_FOLDER_MSG, ZERO_FOLDER_NEXT), open_credit=True)
             return
+        short = self._hosts_short_for_add()
+        if short is not None:
+            self.show_folder_error(short)
+            return
         path = QtWidgets.QFileDialog.getExistingDirectory(
             self.win, "Choose a local folder to sync", str(Path.home())
         )
@@ -4214,7 +4238,8 @@ class MainWindow:
             # A gated node refusing the folder's directories surfaces as a Magic
             # Folder 500; the spender's event tells the real story.
             if not self._show_refusal_if_any():
-                self.show_folder_error(exc)
+                # #30: hosts can drop while the add runs. Say that, not HTTP 500.
+                self.show_folder_error(self._hosts_short_for_add() or exc)
             return
         except Exception as exc:
             self._log_exception("on_add_folder", exc)
@@ -4222,6 +4247,15 @@ class MainWindow:
             return
         self.refresh()
         self.folder_error.setText("Added folder %s" % name)
+
+    def _hosts_short_for_add(self) -> Optional[SyncError]:
+        try:
+            status = self.tahoe.connection_status()
+            happy = read_shares(self.tahoe.nodedir)[1]
+        except Exception as exc:
+            self._log_exception("hosts_short_for_add", exc)
+            return None
+        return hosts_short_for_add(status, happy)
 
     def _review_expansion(self, need: int, remaining: int) -> bool:
         QtWidgets = self.QtWidgets

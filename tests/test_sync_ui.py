@@ -2787,3 +2787,104 @@ def test_run_modes_runs_credit_then_folder_when_both_requested(ui: MainWindow, t
             order.clear()
             assert _run_modes(ui, None, None, True, "medium") == 0
             assert order == ["credit"]
+
+
+# #30: Add folder while fewer hosts are connected than shares.happy needs.
+
+
+def _hosts(n: int) -> ConnectionStatus:
+    return ConnectionStatus(
+        state="Connected", detail="introducer up · %d storage" % n, introducer_ok=True, servers_connected=n
+    )
+
+
+def _happy(ui: MainWindow, happy: int) -> None:
+    (ui.tahoe.nodedir / "tahoe.cfg").write_text(
+        "[node]\n[client]\nshares.needed = 1\nshares.happy = %d\nshares.total = %d\n" % (happy, happy),
+        encoding="utf-8",
+    )
+
+
+def test_add_folder_with_no_hosts_connected_stops_before_the_picker(ui: MainWindow):
+    """#30 FAIL: Connected to the introducer but storage settled to 0; Magic Folder answered 500."""
+    _enter(ui)
+    _happy(ui, 3)
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(0)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value="/tmp") as dlg, \
+         patch.object(ui.mf, "add_folder") as add:
+        ui.on_add_folder()
+    assert not dlg.called
+    assert not add.called
+    text = ui.folder_error.text()
+    assert "folder not added" in text
+    assert "0 of 3" in text
+    assert "Hosts shows 3 connected" in text
+    assert "#30" not in text
+
+
+def test_add_folder_with_fewer_hosts_than_happy_stops_and_enough_hosts_proceeds(ui: MainWindow, tmp_path: Path):
+    _enter(ui)
+    _happy(ui, 3)
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(2)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value="") as dlg, \
+         patch.object(ui.mf, "add_folder") as add:
+        ui.on_add_folder()
+    assert not dlg.called
+    assert not add.called
+    assert "2 of 3" in ui.folder_error.text()
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(3)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", return_value="photos") as add, \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert add.called
+    assert ui.folder_error.text() == "Added folder photos"
+
+
+def test_add_folder_reads_happy_from_this_nodes_config(ui: MainWindow, tmp_path: Path):
+    """A grid with shares.happy = 2 adds with 2 hosts. The default 3 is not assumed."""
+    _enter(ui)
+    _happy(ui, 2)
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(2)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", return_value="docs") as add, \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert add.called
+
+
+def test_add_folder_500_after_hosts_dropped_names_the_hosts_not_issue_30(ui: MainWindow, tmp_path: Path):
+    """Hosts were there when Add folder started and gone when Magic Folder answered 500."""
+    _enter(ui)
+    _happy(ui, 3)
+    statuses = iter([_hosts(3), _hosts(0)])
+    with patch.object(ui.tahoe, "connection_status", side_effect=lambda: next(statuses)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", side_effect=SyncError(
+             "folder not added. This is known issue #30 (Magic Folder HTTP 500).", "Retry.", http_status=500)):
+        ui.on_add_folder()
+    text = ui.folder_error.text()
+    assert "0 of 3" in text
+    assert "#30" not in text
+
+
+def test_add_folder_500_with_enough_hosts_still_names_issue_30(ui: MainWindow, tmp_path: Path):
+    _enter(ui)
+    _happy(ui, 3)
+    with patch.object(ui.tahoe, "connection_status", return_value=_hosts(3)), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", side_effect=SyncError(
+             "folder not added. This is known issue #30 (Magic Folder HTTP 500).", "Retry.", http_status=500)):
+        ui.on_add_folder()
+    assert "#30" in ui.folder_error.text()
+
+
+def test_add_folder_when_tahoe_is_unreachable_keeps_the_old_path(ui: MainWindow, tmp_path: Path):
+    """No status to go on is not a shortage. Add folder runs and reports its own error."""
+    _enter(ui)
+    with patch.object(ui.tahoe, "connection_status", return_value=ConnectionStatus(state="FAIL", detail="x")), \
+         patch.object(ui.QtWidgets.QFileDialog, "getExistingDirectory", return_value=str(tmp_path)), \
+         patch.object(ui.mf, "add_folder", return_value="x") as add, \
+         patch.object(ui.mf, "list_folders", return_value=[]):
+        ui.on_add_folder()
+    assert add.called

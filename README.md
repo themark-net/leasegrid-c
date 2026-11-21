@@ -1,5 +1,7 @@
 # Leasegrid
 
+> **Status: parked** (Nov 2026). Not in active development; fixes only if something breaks.
+
 Monero-prepaid Tahoe-LAFS friendnet with bearer storage credits and silent eject.
 **Leasegrid Sync** is the desktop app: join a friend's grid, add a folder, and it syncs. Current friends-and-family build: [v0.1.13](https://github.com/themark-net/leasegrid-c/releases/tag/v0.1.13) (unsigned) · newest: [latest release](https://github.com/themark-net/leasegrid-c/releases/latest).
 
